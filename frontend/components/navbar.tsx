@@ -33,7 +33,7 @@ export function Navbar({ user }: NavbarProps) {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="text-xl font-bold text-blue-900">
-              Gestion Chèques
+              DFC Portale
             </Link>
             <div className="hidden items-center gap-2 md:flex">
               {links.map((link) => {

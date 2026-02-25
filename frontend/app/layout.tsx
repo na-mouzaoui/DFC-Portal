@@ -7,8 +7,8 @@ import "./globals.css"
 // Les polices système (sans-serif, monospace) sont utilisées via globals.css
 
 export const metadata: Metadata = {
-  title: "Gestion de Chèques",
-  description: "Application de gestion et remplissage de chèques bancaires",
+  title: "DFC Portale",
+  description: "DFC Portale - Application de gestion et remplissage de chèques bancaires",
   generator: "v0.app",
   icons: {
     icon: "/favicon.ico",
