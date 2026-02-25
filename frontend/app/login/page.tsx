@@ -1,10 +1,20 @@
 "use client"
 
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { LoginForm } from "@/components/login-form"
 import { useAuth } from "@/hooks/use-auth"
 
 export default function LoginPage() {
-  const { isLoading } = useAuth({ redirectIfFound: true, redirectTo: "/dashboard" })
+  const { user, isLoading } = useAuth({})
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      const role = (user as { role?: string }).role
+      router.replace(role === "admin" ? "/admin/dashboard" : "/dashboard")
+    }
+  }, [user, isLoading, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">

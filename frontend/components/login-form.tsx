@@ -28,7 +28,16 @@ export function LoginForm() {
     setLoading(true)
     const result = await login(email, password)
     if (result.success) {
-      router.push("/dashboard")
+      // Decode JWT to determine role-based redirect
+      let destination = "/dashboard"
+      try {
+        const token = localStorage.getItem("jwt")
+        if (token) {
+          const payload = JSON.parse(atob(token.split(".")[1]))
+          if (payload.role === "admin") destination = "/admin/dashboard"
+        }
+      } catch { /* use default */ }
+      router.push(destination)
       router.refresh()
     } else {
       setError(result.error || "Erreur de connexion")

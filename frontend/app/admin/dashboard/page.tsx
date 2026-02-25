@@ -1,57 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import AdminUserManagement from "@/components/admin-user-management";
 import AdminRegionConfig from "@/components/admin-region-config";
 import AdminAuditLogs from "@/components/admin-audit-logs";
+import { logout } from "@/lib/auth-client";
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading, status } = useAuth({ requireAuth: true, redirectTo: "/login" });
 
+  // Redirect non-admins away after auth resolves
   useEffect(() => {
-    // Verify admin access
-    const checkAccess = async () => {
-      try {
-        const token = localStorage.getItem("jwt");
-        const response = await fetch("http://172.20.0.3/api/admin/users", {
-          credentials: "include",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+    if (!isLoading && status === "authenticated" && (user as { role?: string } | null)?.role !== "admin") {
+      router.replace("/dashboard");
+    }
+  }, [isLoading, status, user, router]);
 
-        if (!response.ok) {
-          throw new Error("Accès non autorisé");
-        }
-
-        setIsLoading(false);
-      } catch (error) {
-        toast({
-          title: "Accès refusé",
-          description: "Vous devez être administrateur pour accéder à cette page",
-          variant: "destructive",
-        });
-        router.push("/admin");
-      }
-    };
-
-    checkAccess();
-  }, [router, toast]);
-
-  const handleLogout = () => {
-    document.cookie = "jwt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    router.push("/admin");
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
   };
 
-  if (isLoading) {
+  if (isLoading || !user || (user as { role?: string }).role !== "admin") {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Chargement...</p>
+        <p className="text-sm text-muted-foreground">Chargement...</p>
       </div>
     );
   }

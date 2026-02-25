@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import {
   Table,
   TableBody,
@@ -51,7 +52,8 @@ export default function AuditLogViewer() {
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
-      let url = "http://172.20.0.3/api/admin/audit-logs?";
+      const token = localStorage.getItem("jwt");
+      let url = `${API_BASE}/api/admin/audit-logs?`;
       const params = new URLSearchParams();
 
       if (actionFilter) params.append("action", actionFilter);
@@ -60,6 +62,7 @@ export default function AuditLogViewer() {
 
       const response = await fetch(url + params.toString(), {
         credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!response.ok) throw new Error("Erreur de chargement");

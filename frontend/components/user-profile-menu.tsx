@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getRoleLabel } from "@/lib/roles";
 import { User, Key, LogOut, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { API_BASE } from "@/lib/config";
 
 interface UserData {
   email: string;
@@ -49,8 +50,10 @@ export default function UserProfileMenu() {
     
     const fetchUserProfile = async () => {
       try {
-        const response = await fetch("http://172.20.0.3/api/auth/me", {
+        const token = localStorage.getItem("jwt");
+        const response = await fetch(`${API_BASE}/api/auth/me`, {
           credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         if (response.ok && isMounted) {
@@ -90,9 +93,10 @@ export default function UserProfileMenu() {
     }
 
     try {
-      const response = await fetch("http://172.20.0.3/api/auth/change-password", {
+      const token = localStorage.getItem("jwt");
+      const response = await fetch(`${API_BASE}/api/auth/change-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         credentials: "include",
         body: JSON.stringify({
           currentPassword,

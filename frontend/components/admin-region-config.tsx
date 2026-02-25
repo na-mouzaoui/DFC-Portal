@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +56,7 @@ export default function AdminRegionConfig() {
   const fetchRegions = async () => {
     try {
       const token = localStorage.getItem("jwt");
-      const response = await fetch("http://172.20.0.3/api/regions", {
+      const response = await fetch(`${API_BASE}/api/regions`, {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -67,7 +68,7 @@ export default function AdminRegionConfig() {
     } catch (error) {
       toast({
         title: "Erreur",
-        description: "Impossible de charger les régions",
+        description: "Impossible de charger les rÃ©gions",
         variant: "destructive",
       });
     } finally {
@@ -75,7 +76,7 @@ export default function AdminRegionConfig() {
     }
   };
 
-  // Obtenir toutes les villes déjà assignées
+  // Obtenir toutes les villes dÃ©jÃ  assignÃ©es
   const getAssignedVilles = () => {
     const assigned = new Set<string>();
     regions.forEach(region => {
@@ -106,7 +107,7 @@ export default function AdminRegionConfig() {
     try {
       const body: { villes: string[]; name?: string } = { villes: selectedVilles };
       
-      // Ajouter le nom s'il a été modifié
+      // Ajouter le nom s'il a Ã©tÃ© modifiÃ©
       if (editedName.trim() && editedName !== regions.find(r => r.id === regionId)?.name) {
         body.name = editedName.trim();
       }
@@ -115,7 +116,7 @@ export default function AdminRegionConfig() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers.Authorization = `Bearer ${token}`;
       
-      const response = await fetch(`http://172.20.0.3/api/regions/${regionId}`, {
+      const response = await fetch(`${API_BASE}/api/regions/${regionId}`, {
         method: "PUT",
         headers,
         credentials: "include",
@@ -127,8 +128,8 @@ export default function AdminRegionConfig() {
       }
 
       toast({
-        title: "Succès",
-        description: "Région mise à jour avec succès",
+        title: "SuccÃ¨s",
+        description: "RÃ©gion mise Ã  jour avec succÃ¨s",
       });
 
       setEditingRegion(null);
@@ -138,7 +139,7 @@ export default function AdminRegionConfig() {
     } catch (error) {
       toast({
         title: "Erreur",
-        description: "Échec de la modification",
+        description: "Ã‰chec de la modification",
         variant: "destructive",
       });
     }
@@ -154,7 +155,7 @@ export default function AdminRegionConfig() {
     if (!newRegionName.trim()) {
       toast({
         title: "Erreur",
-        description: "Le nom de la région est requis",
+        description: "Le nom de la rÃ©gion est requis",
         variant: "destructive",
       });
       return;
@@ -165,7 +166,7 @@ export default function AdminRegionConfig() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers.Authorization = `Bearer ${token}`;
       
-      const response = await fetch("http://172.20.0.3/api/regions", {
+      const response = await fetch(`${API_BASE}/api/regions`, {
         method: "POST",
         headers,
         credentials: "include",
@@ -177,12 +178,12 @@ export default function AdminRegionConfig() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "Erreur lors de la création");
+        throw new Error(error.message || "Erreur lors de la crÃ©ation");
       }
 
       toast({
-        title: "Succès",
-        description: "Région créée avec succès",
+        title: "SuccÃ¨s",
+        description: "RÃ©gion crÃ©Ã©e avec succÃ¨s",
       });
 
       setShowCreateDialog(false);
@@ -192,7 +193,7 @@ export default function AdminRegionConfig() {
     } catch (error: any) {
       toast({
         title: "Erreur",
-        description: error.message || "Échec de la création",
+        description: error.message || "Ã‰chec de la crÃ©ation",
         variant: "destructive",
       });
     }
@@ -203,7 +204,7 @@ export default function AdminRegionConfig() {
 
     try {
       const token = localStorage.getItem("jwt");
-      const response = await fetch(`http://172.20.0.3/api/regions/${regionToDelete.id}`, {
+      const response = await fetch(`${API_BASE}/api/regions/${regionToDelete.id}`, {
         method: "DELETE",
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -215,8 +216,8 @@ export default function AdminRegionConfig() {
       }
 
       toast({
-        title: "Succès",
-        description: "Région supprimée avec succès",
+        title: "SuccÃ¨s",
+        description: "RÃ©gion supprimÃ©e avec succÃ¨s",
       });
 
       setRegionToDelete(null);
@@ -224,7 +225,7 @@ export default function AdminRegionConfig() {
     } catch (error: any) {
       toast({
         title: "Erreur",
-        description: error.message || "Échec de la suppression",
+        description: error.message || "Ã‰chec de la suppression",
         variant: "destructive",
       });
     }
@@ -266,7 +267,7 @@ export default function AdminRegionConfig() {
       <div className="flex justify-end">
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Nouvelle région
+          Nouvelle rÃ©gion
         </Button>
       </div>
 
@@ -281,7 +282,7 @@ export default function AdminRegionConfig() {
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
                     className="w-48"
-                    placeholder="Nom de la région"
+                    placeholder="Nom de la rÃ©gion"
                   />
                 ) : (
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getRegionColor(region.name)}`}>
@@ -338,7 +339,7 @@ export default function AdminRegionConfig() {
                         }`}
                       >
                         {ville.name}
-                        {isAssigned && !isSelected && " (assignée)"}
+                        {isAssigned && !isSelected && " (assignÃ©e)"}
                       </Label>
                     </div>
                   );
@@ -358,18 +359,18 @@ export default function AdminRegionConfig() {
       ))}
       </div>
 
-      {/* Dialog de création */}
+      {/* Dialog de crÃ©ation */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une nouvelle région</DialogTitle>
+            <DialogTitle>CrÃ©er une nouvelle rÃ©gion</DialogTitle>
             <DialogDescription>
-              Entrez le nom de la région et sélectionnez les villes à assigner
+              Entrez le nom de la rÃ©gion et sÃ©lectionnez les villes Ã  assigner
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="region-name">Nom de la région *</Label>
+              <Label htmlFor="region-name">Nom de la rÃ©gion *</Label>
               <Input
                 id="region-name"
                 value={newRegionName}
@@ -378,7 +379,7 @@ export default function AdminRegionConfig() {
               />
             </div>
             <div>
-              <Label>Villes ({newRegionVilles.length} sélectionnées)</Label>
+              <Label>Villes ({newRegionVilles.length} sÃ©lectionnÃ©es)</Label>
               <div className="mt-2 space-y-2 max-h-96 overflow-y-auto border rounded-md p-4">
                 {VILLES.map((ville) => {
                   const isAssigned = assignedVilles.has(ville.name);
@@ -399,7 +400,7 @@ export default function AdminRegionConfig() {
                         }`}
                       >
                         {ville.name}
-                        {isAssigned && " (déjà assignée)"}
+                        {isAssigned && " (dÃ©jÃ  assignÃ©e)"}
                       </Label>
                     </div>
                   );
@@ -415,7 +416,7 @@ export default function AdminRegionConfig() {
             }}>
               Annuler
             </Button>
-            <Button onClick={handleCreateRegion}>Créer</Button>
+            <Button onClick={handleCreateRegion}>CrÃ©er</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -426,8 +427,8 @@ export default function AdminRegionConfig() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer la région <strong>{regionToDelete?.name}</strong> ?
-              Cette action est irréversible. Les {regionToDelete?.villes.length} villes assignées seront libérées.
+              ÃŠtes-vous sÃ»r de vouloir supprimer la rÃ©gion <strong>{regionToDelete?.name}</strong> ?
+              Cette action est irrÃ©versible. Les {regionToDelete?.villes.length} villes assignÃ©es seront libÃ©rÃ©es.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
