@@ -112,14 +112,14 @@ export default function AdminUserManagement() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (!response.ok) throw new Error("Erreur de chargement des rÃ©gions");
+      if (!response.ok) throw new Error("Erreur de chargement des régions");
 
       const data = await response.json();
       setRegions(data);
     } catch (error) {
       toast({
         title: "Erreur",
-        description: "Impossible de charger les rÃ©gions",
+        description: "Impossible de charger les régions",
         variant: "destructive",
       });
     }
@@ -130,7 +130,7 @@ export default function AdminUserManagement() {
     if (!/^0\d{9}$/.test(formData.phoneNumber.trim())) {
       toast({
         title: "Erreur de validation",
-        description: "Le numÃ©ro de tÃ©lÃ©phone doit commencer par 0 et contenir exactement 10 chiffres",
+        description: "Le numéro de téléphone doit commencer par 0 et contenir exactement 10 chiffres",
         variant: "destructive",
       });
       return;
@@ -140,7 +140,7 @@ export default function AdminUserManagement() {
     if (formData.role === "regionale" && !formData.region) {
       toast({
         title: "Erreur de validation",
-        description: "La rÃ©gion est obligatoire pour le rÃ´le rÃ©gionale",
+        description: "La région est obligatoire pour le rôle régionale",
         variant: "destructive",
       });
       return;
@@ -160,12 +160,12 @@ export default function AdminUserManagement() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "Erreur lors de la crÃ©ation");
+        throw new Error(error.message || "Erreur lors de la création");
       }
 
       toast({
-        title: "SuccÃ¨s",
-        description: "Utilisateur crÃ©Ã© avec succÃ¨s",
+        title: "Succès",
+        description: "Utilisateur créé avec succès",
       });
 
       setIsCreateOpen(false);
@@ -174,7 +174,7 @@ export default function AdminUserManagement() {
     } catch (error) {
       toast({
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Ã‰chec de la crÃ©ation",
+        description: error instanceof Error ? error.message : "Échec de la création",
         variant: "destructive",
       });
     }
@@ -201,8 +201,8 @@ export default function AdminUserManagement() {
       }
 
       toast({
-        title: "SuccÃ¨s",
-        description: "Utilisateur modifiÃ© avec succÃ¨s",
+        title: "Succès",
+        description: "Utilisateur modifié avec succès",
       });
 
       setIsEditOpen(false);
@@ -212,14 +212,14 @@ export default function AdminUserManagement() {
     } catch (error) {
       toast({
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Ã‰chec de la modification",
+        description: error instanceof Error ? error.message : "Échec de la modification",
         variant: "destructive",
       });
     }
   };
 
   const handleDelete = async (userId: number) => {
-    if (!confirm("ÃŠtes-vous sÃ»r de vouloir supprimer cet utilisateur ?")) return;
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ?")) return;
 
     try {
       const token = localStorage.getItem("jwt");
@@ -235,22 +235,22 @@ export default function AdminUserManagement() {
       }
 
       toast({
-        title: "SuccÃ¨s",
-        description: "Utilisateur supprimÃ© avec succÃ¨s",
+        title: "Succès",
+        description: "Utilisateur supprimé avec succès",
       });
 
       fetchUsers();
     } catch (error) {
       toast({
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Ã‰chec de la suppression",
+        description: error instanceof Error ? error.message : "Échec de la suppression",
         variant: "destructive",
       });
     }
   };
 
   const handleResetPassword = async (userId: number, userEmail: string) => {
-    if (!confirm(`ÃŠtes-vous sÃ»r de vouloir rÃ©initialiser le mot de passe de ${userEmail} Ã  "123456789" ?`)) return;
+    if (!confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${userEmail} Ã  "123456789" ?`)) return;
 
     try {
       const token = localStorage.getItem("jwt");
@@ -262,17 +262,17 @@ export default function AdminUserManagement() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "Erreur lors de la rÃ©initialisation");
+        throw new Error(error.message || "Erreur lors de la réinitialisation");
       }
 
       toast({
-        title: "SuccÃ¨s",
-        description: "Mot de passe rÃ©initialisÃ© Ã  123456789",
+        title: "Succès",
+        description: "Mot de passe réinitialisé Ã  123456789",
       });
     } catch (error) {
       toast({
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Ã‰chec de la rÃ©initialisation",
+        description: error instanceof Error ? error.message : "Échec de la réinitialisation",
         variant: "destructive",
       });
     }
@@ -338,15 +338,15 @@ export default function AdminUserManagement() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>CrÃ©er un utilisateur</DialogTitle>
+              <DialogTitle>Créer un utilisateur</DialogTitle>
               <DialogDescription>
-                Remplissez tous les champs pour crÃ©er un nouveau compte
+                Remplissez tous les champs pour créer un nouveau compte
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">PrÃ©nom *</Label>
+                  <Label htmlFor="firstName">Prénom *</Label>
                   <Input
                     id="firstName"
                     value={formData.firstName}
@@ -404,7 +404,7 @@ export default function AdminUserManagement() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phoneNumber">TÃ©lÃ©phone de service * (0XXXXXXXXX)</Label>
+                <Label htmlFor="phoneNumber">Téléphone de service * (0XXXXXXXXX)</Label>
                 <Input
                   id="phoneNumber"
                   value={formData.phoneNumber}
@@ -414,7 +414,7 @@ export default function AdminUserManagement() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">RÃ´le *</Label>
+                <Label htmlFor="role">Rôle *</Label>
                 <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
                   <SelectTrigger>
                     <SelectValue />
@@ -422,16 +422,16 @@ export default function AdminUserManagement() {
                   <SelectContent>
                     <SelectItem value="direction">Global</SelectItem>
                     <SelectItem value="comptabilite">Finance</SelectItem>
-                    <SelectItem value="regionale">RÃ©gionale</SelectItem>
+                    <SelectItem value="regionale">Régionale</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {formData.role === "regionale" && (
                 <div className="space-y-2">
-                  <Label htmlFor="region">RÃ©gion *</Label>
+                  <Label htmlFor="region">Région *</Label>
                   <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
                     <SelectTrigger>
-                      <SelectValue placeholder="SÃ©lectionnez une rÃ©gion" />
+                      <SelectValue placeholder="Sélectionnez une région" />
                     </SelectTrigger>
                     <SelectContent>
                       {regions.map((region) => (
@@ -448,7 +448,7 @@ export default function AdminUserManagement() {
               <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                 Annuler
               </Button>
-              <Button onClick={handleCreate}>CrÃ©er</Button>
+              <Button onClick={handleCreate}>Créer</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -461,9 +461,9 @@ export default function AdminUserManagement() {
               <TableHead>Nom</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Direction</TableHead>
-              <TableHead>TÃ©lÃ©phone</TableHead>
-              <TableHead>RÃ´le</TableHead>
-              <TableHead>RÃ©gion</TableHead>
+              <TableHead>Téléphone</TableHead>
+              <TableHead>Rôle</TableHead>
+              <TableHead>Région</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -496,7 +496,7 @@ export default function AdminUserManagement() {
                       size="icon"
                       onClick={() => handleResetPassword(user.id, user.email)}
                       disabled={user.email === "admin@test.com"}
-                      title="RÃ©initialiser le mot de passe"
+                      title="Réinitialiser le mot de passe"
                     >
                       <KeyRound className="h-4 w-4" />
                     </Button>
@@ -529,7 +529,7 @@ export default function AdminUserManagement() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-firstName">PrÃ©nom</Label>
+                <Label htmlFor="edit-firstName">Prénom</Label>
                 <Input
                   id="edit-firstName"
                   value={formData.firstName}
@@ -563,7 +563,7 @@ export default function AdminUserManagement() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-phoneNumber">TÃ©lÃ©phone de service</Label>
+              <Label htmlFor="edit-phoneNumber">Téléphone de service</Label>
               <Input
                 id="edit-phoneNumber"
                 value={formData.phoneNumber}
@@ -571,7 +571,7 @@ export default function AdminUserManagement() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-role">RÃ´le</Label>
+              <Label htmlFor="edit-role">Rôle</Label>
               <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -579,16 +579,16 @@ export default function AdminUserManagement() {
                 <SelectContent>
                   <SelectItem value="direction">Global</SelectItem>
                   <SelectItem value="comptabilite">Finance</SelectItem>
-                  <SelectItem value="regionale">RÃ©gionale</SelectItem>
+                  <SelectItem value="regionale">Régionale</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {formData.role === "regionale" && (
               <div className="space-y-2">
-                <Label htmlFor="edit-region">RÃ©gion</Label>
+                <Label htmlFor="edit-region">Région</Label>
                 <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="SÃ©lectionnez une rÃ©gion" />
+                    <SelectValue placeholder="Sélectionnez une région" />
                   </SelectTrigger>
                   <SelectContent>
                     {regions.map((region) => (

@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Eye, Printer, Search, Trash2 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Eye, Printer, Search, Trash2, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 // ─── Types (mirrors nouvelle-declaration) ────────────────────────────────────
@@ -29,13 +30,13 @@ interface SavedDeclaration {
   direction: string
   mois: string
   annee: string
-  encRows: EncRow[]
-  tvaImmoRows: TvaRow[]
-  tvaBiensRows: TvaRow[]
-  timbreRows: TimbreRow[]
-  b12: string
-  b13: string
-  tapRows: TAPRow[]
+  encRows?: EncRow[]
+  tvaImmoRows?: TvaRow[]
+  tvaBiensRows?: TvaRow[]
+  timbreRows?: TimbreRow[]
+  b12?: string
+  b13?: string
+  tapRows?: TAPRow[]
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -214,12 +215,12 @@ const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px
 
 function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDeclaration; color: string }) {
   switch (tabKey) {
-    case "encaissement":  return <EncTable rows={decl.encRows} />
-    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows} color={color} />
-    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows} color={color} />
-    case "droits_timbre": return <TimbreTable rows={decl.timbreRows} />
-    case "ca_tap":        return <CATable b12={decl.b12} b13={decl.b13} />
-    case "etat_tap":      return <TAPTable rows={decl.tapRows} />
+    case "encaissement":  return <EncTable rows={decl.encRows ?? []} />
+    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} color={color} />
+    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} color={color} />
+    case "droits_timbre": return <TimbreTable rows={decl.timbreRows ?? []} />
+    case "ca_tap":        return <CATable b12={decl.b12 ?? ""} b13={decl.b13 ?? ""} />
+    case "etat_tap":      return <TAPTable rows={decl.tapRows ?? []} />
     default:              return null
   }
 }
@@ -260,12 +261,20 @@ export default function HistoriquePage() {
   const { user, isLoading, status } = useAuth({ requireAuth: true, redirectTo: "/login" })
   const { toast } = useToast()
 
-  const [activeTab, setActiveTab]           = useState(HIST_TABS[0].key)
   const [declarations, setDeclarations]     = useState<SavedDeclaration[]>([])
-  const [search, setSearch]                 = useState("")
   const [viewDecl, setViewDecl]             = useState<SavedDeclaration | null>(null)
   const [printDecl, setPrintDecl]           = useState<SavedDeclaration | null>(null)
   const [showDialog, setShowDialog]         = useState(false)
+  const [viewTabKey, setViewTabKey]         = useState<string>("encaissement")
+  const [showFilters, setShowFilters]       = useState(false)
+  
+  // Filter states
+  const [filterMois, setFilterMois]         = useState("")
+  const [filterAnnee, setFilterAnnee]       = useState("")
+  const [filterDirection, setFilterDirection] = useState("")
+  const [filterType, setFilterType]         = useState("")
+  const [filterMontantMin, setFilterMontantMin] = useState("")
+  const [filterMontantMax, setFilterMontantMax] = useState("")
 
   useEffect(() => {
     try {
@@ -282,26 +291,62 @@ export default function HistoriquePage() {
     )
   }
 
-  const activeTabInfo = HIST_TABS.find((t) => t.key === activeTab)!
-
   const filtered = declarations.filter((d) => {
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (
-      d.direction.toLowerCase().includes(q) ||
-      d.annee.includes(q) ||
-      (MONTHS[d.mois] ?? "").toLowerCase().includes(q) ||
-      new Date(d.createdAt).toLocaleDateString("fr-DZ").includes(q)
-    )
+    // Filter by month
+    if (filterMois && filterMois !== "all" && d.mois !== filterMois) return false
+    
+    // Filter by year
+    if (filterAnnee && d.annee !== filterAnnee) return false
+    
+    // Filter by direction
+    if (filterDirection && !d.direction.toLowerCase().includes(filterDirection.toLowerCase())) return false
+    
+    // Filter by type
+    if (filterType && filterType !== "all") {
+      const hasType = 
+        (filterType === "encaissement" && (d.encRows?.length ?? 0) > 0) ||
+        (filterType === "tva_immo" && (d.tvaImmoRows?.length ?? 0) > 0) ||
+        (filterType === "tva_biens" && (d.tvaBiensRows?.length ?? 0) > 0) ||
+        (filterType === "droits_timbre" && (d.timbreRows?.length ?? 0) > 0) ||
+        (filterType === "ca_tap" && (d.b12 || d.b13)) ||
+        (filterType === "etat_tap" && (d.tapRows?.length ?? 0) > 0)
+      if (!hasType) return false
+    }
+    
+    // Filter by montant - calculate total based on declaration type
+    if (filterMontantMin || filterMontantMax) {
+      let total = 0
+      
+      if ((d.encRows?.length ?? 0) > 0) {
+        total = d.encRows!.reduce((s, r) => s + num(r.ttc), 0)
+      } else if ((d.tvaImmoRows?.length ?? 0) > 0) {
+        total = d.tvaImmoRows!.reduce((s, r) => s + num(r.montantHT), 0)
+      } else if ((d.tvaBiensRows?.length ?? 0) > 0) {
+        total = d.tvaBiensRows!.reduce((s, r) => s + num(r.montantHT), 0)
+      } else if ((d.timbreRows?.length ?? 0) > 0) {
+        total = d.timbreRows!.reduce((s, r) => s + num(r.droitTimbre), 0)
+      } else if (d.b12 || d.b13) {
+        total = num(d.b12 ?? "") * 0.07 + num(d.b13 ?? "") * 0.01
+      } else if ((d.tapRows?.length ?? 0) > 0) {
+        total = d.tapRows!.reduce((s, r) => s + num(r.tap2), 0)
+      }
+      
+      if (filterMontantMin && total < Number(filterMontantMin)) return false
+      if (filterMontantMax && total > Number(filterMontantMax)) return false
+    }
+    
+    return true
   })
 
-  const handleView = (decl: SavedDeclaration) => {
+  const handleView = (decl: SavedDeclaration, tabKey: string) => {
     setViewDecl(decl)
+    setViewTabKey(tabKey)
     setShowDialog(true)
   }
 
-  const handlePrint = (decl: SavedDeclaration) => {
+  const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     setPrintDecl(decl)
+    setViewTabKey(tabKey)
     setTimeout(() => {
       const zone = document.getElementById("hist-print-zone")
       if (zone) zone.style.display = "block"
@@ -331,9 +376,9 @@ export default function HistoriquePage() {
       {/* Hidden print zone */}
       <HistPrintZone
         decl={printDecl}
-        tabKey={activeTab}
-        tabTitle={activeTabInfo.title}
-        color={activeTabInfo.color}
+        tabKey={viewTabKey}
+        tabTitle={HIST_TABS.find(t => t.key === viewTabKey)?.title ?? ""}
+        color={HIST_TABS.find(t => t.key === viewTabKey)?.color ?? "#000"}
       />
 
       <div className="space-y-5">
@@ -346,57 +391,140 @@ export default function HistoriquePage() {
         </div>
 
         <Card className="border border-gray-200">
-          {/* Tab navbar */}
-          <div className="border-b border-gray-200 overflow-x-auto">
-            <nav className="flex gap-0" aria-label="Types de déclaration">
-              {HIST_TABS.map((tab) => {
-                const isActive = tab.key === activeTab
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => { setActiveTab(tab.key); setSearch("") }}
-                    className="relative px-5 py-3 text-sm font-medium whitespace-nowrap transition-colors focus:outline-none"
-                    style={{
-                      color: isActive ? tab.color : "#6b7280",
-                      borderBottom: isActive ? `2px solid ${tab.color}` : "2px solid transparent",
-                      backgroundColor: "transparent",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between py-3">
             <CardTitle className="text-sm font-semibold text-gray-700">
-              {activeTabInfo.label}
+              Toutes les déclarations
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 ({filtered.length} déclaration{filtered.length !== 1 ? "s" : ""})
               </span>
             </CardTitle>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher par direction, période…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9 w-64"
-              />
-            </div>
+            <Button
+              onClick={() => setShowFilters(!showFilters)}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" style={{ color: '#e82c2a' }} />
+              {showFilters ? "Masquer les filtres" : "Filtres"}
+            </Button>
           </CardHeader>
+
+          {showFilters && (
+            <div className="px-6 pb-4">
+              <div className="rounded-lg border bg-muted/50 p-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Mois filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Mois</label>
+                    <Select value={filterMois} onValueChange={setFilterMois}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Tous les mois" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous les mois</SelectItem>
+                        {Object.entries(MONTHS).map(([key, label]) => (
+                          <SelectItem key={key} value={key}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Année filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Année</label>
+                    <Input
+                      type="text"
+                      placeholder="Ex: 2024"
+                      value={filterAnnee}
+                      onChange={(e) => setFilterAnnee(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+
+                  {/* Direction filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Direction</label>
+                    <Input
+                      type="text"
+                      placeholder="Nom de la direction"
+                      value={filterDirection}
+                      onChange={(e) => setFilterDirection(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+
+                  {/* Type de déclaration filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Type de déclaration</label>
+                    <Select value={filterType} onValueChange={setFilterType}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Tous les types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous les types</SelectItem>
+                        {HIST_TABS.map((tab) => (
+                          <SelectItem key={tab.key} value={tab.key}>{tab.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Montant min */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Montant min (DA)</label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={filterMontantMin}
+                      onChange={(e) => setFilterMontantMin(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+
+                  {/* Montant max */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-600">Montant max (DA)</label>
+                    <Input
+                      type="number"
+                      placeholder="∞"
+                      value={filterMontantMax}
+                      onChange={(e) => setFilterMontantMax(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFilterMois("")
+                      setFilterAnnee("")
+                      setFilterDirection("")
+                      setFilterType("")
+                      setFilterMontantMin("")
+                      setFilterMontantMax("")
+                    }}
+                    className="text-xs"
+                  >
+                    Réinitialiser
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date enregistrement</TableHead>
+                    <TableHead>Type de déclaration</TableHead>
                     <TableHead>Direction</TableHead>
                     <TableHead>Mois</TableHead>
                     <TableHead>Année</TableHead>
-                    <TableHead className="text-right">Lignes</TableHead>
+                    <TableHead>Date d'enregistrement</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -404,28 +532,31 @@ export default function HistoriquePage() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
-                        {search
-                          ? "Aucune déclaration ne correspond à la recherche."
+                        {filterMois || filterAnnee || filterDirection || filterType || filterMontantMin || filterMontantMax
+                          ? "Aucune déclaration ne correspond aux filtres."
                           : "Aucune déclaration enregistrée pour le moment."}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filtered.map((decl) => {
-                      const rowCount = (() => {
-                        switch (activeTab) {
-                          case "encaissement":  return decl.encRows.length
-                          case "tva_immo":      return decl.tvaImmoRows.length
-                          case "tva_biens":     return decl.tvaBiensRows.length
-                          case "droits_timbre": return decl.timbreRows.length
-                          case "ca_tap":        return 2
-                          case "etat_tap":      return decl.tapRows.length
-                          default:              return 0
-                        }
-                      })()
+                      // Determine declaration type based on which rows are filled
+                      const getDeclarationType = () => {
+                        if ((decl.encRows?.length ?? 0) > 0) return { key: "encaissement", label: "Encaissement", color: "#2db34b" }
+                        if ((decl.tvaImmoRows?.length ?? 0) > 0) return { key: "tva_immo", label: "TVA / IMMO", color: "#1d6fb8" }
+                        if ((decl.tvaBiensRows?.length ?? 0) > 0) return { key: "tva_biens", label: "TVA / Biens & Serv", color: "#7c3aed" }
+                        if ((decl.timbreRows?.length ?? 0) > 0) return { key: "droits_timbre", label: "Droits Timbre", color: "#0891b2" }
+                        if (decl.b12 || decl.b13) return { key: "ca_tap", label: "CA 7% & CA Glob 1%", color: "#ea580c" }
+                        if ((decl.tapRows?.length ?? 0) > 0) return { key: "etat_tap", label: "ETAT TAP", color: "#be123c" }
+                        return { key: "encaissement", label: "Non défini", color: "#6b7280" }
+                      }
+                      const declType = getDeclarationType()
+                      
                       return (
                         <TableRow key={decl.id} className="hover:bg-gray-50">
-                          <TableCell className="text-sm text-gray-700">
-                            {new Date(decl.createdAt).toLocaleString("fr-DZ")}
+                          <TableCell className="text-sm">
+                            <Badge variant="outline" className="text-xs" style={{ borderColor: declType.color, color: declType.color }}>
+                              {declType.label}
+                            </Badge>
                           </TableCell>
                           <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">—</span>}</TableCell>
                           <TableCell>
@@ -434,32 +565,37 @@ export default function HistoriquePage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium">{decl.annee}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{rowCount}</TableCell>
+                          <TableCell className="text-sm text-gray-700">
+                            {new Date(decl.createdAt).toLocaleString("fr-DZ")}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-center gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="gap-1.5 text-xs h-8 border-blue-300 text-blue-600 hover:bg-blue-50"
-                                onClick={() => handleView(decl)}
+                                className="h-8 w-8 p-0 border-blue-300 text-blue-600 hover:bg-blue-50"
+                                onClick={() => handleView(decl, declType.key)}
+                                title="Consulter"
                               >
-                                <Eye size={13} /> Consulter
+                                <Eye size={16} />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="gap-1.5 text-xs h-8 border-gray-300 text-gray-600 hover:bg-gray-50"
-                                onClick={() => handlePrint(decl)}
+                                className="h-8 w-8 p-0 border-gray-300 text-gray-600 hover:bg-gray-50"
+                                onClick={() => handlePrint(decl, declType.key)}
+                                title="Imprimer"
                               >
-                                <Printer size={13} /> Imprimer
+                                <Printer size={16} />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="gap-1 text-xs h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                                 onClick={() => handleDelete(decl.id)}
+                                title="Supprimer"
                               >
-                                <Trash2 size={13} />
+                                <Trash2 size={16} />
                               </Button>
                             </div>
                           </TableCell>
@@ -479,7 +615,9 @@ export default function HistoriquePage() {
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between gap-4">
-              <span style={{ color: activeTabInfo.color }}>{activeTabInfo.title}</span>
+              <span style={{ color: HIST_TABS.find(t => t.key === viewTabKey)?.color }}>
+                {HIST_TABS.find(t => t.key === viewTabKey)?.title}
+              </span>
               {viewDecl && (
                 <div className="flex items-center gap-3 text-sm font-normal text-muted-foreground">
                   <span>{viewDecl.direction}</span>
@@ -489,7 +627,7 @@ export default function HistoriquePage() {
                     size="sm"
                     variant="outline"
                     className="gap-1.5 text-xs h-8 ml-2"
-                    onClick={() => { setShowDialog(false); if (viewDecl) handlePrint(viewDecl) }}
+                    onClick={() => { setShowDialog(false); if (viewDecl) handlePrint(viewDecl, viewTabKey) }}
                   >
                     <Printer size={13} /> Imprimer
                   </Button>
@@ -499,7 +637,7 @@ export default function HistoriquePage() {
           </DialogHeader>
           {viewDecl && (
             <div className="mt-2 overflow-x-auto">
-              <TabDataView tabKey={activeTab} decl={viewDecl} color={activeTabInfo.color} />
+              <TabDataView tabKey={viewTabKey} decl={viewDecl} color={HIST_TABS.find(t => t.key === viewTabKey)?.color ?? "#000"} />
             </div>
           )}
         </DialogContent>

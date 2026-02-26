@@ -110,12 +110,12 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-green-50">
+            <tr className="bg-gray-50">
               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement TTC (DZD) ✎</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-blue-600 border-b">Encaissement HT = TTC / 1.19</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-blue-600 border-b">TVA = TTC − HT</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement TTC</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TVA</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement HT</th>
               <th className="px-2 py-2 border-b w-8" />
             </tr>
           </thead>
@@ -136,10 +136,10 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
                       className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 130 }} />
                   </td>
                   <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
-                    {row.ttc ? fmt(ht) : "—"}
+                    {row.ttc ? fmt(tva) : "—"}
                   </td>
                   <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
-                    {row.ttc ? fmt(tva) : "—"}
+                    {row.ttc ? fmt(ht) : "—"}
                   </td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
@@ -153,8 +153,8 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totals.ttc)}</td>
-              <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(totals.ht)}</td>
               <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(totals.tva)}</td>
+              <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(totals.ht)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -193,7 +193,7 @@ function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
 
   const headers = [
     "Nom / Raison Sociale", "ID Fiscal", "Adresse", "N° RC / Agrément",
-    "Date Facture", "Réf. Facture", "Montant Op. HT (DZD)", "TVA Déductible (DZD)",
+    "Date Facture", "Réf. Facture", "Montant Op. HT", "TVA Déductible",
     "Nature de l'opération",
   ]
 
@@ -276,11 +276,11 @@ function TabDroitsTimbre({ rows, setRows }: Tab4Props) {
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-cyan-50">
+            <tr className="bg-gray-50">
               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Chiffres d'affaires TTC Esp. (DZD)</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Droit de Timbre (DZD)</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Chiffres d'affaires TTC Esp.</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Droit de Timbre</th>
               <th className="px-2 py-2 border-b w-8" />
             </tr>
           </thead>
@@ -332,15 +332,14 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-orange-50">
+            <tr className="bg-gray-50">
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">
-                Chiffre d'affaires HT (DZD) ✎
+                Chiffre d'affaires HT
               </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-blue-600 border-b">
-                Montant calculé (DZD) — automatique
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">
+                Montant Taxe à verser
               </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 border-b">Formule</th>
             </tr>
           </thead>
           <tbody>
@@ -353,10 +352,9 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
               <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
                 {b12 ? fmt(c12) : "—"}
               </td>
-              <td className="px-3 py-2 border-b text-xs text-gray-400 font-mono">C12 = B12 × 7%</td>
             </tr>
             <tr className="bg-gray-50">
-              <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires global soumis à 1% *</td>
+              <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires global soumis à 1%</td>
               <td className="px-1 py-1 border-b">
                 <Input type="number" min={0} step="0.01" value={b13} onChange={(e) => setB13(e.target.value)}
                   className="h-7 px-2 text-xs" placeholder="B13 – Saisir" style={{ minWidth: 160 }} />
@@ -364,7 +362,6 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
               <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
                 {b13 ? fmt(c13) : "—"}
               </td>
-              <td className="px-3 py-2 border-b text-xs text-gray-400 font-mono">C13 = B13 × 1%</td>
             </tr>
           </tbody>
           <tfoot>
@@ -372,14 +369,10 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(num(b12) + num(b13))}</td>
               <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(c12 + c13)}</td>
-              <td className="border-t" />
             </tr>
           </tfoot>
         </table>
       </div>
-      <p className="text-xs text-gray-400 italic">
-        * Les désignations sont fixes. Seules les cellules de la colonne «&nbsp;Chiffre d'affaires HT&nbsp;» sont saisissables.
-      </p>
     </div>
   )
 }
@@ -419,21 +412,6 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee }: Tab6Props) {
 
   return (
     <div className="space-y-5">
-      {/* Bloc infos fixes */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "TIN",           value: "— fixe —" },
-          { label: "Code",          value: "67547" },
-          { label: "Raison Sociale",value: "— fixe —" },
-          { label: "ATM MOBILIS",   value: "— fixe —" },
-        ].map((item) => (
-          <div key={item.label} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">{item.label}</p>
-            <p className="text-xs font-bold text-gray-800 font-mono">{item.value}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Période */}
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-semibold text-gray-700">Période :</span>
@@ -460,12 +438,12 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee }: Tab6Props) {
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-red-50">
+            <tr className="bg-gray-50">
               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Code Wilaya</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Wilaya</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Commune</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TAP 2% (DZD) ✎</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TAP 2%</th>
               <th className="px-2 py-2 border-b w-8" />
             </tr>
           </thead>
@@ -545,12 +523,12 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee }: Tab6Props) {
 // TAB CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { key: "encaissement",  label: "1 – Encaissement",       color: "#2db34b", title: "ENCAISSEMENT" },
-  { key: "tva_immo",      label: "2 – TVA / IMMO",         color: "#1d6fb8", title: "ÉTAT TVA / IMMOBILISATIONS" },
-  { key: "tva_biens",     label: "3 – TVA / Biens & Serv", color: "#7c3aed", title: "ÉTAT TVA / BIENS & SERVICES" },
-  { key: "droits_timbre", label: "4 – Droits Timbre",      color: "#0891b2", title: "ÉTAT DROITS DE TIMBRE" },
-  { key: "ca_tap",        label: "5 – CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
-  { key: "etat_tap",      label: "6 – ETAT TAP",           color: "#be123c", title: "ÉTAT TAP" },
+  { key: "encaissement",  label: "Encaissement",       color: "#2db34b", title: "ENCAISSEMENT" },
+  { key: "tva_immo",      label: "TVA / IMMO",         color: "#1d6fb8", title: "ÉTAT TVA / IMMOBILISATIONS" },
+  { key: "tva_biens",     label: "TVA / Biens & Serv", color: "#7c3aed", title: "ÉTAT TVA / BIENS & SERVICES" },
+  { key: "droits_timbre", label: "Droits Timbre",      color: "#0891b2", title: "ÉTAT DROITS DE TIMBRE" },
+  { key: "ca_tap",        label: "CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
+  { key: "etat_tap",      label: "ETAT TAP",           color: "#be123c", title: "ÉTAT TAP" },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -616,9 +594,9 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
           <thead><tr>
             <th style={thStyle}>#</th>
             <th style={thStyle}>Désignation</th>
-            <th style={thStyle}>Encaissement TTC (DZD)</th>
-            <th style={thStyle}>Encaissement HT = TTC/1.19</th>
-            <th style={thStyle}>TVA = TTC − HT</th>
+            <th style={thStyle}>Encaissement TTC</th>
+            <th style={thStyle}>TVA</th>
+            <th style={thStyle}>Encaissement HT</th>
           </tr></thead>
           <tbody>
             {encRows.map((r, i) => {
@@ -627,16 +605,16 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
                 <td style={{ ...tdStyle, textAlign: "center" }}>{i + 1}</td>
                 <td style={tdStyle}>{r.designation}</td>
                 <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(num(r.ttc)) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(ht) : ""}</td>
                 <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(tva) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(ht) : ""}</td>
               </tr>
             })}
           </tbody>
           <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
             <td colSpan={2} style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
             <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc),0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc)/1.19,0))}</td>
             <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => { const t=num(r.ttc); return s+t-t/1.19 },0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc)/1.19,0))}</td>
           </tr></tfoot>
         </table>
       )}
@@ -679,7 +657,7 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
       {activeTab === "droits_timbre" && (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>
-            {["#","Désignation","CA TTC Esp. (DZD)","Droit de Timbre (DZD)"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+            {["#","Désignation","CA TTC Esp.","Droit de Timbre"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
           </tr></thead>
           <tbody>
             {timbreRows.map((r, i) => (
@@ -702,45 +680,33 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
       {activeTab === "ca_tap" && (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>
-            {["Désignation","Chiffre d'affaires HT (DZD)","Montant calculé (DZD)","Formule"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+            {["Désignation","Chiffre d'affaires HT","Montant Taxe à verser"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
           </tr></thead>
           <tbody>
             <tr style={{ background: "#fff" }}>
               <td style={tdStyle}>Chiffre d'affaires soumis à 7%</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>{b12 ? fmt(num(b12)) : ""}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>{b12 ? fmt(c12) : ""}</td>
-              <td style={tdStyle}>C12 = B12 × 7%</td>
             </tr>
             <tr style={{ background: "#f9f9f9" }}>
               <td style={tdStyle}>Chiffre d'affaires global soumis à 1%</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>{b13 ? fmt(num(b13)) : ""}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>{b13 ? fmt(c13) : ""}</td>
-              <td style={tdStyle}>C13 = B13 × 1%</td>
             </tr>
           </tbody>
           <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
             <td style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
             <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(num(b12)+num(b13))}</td>
             <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(c12+c13)}</td>
-            <td style={tdStyle} />
           </tr></tfoot>
         </table>
       )}
 
       {activeTab === "etat_tap" && (
         <>
-          {/* Fixed info */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
-            {[{ label: "TIN", value: "— fixe —" },{ label: "Code", value: "67547" },{ label: "Raison Sociale", value: "— fixe —" },{ label: "ATM MOBILIS", value: "— fixe —" }].map((it) => (
-              <div key={it.label} style={{ border: "1px solid #ccc", padding: "4px 8px", borderRadius: 4 }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: "#888", textTransform: "uppercase" }}>{it.label}</div>
-                <div style={{ fontSize: 10, fontWeight: 800 }}>{it.value}</div>
-              </div>
-            ))}
-          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
-              {["#","Code Wilaya","Wilaya","Commune","TAP 2% (DZD)"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+              {["#","Code Wilaya","Wilaya","Commune","TAP 2%"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
             </tr></thead>
             <tbody>
               {tapRows.map((r, i) => {
@@ -812,27 +778,112 @@ export default function NouvelleDeclarationPage() {
   }
 
   const handleSave = async () => {
+    // Validation : direction, mois, année obligatoires
+    if (!direction.trim()) {
+      toast({ title: "⚠ Direction requise", description: "Veuillez saisir la direction avant d'enregistrer.", variant: "destructive" })
+      return
+    }
+    if (!mois) {
+      toast({ title: "⚠ Mois requis", description: "Veuillez sélectionner le mois avant d'enregistrer.", variant: "destructive" })
+      return
+    }
+    if (!annee) {
+      toast({ title: "⚠ Année requise", description: "Veuillez sélectionner l'année avant d'enregistrer.", variant: "destructive" })
+      return
+    }
+
+    // Validation : aucune case du tableau actif ne doit être vide
+    let validationError = false
+    switch (activeTab) {
+      case "encaissement":
+        if (encRows.some(r => !r.designation.trim() || !r.ttc)) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "tva_immo":
+        if (tvaImmoRows.some(r => !r.nomRaisonSociale.trim() || !r.idFiscal.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.refFacture.trim() || !r.montantHT || !r.tvaDeductible || !r.nature)) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "tva_biens":
+        if (tvaBiensRows.some(r => !r.nomRaisonSociale.trim() || !r.idFiscal.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.refFacture.trim() || !r.montantHT || !r.tvaDeductible || !r.nature)) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "droits_timbre":
+        if (timbreRows.some(r => !r.designation.trim() || !r.caTTCEsp || !r.droitTimbre)) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "ca_tap":
+        if (!b12 || !b13) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "etat_tap":
+        if (tapRows.some(r => !r.wilayaCode || !r.commune.trim() || !r.tap2)) {
+          toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+    }
+
+    if (validationError) return
+
     setIsSubmitting(true)
     await new Promise((r) => setTimeout(r, 400))
-    const decl = {
+    
+    // Enregistrer seulement le tableau actif
+    const baseDecl = {
       id: Date.now().toString(),
       createdAt: new Date().toISOString(),
       direction,
       mois,
       annee,
-      encRows,
-      tvaImmoRows,
-      tvaBiensRows,
-      timbreRows,
-      b12,
-      b13,
-      tapRows,
+      encRows: [] as EncRow[],
+      tvaImmoRows: [] as TvaRow[],
+      tvaBiensRows: [] as TvaRow[],
+      timbreRows: [] as TimbreRow[],
+      b12: "",
+      b13: "",
+      tapRows: [] as TAPRow[],
     }
+    
+    // Remplir uniquement les données du tableau actif
+    switch (activeTab) {
+      case "encaissement":
+        baseDecl.encRows = encRows
+        break
+      case "tva_immo":
+        baseDecl.tvaImmoRows = tvaImmoRows
+        break
+      case "tva_biens":
+        baseDecl.tvaBiensRows = tvaBiensRows
+        break
+      case "droits_timbre":
+        baseDecl.timbreRows = timbreRows
+        break
+      case "ca_tap":
+        baseDecl.b12 = b12
+        baseDecl.b13 = b13
+        break
+      case "etat_tap":
+        baseDecl.tapRows = tapRows
+        break
+    }
+    
     try {
       const existing = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
-      localStorage.setItem("fiscal_declarations", JSON.stringify([decl, ...existing]))
+      localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existing]))
     } catch { /* quota or SSR */ }
-    toast({ title: "✓ Déclaration enregistrée", description: "La déclaration a été sauvegardée avec succès." })
+    
+    const tabLabel = TABS.find((t) => t.key === activeTab)?.label ?? activeTab
+    toast({ title: "✓ Déclaration enregistrée", description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.` })
     setIsSubmitting(false)
     router.push("/fisca/historique")
   }
@@ -941,7 +992,7 @@ export default function NouvelleDeclarationPage() {
               <TabsTrigger
                 key={t.key}
                 value={t.key}
-                className="flex-1 min-w-[130px] text-[11px] font-semibold py-1.5 transition-all data-[state=active]:shadow"
+                className="flex-1 min-w-[130px] text-sm font-semibold py-2 transition-all data-[state=active]:shadow"
                 style={activeTab === t.key ? { backgroundColor: t.color, color: "white" } : {}}
               >
                 {t.label}
