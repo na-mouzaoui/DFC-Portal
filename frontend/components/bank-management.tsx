@@ -244,7 +244,7 @@ export function BankManagement({ onChange }: BankManagementProps) {
           <Card key={bank.id} className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="font-semibold text-blue-900">{bank.code}</h3>
+                <h3 className="font-semibold text-gray-900">{bank.code}</h3>
                 <p className="text-sm text-muted-foreground">{bank.name}</p>
                 {bank.pdfUrl && <p className="mt-2 text-xs text-green-600">✓ Modèle PDF chargé</p>}
               </div>
@@ -253,7 +253,7 @@ export function BankManagement({ onChange }: BankManagementProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => startEdit(bank)}
-                  className="text-blue-600 hover:text-blue-700"
+                  className="text-gray-600 hover:text-gray-700"
                 >
                   <Edit className="h-4 w-4" />
                 </Button>

@@ -612,7 +612,7 @@ export default function HistoriquePage() {
 
       {/* ── Consult Dialog ── */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="!w-[69vw] !max-w-[69vw] h-[66vh] max-h-[66vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between gap-4">
               <span style={{ color: HIST_TABS.find(t => t.key === viewTabKey)?.color }}>

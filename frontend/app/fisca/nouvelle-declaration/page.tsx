@@ -135,10 +135,10 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
                       onChange={(e) => update(i, "ttc", e.target.value)}
                       className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 130 }} />
                   </td>
-                  <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
+                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                     {row.ttc ? fmt(tva) : "—"}
                   </td>
-                  <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
+                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                     {row.ttc ? fmt(ht) : "—"}
                   </td>
                   <td className="px-2 py-1 text-center border-b">
@@ -153,8 +153,8 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totals.ttc)}</td>
-              <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(totals.tva)}</td>
-              <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(totals.ht)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(totals.tva)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(totals.ht)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -349,7 +349,7 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
                 <Input type="number" min={0} step="0.01" value={b12} onChange={(e) => setB12(e.target.value)}
                   className="h-7 px-2 text-xs" placeholder="B12 – Saisir" style={{ minWidth: 160 }} />
               </td>
-              <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
+              <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                 {b12 ? fmt(c12) : "—"}
               </td>
             </tr>
@@ -359,7 +359,7 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
                 <Input type="number" min={0} step="0.01" value={b13} onChange={(e) => setB13(e.target.value)}
                   className="h-7 px-2 text-xs" placeholder="B13 – Saisir" style={{ minWidth: 160 }} />
               </td>
-              <td className="px-3 py-1 border-b text-xs text-blue-700 font-semibold bg-blue-50/50">
+              <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                 {b13 ? fmt(c13) : "—"}
               </td>
             </tr>
@@ -368,7 +368,7 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
             <tr className="bg-orange-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(num(b12) + num(b13))}</td>
-              <td className="px-3 py-2 text-xs text-blue-700 border-t">{fmt(c12 + c13)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(c12 + c13)}</td>
             </tr>
           </tfoot>
         </table>
