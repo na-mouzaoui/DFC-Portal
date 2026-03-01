@@ -61,18 +61,21 @@ const fmt = (v: number | string) =>
 
 const num = (v: string) => parseFloat(v) || 0
 
+const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px", textAlign: "left", fontWeight: 600 }
+const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
+
 // ─── Render helpers (read-only tables for dialog & print) ───────────────────
 
 function EncTable({ rows }: { rows: EncRow[] }) {
   const total = rows.reduce((s, r) => s + num(r.ttc), 0)
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
-        <tr style={{ background: "#2db34b", color: "white" }}>
-          <th style={TH}>Désignation</th>
-          <th style={TH}>TTC</th>
-          <th style={TH}>HT (÷1.19)</th>
-          <th style={TH}>TVA (TTC−HT)</th>
+        <tr style={{ background: "#ddd", color: "#000" }}>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>Désignation</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>TTC</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>HT (÷1.19)</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>TVA (TTC−HT)</th>
         </tr>
       </thead>
       <tbody>
@@ -80,21 +83,21 @@ function EncTable({ rows }: { rows: EncRow[] }) {
           const ht = num(r.ttc) / 1.19
           const tva = num(r.ttc) - ht
           return (
-            <tr key={i} style={{ background: i % 2 ? "#f9fafb" : "white" }}>
-              <td style={TD}>{r.designation || "—"}</td>
-              <td style={{ ...TD, textAlign: "right" }}>{fmt(r.ttc)}</td>
-              <td style={{ ...TD, textAlign: "right" }}>{fmt(ht)}</td>
-              <td style={{ ...TD, textAlign: "right" }}>{fmt(tva)}</td>
+            <tr key={i} style={{ background: "#fff", color: "#000" }}>
+              <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "—"}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ttc)}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(ht)}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(tva)}</td>
             </tr>
           )
         })}
       </tbody>
       <tfoot>
-        <tr style={{ background: "#f0fdf4", fontWeight: "bold" }}>
-          <td style={TD}>TOTAL</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(total)}</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(total / 1.19)}</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(total - total / 1.19)}</td>
+        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
+          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total / 1.19)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total - total / 1.19)}</td>
         </tr>
       </tfoot>
     </table>
@@ -103,26 +106,26 @@ function EncTable({ rows }: { rows: EncRow[] }) {
 
 function TvaTable({ rows, color }: { rows: TvaRow[]; color: string }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, border: "1px solid #000" }}>
       <thead>
-        <tr style={{ background: color, color: "white" }}>
+        <tr style={{ background: "#ddd", color: "#000" }}>
           {["Fournisseur", "NIF", "N° Fact.", "Date Fact.", "Mnt HT", "TVA", "Mnt TTC", "Mnt Payé", "Nature"].map((h) => (
-            <th key={h} style={TH}>{h}</th>
+            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={i} style={{ background: i % 2 ? "#f9fafb" : "white" }}>
-            <td style={TD}>{r.fournisseur || "—"}</td>
-            <td style={TD}>{r.nif || "—"}</td>
-            <td style={TD}>{r.numFact || "—"}</td>
-            <td style={TD}>{r.dateFact || "—"}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.montantHT)}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.tva)}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.montantTTC)}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.montantPaye)}</td>
-            <td style={TD}>{r.nature || "—"}</td>
+          <tr key={i} style={{ background: "#fff", color: "#000" }}>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.fournisseur || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.nif || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFact || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFact || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantHT)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tva)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantTTC)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantPaye)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.nature || "—"}</td>
           </tr>
         ))}
       </tbody>
@@ -132,20 +135,20 @@ function TvaTable({ rows, color }: { rows: TvaRow[]; color: string }) {
 
 function TimbreTable({ rows }: { rows: TimbreRow[] }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
-        <tr style={{ background: "#0891b2", color: "white" }}>
+        <tr style={{ background: "#ddd", color: "#000" }}>
           {["Désignation", "CA TTC Espèces", "Droit de Timbre"].map((h) => (
-            <th key={h} style={TH}>{h}</th>
+            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={i} style={{ background: i % 2 ? "#f9fafb" : "white" }}>
-            <td style={TD}>{r.designation || "—"}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.caTTCEsp)}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.droitTimbre)}</td>
+          <tr key={i} style={{ background: "#fff", color: "#000" }}>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.caTTCEsp)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.droitTimbre)}</td>
           </tr>
         ))}
       </tbody>
@@ -155,27 +158,27 @@ function TimbreTable({ rows }: { rows: TimbreRow[] }) {
 
 function CATable({ b12, b13 }: { b12: string; b13: string }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
-        <tr style={{ background: "#ea580c", color: "white" }}>
-          <th style={TH}>Ligne</th>
-          <th style={TH}>Base (B)</th>
-          <th style={TH}>Taux</th>
-          <th style={TH}>Montant</th>
+        <tr style={{ background: "#ddd", color: "#000" }}>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>Ligne</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>Base (B)</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>Taux</th>
+          <th style={{ ...TH, background: "#ddd", color: "#000" }}>Montant</th>
         </tr>
       </thead>
       <tbody>
-        <tr style={{ background: "white" }}>
-          <td style={TD}>B12 – CA 7%</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(b12)}</td>
-          <td style={{ ...TD, textAlign: "right" }}>7%</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(num(b12) * 0.07)}</td>
+        <tr style={{ background: "#fff", color: "#000" }}>
+          <td style={{ ...TD, background: "#fff", color: "#000" }}>B12 – CA 7%</td>
+          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(b12)}</td>
+          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>7%</td>
+          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(b12) * 0.07)}</td>
         </tr>
-        <tr style={{ background: "#f9fafb" }}>
-          <td style={TD}>B13 – CA Global 1%</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(b13)}</td>
-          <td style={{ ...TD, textAlign: "right" }}>1%</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(num(b13) * 0.01)}</td>
+        <tr style={{ background: "#eee", color: "#000" }}>
+          <td style={{ ...TD, background: "#eee", color: "#000" }}>B13 – CA Global 1%</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(b13)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>1%</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(num(b13) * 0.01)}</td>
         </tr>
       </tbody>
     </table>
@@ -185,33 +188,30 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
 function TAPTable({ rows }: { rows: TAPRow[] }) {
   const total = rows.reduce((s, r) => s + num(r.tap2), 0)
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
-        <tr style={{ background: "#be123c", color: "white" }}>
-          {["Wilaya", "Commune", "TAP 2%"].map((h) => <th key={h} style={TH}>{h}</th>)}
+        <tr style={{ background: "#ddd", color: "#000" }}>
+          {["Wilaya", "Commune", "TAP 2%"].map((h) => <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>)}
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={i} style={{ background: i % 2 ? "#f9fafb" : "white" }}>
-            <td style={TD}>{r.wilayaCode || "—"}</td>
-            <td style={TD}>{r.commune || "—"}</td>
-            <td style={{ ...TD, textAlign: "right" }}>{fmt(r.tap2)}</td>
+          <tr key={i} style={{ background: "#fff", color: "#000" }}>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.wilayaCode || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.commune || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tap2)}</td>
           </tr>
         ))}
       </tbody>
       <tfoot>
-        <tr style={{ background: "#fff1f2", fontWeight: "bold" }}>
-          <td style={TD} colSpan={2}>TOTAL</td>
-          <td style={{ ...TD, textAlign: "right" }}>{fmt(total)}</td>
+        <tr style={{ background: "#eee", fontWeight: "bold", color: "#000" }}>
+          <td style={{ ...TD, background: "#eee", color: "#000" }} colSpan={2}>TOTAL</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total)}</td>
         </tr>
       </tfoot>
     </table>
   )
 }
-
-const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px", textAlign: "left", fontWeight: 600 }
-const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
 
 function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDeclaration; color: string }) {
   switch (tabKey) {
@@ -233,24 +233,22 @@ function HistPrintZone({ decl, tabKey, tabTitle, color }: {
   if (!decl) return null
   const moisLabel = MONTHS[decl.mois] ?? decl.mois
   return (
-    <div id="hist-print-zone" style={{ display: "none", fontFamily: "Arial, sans-serif" }}>
+    <div id="hist-print-zone" style={{ display: "none", fontFamily: "Arial, sans-serif", padding: "20px" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, borderBottom: "2px solid #333", paddingBottom: 10 }}>
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, borderBottom: "2px solid #000", paddingBottom: 15 }}>
+        <div style={{ fontSize: 13, lineHeight: 1.8, flex: 1 }}>
           <div><strong>Période :</strong> {moisLabel} {decl.annee}</div>
-          <div style={{ fontSize: 11, color: "#555" }}>Déclaration du {new Date(decl.createdAt).toLocaleDateString("fr-DZ")}</div>
+          <div style={{ fontSize: 11, color: "#000", marginTop: 5 }}>Déclaration du {new Date(decl.createdAt).toLocaleDateString("fr-DZ")}</div>
         </div>
-        <div style={{ textAlign: "center", flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: "bold", textTransform: "uppercase", letterSpacing: 1 }}>{tabTitle}</div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Logo" style={{ height: 40, objectFit: "contain", marginBottom: 4 }} />
-          <div style={{ fontSize: 11, fontWeight: 600 }}>{decl.direction}</div>
+        <div style={{ textAlign: "center", flex: 2, paddingTop: 5 }}>
+          <div style={{ fontSize: 16, fontWeight: "bold", textTransform: "uppercase", letterSpacing: 1, color: "#000" }}>{tabTitle}</div>
         </div>
       </div>
-      {/* Table */}
-      <TabDataView tabKey={tabKey} decl={decl} color={color} />
+      
+      {/* Table Content */}
+      <div style={{ marginTop: 20 }}>
+        <TabDataView tabKey={tabKey} decl={decl} color={color} />
+      </div>
     </div>
   )
 }
@@ -348,11 +346,8 @@ export default function HistoriquePage() {
     setPrintDecl(decl)
     setViewTabKey(tabKey)
     setTimeout(() => {
-      const zone = document.getElementById("hist-print-zone")
-      if (zone) zone.style.display = "block"
       window.print()
-      if (zone) zone.style.display = "none"
-    }, 80)
+    }, 200)
   }
 
   const handleDelete = (id: string) => {
@@ -369,7 +364,32 @@ export default function HistoriquePage() {
         @media print {
           @page { size: A4 landscape; margin: 12mm 10mm; }
           body > * { display: none !important; }
-          #hist-print-zone { display: block !important; }
+          body { margin: 0; padding: 0; }
+          #hist-print-zone { 
+            display: block !important; 
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 12mm 10mm !important;
+            background: white !important;
+            color: black !important;
+          }
+          #hist-print-zone * { 
+            display: block !important;
+            color: black !important;
+            background: white !important;
+          }
+          table { 
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          tr, td, th {
+            display: table-cell !important;
+            border: 1px solid #000 !important;
+          }
         }
       `}</style>
 

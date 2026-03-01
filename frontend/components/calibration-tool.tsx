@@ -14,7 +14,7 @@ import dynamic from "next/dynamic"
 import { CheckCanvas } from "./check-canvas"
 import { useToast } from "@/hooks/use-toast"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://172.20.0.3"
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
 
 type CalibrationToolProps = {
   refreshKey?: number

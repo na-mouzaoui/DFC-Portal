@@ -9,7 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
-import { Plus, Trash2, Save, Printer } from "lucide-react"
+import { Plus, Trash2, Save } from "lucide-react"
+
+// primary colour used by all tables/buttons
+const PRIMARY_COLOR = "#2db34b"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALGERIA WILAYAS (58 wilayas) with their numeric codes
@@ -91,9 +94,12 @@ const num = (v: string) => parseFloat(v) || 0
 // ─────────────────────────────────────────────────────────────────────────────
 type EncRow = { designation: string; ttc: string }
 
-interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateAction<EncRow[]>> }
+interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateAction<EncRow[]>>
+  onSave: () => void;
+  isSubmitting: boolean;
+}
 
-function TabEncaissement({ rows, setRows }: Tab1Props) {
+function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
   const addRow    = () => setRows((p) => [...p, { designation: "", ttc: "" }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof EncRow, val: string) =>
@@ -160,10 +166,16 @@ function TabEncaissement({ rows, setRows }: Tab1Props) {
           </tfoot>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}
-        className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-        <Plus size={13} /> Ajouter une ligne
-      </Button>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -180,9 +192,12 @@ const EMPTY_TVA: TvaRow = {
   dateFacture: "", refFacture: "", montantHT: "", tvaDeductible: "", nature: "",
 }
 
-interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAction<TvaRow[]>>; color: string }
+interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAction<TvaRow[]>>;
+  onSave: () => void;
+  isSubmitting: boolean;
+}
 
-function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
+function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof TvaRow, val: string) =>
@@ -202,7 +217,7 @@ function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
-            <tr style={{ backgroundColor: color + "15" }}>
+            <tr className="bg-gray-50">
               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
               {headers.map((h) => (
                 <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b whitespace-nowrap">{h}</th>
@@ -238,7 +253,7 @@ function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-gray-100 font-semibold">
+            <tr className="bg-green-100 font-semibold">
               <td colSpan={7} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalTVA)}</td>
@@ -247,10 +262,16 @@ function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
           </tfoot>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}
-        className="gap-1.5 text-xs" style={{ borderColor: color, color }}>
-        <Plus size={13} /> Ajouter une ligne
-      </Button>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -260,9 +281,12 @@ function TabTVAEtat({ rows, setRows, color }: Tab23Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 type TimbreRow = { designation: string; caTTCEsp: string; droitTimbre: string }
 
-interface Tab4Props { rows: TimbreRow[]; setRows: React.Dispatch<React.SetStateAction<TimbreRow[]>> }
+interface Tab4Props { rows: TimbreRow[]; setRows: React.Dispatch<React.SetStateAction<TimbreRow[]>>;
+  onSave: () => void;
+  isSubmitting: boolean;
+}
 
-function TabDroitsTimbre({ rows, setRows }: Tab4Props) {
+function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
   const addRow    = () => setRows((p) => [...p, { designation: "", caTTCEsp: "", droitTimbre: "" }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof TimbreRow, val: string) =>
@@ -299,7 +323,7 @@ function TabDroitsTimbre({ rows, setRows }: Tab4Props) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-cyan-100 font-semibold">
+            <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalCA)}</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalDroit)}</td>
@@ -308,10 +332,16 @@ function TabDroitsTimbre({ rows, setRows }: Tab4Props) {
           </tfoot>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}
-        className="gap-1.5 text-xs border-cyan-500 text-cyan-600 hover:bg-cyan-50">
-        <Plus size={13} /> Ajouter une ligne
-      </Button>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -321,9 +351,12 @@ function TabDroitsTimbre({ rows, setRows }: Tab4Props) {
 // B12 = CA HT soumis à 7% (saisie)  →  C12 = B12 × 7%
 // B13 = CA HT global soumis à 1%    →  C13 = B13 × 1%
 // ─────────────────────────────────────────────────────────────────────────────
-interface Tab5Props { b12: string; setB12: (v: string) => void; b13: string; setB13: (v: string) => void }
+interface Tab5Props { b12: string; setB12: (v: string) => void; b13: string; setB13: (v: string) => void;
+  onSave: () => void;
+  isSubmitting: boolean;
+}
 
-function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
+function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
   const c12 = num(b12) * 0.07
   const c13 = num(b13) * 0.01
 
@@ -365,13 +398,19 @@ function TabCA({ b12, setB12, b13, setB13 }: Tab5Props) {
             </tr>
           </tbody>
           <tfoot>
-            <tr className="bg-orange-100 font-semibold">
+            <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(num(b12) + num(b13))}</td>
               <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(c12 + c13)}</td>
             </tr>
           </tfoot>
         </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
       </div>
     </div>
   )
@@ -399,9 +438,11 @@ interface Tab6Props {
   rows: TAPRow[]; setRows: React.Dispatch<React.SetStateAction<TAPRow[]>>
   mois: string; setMois: (v: string) => void
   annee: string; setAnnee: (v: string) => void
+  onSave: () => void;
+  isSubmitting: boolean;
 }
 
-function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee }: Tab6Props) {
+function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmitting }: Tab6Props) {
   const addRow    = () => setRows((p) => [...p, { wilayaCode: "", commune: "", tap2: "" }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const updateRow = useCallback((i: number, field: keyof TAPRow, val: string) =>
@@ -503,18 +544,24 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee }: Tab6Props) {
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-red-100 font-semibold">
+            <tr className="bg-green-100 font-semibold">
               <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">MONTANT TAP</td>
-              <td className="px-3 py-2 text-sm font-bold text-red-700 border-t">{fmt(totalTAP)} DZD</td>
+              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t">{fmt(totalTAP)} DZD</td>
               <td className="border-t" />
             </tr>
           </tfoot>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}
-        className="gap-1.5 text-xs border-red-500 text-red-600 hover:bg-red-50">
-        <Plus size={13} /> Ajouter une ligne
-      </Button>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -555,11 +602,11 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
   const c13  = num(b13) * 0.01
 
   const thStyle: React.CSSProperties = {
-    border: "1px solid #666", padding: "4px 6px", backgroundColor: "#e8e8e8",
+    border: "1px solid #000", padding: "4px 6px", backgroundColor: "#ddd", color: "#000",
     fontSize: 9, fontWeight: 700, textAlign: "left", whiteSpace: "nowrap",
   }
   const tdStyle: React.CSSProperties = {
-    border: "1px solid #aaa", padding: "3px 6px", fontSize: 9,
+    border: "1px solid #000", padding: "3px 6px", fontSize: 9, backgroundColor: "#fff", color: "#000",
   }
 
   return (
@@ -601,20 +648,20 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
           <tbody>
             {encRows.map((r, i) => {
               const ht = num(r.ttc) / 1.19; const tva = num(r.ttc) - ht
-              return <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9f9f9" }}>
-                <td style={{ ...tdStyle, textAlign: "center" }}>{i + 1}</td>
-                <td style={tdStyle}>{r.designation}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(num(r.ttc)) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(tva) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.ttc ? fmt(ht) : ""}</td>
+              return <tr key={i} style={{ background: "#fff", color: "#000" }}>
+                <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i + 1}</td>
+                <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.designation}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(num(r.ttc)) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(tva) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(ht) : ""}</td>
               </tr>
             })}
           </tbody>
-          <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
-            <td colSpan={2} style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc),0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => { const t=num(r.ttc); return s+t-t/1.19 },0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc)/1.19,0))}</td>
+          <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
+            <td colSpan={2} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc),0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => { const t=num(r.ttc); return s+t-t/1.19 },0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc)/1.19,0))}</td>
           </tr></tfoot>
         </table>
       )}
@@ -630,25 +677,25 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
             </tr></thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9f9f9" }}>
-                  <td style={{ ...tdStyle, textAlign: "center" }}>{i+1}</td>
-                  <td style={tdStyle}>{r.nomRaisonSociale}</td>
-                  <td style={tdStyle}>{r.idFiscal}</td>
-                  <td style={tdStyle}>{r.adresse}</td>
-                  <td style={tdStyle}>{r.numRC}</td>
-                  <td style={tdStyle}>{r.dateFacture}</td>
-                  <td style={tdStyle}>{r.refFacture}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.tvaDeductible ? fmt(num(r.tvaDeductible)) : ""}</td>
-                  <td style={tdStyle}>{r.nature === "bien_amortissable" ? "Bien amortissable" : r.nature === "autre" ? "Autre" : ""}</td>
+                <tr key={i} style={{ background: "#fff", color: "#000" }}>
+                  <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nomRaisonSociale}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.idFiscal}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.adresse}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numRC}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.dateFacture}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.refFacture}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tvaDeductible ? fmt(num(r.tvaDeductible)) : ""}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nature === "bien_amortissable" ? "Bien amortissable" : r.nature === "autre" ? "Autre" : ""}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
-              <td colSpan={7} style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(rows.reduce((s,r) => s+num(r.montantHT),0))}</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(rows.reduce((s,r) => s+num(r.tvaDeductible),0))}</td>
-              <td style={tdStyle} />
+            <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
+              <td colSpan={7} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(rows.reduce((s,r) => s+num(r.montantHT),0))}</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(rows.reduce((s,r) => s+num(r.tvaDeductible),0))}</td>
+              <td style={{ ...tdStyle, backgroundColor: "#ddd", color: "#000" }} />
             </tr></tfoot>
           </table>
         )
@@ -661,18 +708,18 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
           </tr></thead>
           <tbody>
             {timbreRows.map((r, i) => (
-              <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9f9f9" }}>
-                <td style={{ ...tdStyle, textAlign: "center" }}>{i+1}</td>
-                <td style={tdStyle}>{r.designation}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.caTTCEsp ? fmt(num(r.caTTCEsp)) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{r.droitTimbre ? fmt(num(r.droitTimbre)) : ""}</td>
+              <tr key={i} style={{ background: "#fff", color: "#000" }}>
+                <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
+                <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.designation}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.caTTCEsp ? fmt(num(r.caTTCEsp)) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.droitTimbre ? fmt(num(r.droitTimbre)) : ""}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
-            <td colSpan={2} style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(timbreRows.reduce((s,r) => s+num(r.caTTCEsp),0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(timbreRows.reduce((s,r) => s+num(r.droitTimbre),0))}</td>
+          <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
+            <td colSpan={2} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(timbreRows.reduce((s,r) => s+num(r.caTTCEsp),0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(timbreRows.reduce((s,r) => s+num(r.droitTimbre),0))}</td>
           </tr></tfoot>
         </table>
       )}
@@ -683,21 +730,21 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
             {["Désignation","Chiffre d'affaires HT","Montant Taxe à verser"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
           </tr></thead>
           <tbody>
-            <tr style={{ background: "#fff" }}>
-              <td style={tdStyle}>Chiffre d'affaires soumis à 7%</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{b12 ? fmt(num(b12)) : ""}</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{b12 ? fmt(c12) : ""}</td>
+            <tr style={{ background: "#fff", color: "#000" }}>
+              <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>Chiffre d'affaires soumis à 7%</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{b12 ? fmt(num(b12)) : ""}</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{b12 ? fmt(c12) : ""}</td>
             </tr>
-            <tr style={{ background: "#f9f9f9" }}>
-              <td style={tdStyle}>Chiffre d'affaires global soumis à 1%</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{b13 ? fmt(num(b13)) : ""}</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{b13 ? fmt(c13) : ""}</td>
+            <tr style={{ background: "#eee", color: "#000" }}>
+              <td style={{ ...tdStyle, backgroundColor: "#eee", color: "#000" }}>Chiffre d'affaires global soumis à 1%</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#eee", color: "#000" }}>{b13 ? fmt(num(b13)) : ""}</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#eee", color: "#000" }}>{b13 ? fmt(c13) : ""}</td>
             </tr>
           </tbody>
-          <tfoot><tr style={{ background: "#e8e8e8", fontWeight: 700 }}>
-            <td style={{ ...tdStyle, textAlign: "right" }}>TOTAL</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(num(b12)+num(b13))}</td>
-            <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(c12+c13)}</td>
+          <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(num(b12)+num(b13))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(c12+c13)}</td>
           </tr></tfoot>
         </table>
       )}
@@ -711,18 +758,18 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
             <tbody>
               {tapRows.map((r, i) => {
                 const w = WILAYAS.find((w) => w.code === r.wilayaCode)
-                return <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9f9f9" }}>
-                  <td style={{ ...tdStyle, textAlign: "center" }}>{i+1}</td>
-                  <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{r.wilayaCode}</td>
-                  <td style={tdStyle}>{w?.name ?? ""}</td>
-                  <td style={tdStyle}>{r.commune}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.tap2 ? fmt(num(r.tap2)) : ""}</td>
+                return <tr key={i} style={{ background: "#fff", color: "#000" }}>
+                  <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
+                  <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700, backgroundColor: "#fff", color: "#000" }}>{r.wilayaCode}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{w?.name ?? ""}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.commune}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tap2 ? fmt(num(r.tap2)) : ""}</td>
                 </tr>
               })}
             </tbody>
-            <tfoot><tr style={{ background: "#ffe0e0", fontWeight: 700 }}>
-              <td colSpan={4} style={{ ...tdStyle, textAlign: "right" }}>MONTANT TAP</td>
-              <td style={{ ...tdStyle, textAlign: "right", fontSize: 11 }}>{fmt(tapRows.reduce((s,r) => s+num(r.tap2),0))} DZD</td>
+            <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
+              <td colSpan={4} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>MONTANT TAP</td>
+              <td style={{ ...tdStyle, textAlign: "right", fontSize: 11, backgroundColor: "#ddd", color: "#000" }}>{fmt(tapRows.reduce((s,r) => s+num(r.tap2),0))} DZD</td>
             </tr></tfoot>
           </table>
         </>
@@ -744,7 +791,7 @@ export default function NouvelleDeclarationPage() {
   const [regions, setRegions] = useState<{ id: number; name: string }[]>([])
   useEffect(() => {
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://172.20.0.3"}/api/regions`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"}/api/regions`, {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -888,13 +935,6 @@ export default function NouvelleDeclarationPage() {
     router.push("/fisca/historique")
   }
 
-  const handlePrint = () => {
-    // Make print zone visible, print, then hide
-    const zone = document.getElementById("print-zone")
-    if (zone) zone.style.display = "block"
-    window.print()
-    if (zone) zone.style.display = "none"
-  }
 
   const activeColor = TABS.find((t) => t.key === activeTab)?.color ?? "#2db34b"
   const mon = MONTHS.find((m) => m.value === mois)?.label ?? mois
@@ -906,8 +946,35 @@ export default function NouvelleDeclarationPage() {
         @media print {
           @page { size: A4 landscape; margin: 12mm 10mm; }
           body > * { display: none !important; }
-          #print-zone { display: block !important; }
-          #print-zone { font-family: Arial, sans-serif; color: #000; }
+          body { margin: 0; padding: 0; }
+          #print-zone { 
+            display: block !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 12mm 10mm !important;
+            background: white !important;
+            color: black !important;
+            font-family: Arial, sans-serif !important;
+          }
+          #print-zone * { 
+            display: block !important;
+            color: black !important;
+            background: white !important;
+          }
+          table { 
+            width: 100% !important;
+            border-collapse: collapse !important;
+            border: 1px solid #000 !important;
+          }
+          tr, td, th {
+            display: table-cell !important;
+            border: 1px solid #000 !important;
+            color: black !important;
+          }
         }
       `}</style>
 
@@ -923,22 +990,9 @@ export default function NouvelleDeclarationPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Nouvelle Déclaration</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Remplissez chaque tableau, puis enregistrez ou imprimez.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Remplissez chaque tableau, puis enregistrez.</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => router.back()} disabled={isSubmitting}>
-              Annuler
-            </Button>
-            <Button size="sm" variant="outline" onClick={handlePrint}
-              className="gap-1.5 border-blue-400 text-blue-600 hover:bg-blue-50">
-              <Printer size={14} /> Imprimer
-            </Button>
-            <Button size="sm" onClick={handleSave} disabled={isSubmitting}
-              className="gap-1.5" style={{ backgroundColor: "#2db34b", color: "white" }}>
-              <Save size={14} />
-              {isSubmitting ? "Enregistrement…" : "Enregistrer"}
-            </Button>
-          </div>
+
         </div>
 
         {/* ── Global meta card (Direction + Période) ── */}
@@ -993,7 +1047,7 @@ export default function NouvelleDeclarationPage() {
                 key={t.key}
                 value={t.key}
                 className="flex-1 min-w-[130px] text-sm font-semibold py-2 transition-all data-[state=active]:shadow"
-                style={activeTab === t.key ? { backgroundColor: t.color, color: "white" } : {}}
+                style={activeTab === t.key ? { backgroundColor: PRIMARY_COLOR, color: "white" } : {}}
               >
                 {t.label}
               </TabsTrigger>
@@ -1009,7 +1063,7 @@ export default function NouvelleDeclarationPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <TabEncaissement rows={encRows} setRows={setEncRows} />
+                <TabEncaissement rows={encRows} setRows={setEncRows} onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1018,12 +1072,12 @@ export default function NouvelleDeclarationPage() {
           <TabsContent value="tva_immo">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#1d6fb8" }}>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
                   État TVA / Immobilisations – Liste des factures
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} color="#1d6fb8" />
+                <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1032,12 +1086,12 @@ export default function NouvelleDeclarationPage() {
           <TabsContent value="tva_biens">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#7c3aed" }}>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
                   État TVA / Biens &amp; Services – Liste des factures
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} color="#7c3aed" />
+                <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1046,12 +1100,12 @@ export default function NouvelleDeclarationPage() {
           <TabsContent value="droits_timbre">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#0891b2" }}>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
                   État Droits de Timbre – Saisie des montants
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <TabDroitsTimbre rows={timbreRows} setRows={setTimbreRows} />
+                <TabDroitsTimbre rows={timbreRows} setRows={setTimbreRows} onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1060,12 +1114,12 @@ export default function NouvelleDeclarationPage() {
           <TabsContent value="ca_tap">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#ea580c" }}>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
                   CA soumis à 7% &amp; CA Global soumis à 1% – Calcul automatique
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <TabCA b12={b12} setB12={setB12} b13={b13} setB13={setB13} />
+                <TabCA b12={b12} setB12={setB12} b13={b13} setB13={setB13} onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1074,13 +1128,14 @@ export default function NouvelleDeclarationPage() {
           <TabsContent value="etat_tap">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#be123c" }}>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
                   État TAP – Saisie par Wilaya / Commune
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <TabTAP rows={tapRows} setRows={setTapRows}
-                  mois={mois} setMois={setMois} annee={annee} setAnnee={setAnnee} />
+                  mois={mois} setMois={setMois} annee={annee} setAnnee={setAnnee}
+                  onSave={handleSave} isSubmitting={isSubmitting} />
               </CardContent>
             </Card>
           </TabsContent>
