@@ -31,7 +31,6 @@ const imprimeChecqueLinks = [
 const fiscaLinks = [
   { name: "Dashboard", href: "/fisca/dashboard", icon: LayoutDashboard },
   { name: "Nouvelle Déclaration", href: "/fisca/nouvelle-declaration", icon: FilePlus },
-  { name: "Historique", href: "/fisca/historique", icon: ClipboardList },
 ]
 
 interface SidebarProps {

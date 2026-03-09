@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
+import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
@@ -464,28 +465,6 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
   return (
     <div className="space-y-5">
-      {/* Période */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-semibold text-gray-700">Période :</span>
-        <div className="flex items-center gap-1.5">
-          <label className="text-xs text-gray-500">Mois</label>
-          <select value={mois} onChange={(e) => setMois(e.target.value)}
-            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-300">
-            {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <label className="text-xs text-gray-500">Année</label>
-          <select value={annee} onChange={(e) => setAnnee(e.target.value)}
-            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-300">
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded">
-          {MONTHS.find((m) => m.value === mois)?.label} {annee}
-        </span>
-      </div>
-
       {/* Tableau */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
@@ -1730,6 +1709,16 @@ export default function NouvelleDeclarationPage() {
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
 
+  // ── Auto-set direction based on user role ──
+  useEffect(() => {
+    if (!user) return
+    if (user.role === "regionale") {
+      setDirection(user.region ?? user.direction ?? "")
+    } else if (user.role === "comptabilite" || user.role === "admin") {
+      setDirection((prev) => prev || "Siège")
+    }
+  }, [user])
+
   if (isLoading || !user || status !== "authenticated") {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -1944,7 +1933,7 @@ export default function NouvelleDeclarationPage() {
     const tabLabel = TABS.find((t) => t.key === activeTab)?.label ?? activeTab
     toast({ title: "✓ Déclaration enregistrée", description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.` })
     setIsSubmitting(false)
-    router.push("/fisca/historique")
+    router.push("/fisca/dashboard")
   }
 
 
@@ -1953,8 +1942,16 @@ export default function NouvelleDeclarationPage() {
 
   return (
     <LayoutWrapper user={user}>
-      {/* Hidden print zone – content read via innerHTML for printing */}
-      <PrintZone
+      {/* Block global (direction) role */}
+      {user.role === "direction" ? (
+        <AccessDeniedDialog
+          title="Accès refusé"
+          message="Votre rôle ne vous permet pas de créer des déclarations fiscales."
+          redirectTo="/fisca/dashboard"
+        />
+      ) : (
+        <>
+        <PrintZone
         activeTab={activeTab} direction={direction} mois={mois} annee={annee}
         encRows={encRows} tvaImmoRows={tvaImmoRows} tvaBiensRows={tvaBiensRows}
         timbreRows={timbreRows} b12={b12} b13={b13} tapRows={tapRows}
@@ -1984,11 +1981,12 @@ export default function NouvelleDeclarationPage() {
         <Card className="border border-gray-200">
           <CardContent className="pt-4 pb-3">
             <div className="flex flex-wrap items-end gap-6">
-              {/* Direction */}
+      {/* Direction */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Direction</label>
                 <select value={direction} onChange={(e) => setDirection(e.target.value)}
-                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300">
+                  disabled={user.role === "regionale"}
+                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-60 disabled:cursor-not-allowed">
                   <option value="">— Sélectionner une direction —</option>
                   <option value="Siège">Siège</option>
                   {regions.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
@@ -2190,6 +2188,8 @@ export default function NouvelleDeclarationPage() {
             )}
           </div>
       </div>
+        </>
+      )}
     </LayoutWrapper>
   )
 }

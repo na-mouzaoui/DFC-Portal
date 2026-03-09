@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { FileText, CheckCircle, Clock, AlertTriangle, Eye, Trash2, Printer } from "lucide-react"
+import { FileText, CheckCircle, Clock, AlertTriangle, Eye, Trash2, Printer, Filter, ChevronUp, ChevronDown, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type EncRow = { designation: string; ttc: string }
@@ -569,36 +569,34 @@ function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDecla
 }
 
 // ─── Print Zone ───────────────────────────────────────────────────────────────
-function DashPrintZone({ decl, tabKey, tabTitle, color }: {
+function DashPrintZone({ decl, tabKey, tabTitle }: {
   decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string
 }) {
   if (!decl) return null
   const moisLabel = MONTHS[decl.mois] ?? decl.mois
   return (
-    <div id="dash-print-zone" style={{ display: "none", fontFamily: "Arial, sans-serif" }}>
+    <div id="dash-print-zone" style={{ fontFamily: "Arial, sans-serif", color: "#000" }}>
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 40 }}>
-        {/* LEFT – logo + ATM MOBILIS + direction */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 100 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Logo" style={{ height: 52, objectFit: "contain" }} />
+          <img src="/logo.png" alt="Logo" style={{ height: 64, objectFit: "contain" }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#000", letterSpacing: 0.5, textTransform: "uppercase" }}>ATM MOBILIS</div>
-            {decl.direction && <div style={{ fontSize: 11, color: "#000", marginTop: 2 }}>{decl.direction}</div>}
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#222", letterSpacing: 1, textTransform: "uppercase" }}>ATM MOBILIS</div>
+            {decl.direction && <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>{decl.direction}</div>}
           </div>
         </div>
-        {/* RIGHT – période */}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10, color: "#000", textTransform: "uppercase", letterSpacing: 0.5 }}>Période</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#000" }}>{moisLabel} {decl.annee}</div>
+          <div style={{ fontSize: 11, color: "#777", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Période</div>
+          <div style={{ fontSize: 16, fontWeight: 400, color: "#333" }}>{moisLabel} {decl.annee}</div>
         </div>
       </div>
       {/* ── Centered title ── */}
-      <div style={{ textAlign: "center", fontSize: 15, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5, color: "#000", marginBottom: 32 }}>
+      <div style={{ textAlign: "center", fontSize: 20, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: "#222", marginBottom: 160 }}>
         {tabTitle}
       </div>
       {/* ── Table ── */}
-      <TabDataView tabKey={tabKey} decl={decl} color={color} />
+      <TabDataView tabKey={tabKey} decl={decl} color="#555" />
     </div>
   )
 }
@@ -639,6 +637,15 @@ export default function FiscaDashboardPage() {
   const [printDecl, setPrintDecl] = useState<SavedDeclaration | null>(null)
   const [showDialog, setShowDialog] = useState(false)
   const [viewTabKey, setViewTabKey] = useState<string>("encaissement")
+  const [filterType, setFilterType] = useState("")
+  const [filterMois, setFilterMois] = useState("")
+  const [filterAnnee, setFilterAnnee] = useState("")
+  const [filterDirection, setFilterDirection] = useState("")
+  const [filterDateFrom, setFilterDateFrom] = useState("")
+  const [filterDateTo, setFilterDateTo] = useState("")
+  const [showFilters, setShowFilters] = useState(false)
+  const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
 
   useEffect(() => {
     try {
@@ -675,15 +682,40 @@ export default function FiscaDashboardPage() {
   const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     setPrintDecl(decl)
     setViewTabKey(tabKey)
-    setTimeout(() => {
-      const el = document.getElementById('dash-print-zone')
-      if (!el) return
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Impression</title><base href="${window.location.origin}"><style>@page{size:A4 landscape;margin:15mm 12mm}body{font-family:Arial,sans-serif;margin:0;padding:30px 20px 20px;color:#000;background:#fff}*{background:#fff!important;background-color:#fff!important;color:#000!important}img{background:none!important}table{width:100%;border-collapse:collapse;border:2px solid #000!important}th,td{border:2px solid #000!important;padding:6px 10px!important;font-size:11px}th{font-weight:700;text-align:center!important}td[colspan]{text-align:right}.print-btn{position:fixed;top:14px;right:18px;z-index:9999}@media print{.print-btn{display:none}}</style></head><body><div class="print-btn"><button onclick="window.print()" style="background:#2db34b;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;font-family:Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.18)">🖨️ Imprimer / PDF</button></div>${el.innerHTML}</body></html>`
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-    }, 300)
+    setTimeout(async () => {
+      const printZone = document.getElementById("dash-print-zone")
+      if (!printZone) return
+      try {
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+          import("html2canvas"),
+          import("jspdf"),
+        ])
+        const canvas = await html2canvas(printZone, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        })
+        const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
+        const pageW = pdf.internal.pageSize.getWidth()
+        const pageH = pdf.internal.pageSize.getHeight()
+        const margin = 10
+        const availW = pageW - margin * 2
+        const availH = pageH - margin * 2
+        let finalW = availW
+        let finalH = (canvas.height * finalW) / canvas.width
+        if (finalH > availH) {
+          finalH = availH
+          finalW = (canvas.width * finalH) / canvas.height
+        }
+        const offsetX = margin + (availW - finalW) / 2
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", offsetX, margin, finalW, finalH)
+        const blobUrl = URL.createObjectURL(pdf.output("blob"))
+        window.open(blobUrl, "_blank")
+      } catch (err) {
+        console.error("PDF generation failed", err)
+      }
+    }, 200)
   }
 
   const getDeclarationType = (decl: SavedDeclaration) => {
@@ -706,12 +738,91 @@ export default function FiscaDashboardPage() {
     return { key: "encaissement", label: "Non défini", color: "#6b7280" }
   }
 
-  const recentDeclarations = [...declarations]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 10)
+  const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterDateFrom || filterDateTo)
+
+  const filteredDeclarations = declarations.filter((decl) => {
+    const declType = getDeclarationType(decl)
+    if (filterType && declType.key !== filterType) return false
+    if (filterMois && decl.mois !== filterMois) return false
+    if (filterAnnee && decl.annee !== filterAnnee) return false
+    if (filterDirection && !(decl.direction ?? "").toLowerCase().includes(filterDirection.toLowerCase())) return false
+    if (filterDateFrom && new Date(decl.createdAt) < new Date(filterDateFrom)) return false
+    if (filterDateTo && new Date(decl.createdAt) > new Date(filterDateTo + "T23:59:59")) return false
+    return true
+  })
+
+  const recentDeclarations = [...filteredDeclarations].sort((a, b) => {
+    let cmp = 0
+    if (sortCol === "date") {
+      cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    } else if (sortCol === "type") {
+      cmp = getDeclarationType(a).label.localeCompare(getDeclarationType(b).label, "fr")
+    } else if (sortCol === "direction") {
+      cmp = (a.direction ?? "").localeCompare(b.direction ?? "", "fr")
+    } else if (sortCol === "periode") {
+      cmp = (a.annee + a.mois).localeCompare(b.annee + b.mois)
+    }
+    return sortDir === "asc" ? cmp : -cmp
+  })
+
+  const handleSort = (col: "type" | "direction" | "periode" | "date") => {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    else { setSortCol(col); setSortDir("asc") }
+  }
+
+  const SortIcon = ({ col }: { col: "type" | "direction" | "periode" | "date" }) =>
+    sortCol === col
+      ? sortDir === "asc" ? <ChevronUp size={13} className="inline ml-0.5" /> : <ChevronDown size={13} className="inline ml-0.5" />
+      : <span className="inline-block w-3" />
 
   return (
     <LayoutWrapper user={user}>
+      {/* Off-screen zone for PDF generation */}
+      <style>{`
+        #dash-print-zone {
+          position: fixed;
+          left: -9999px;
+          top: 0;
+          width: max-content;
+          min-width: 1280px;
+          max-width: 2400px;
+          background: #fff;
+          padding: 44px 40px;
+          font-family: Arial, sans-serif;
+          pointer-events: none;
+          z-index: -1;
+          color: #000;
+        }
+        #dash-print-zone table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin-top: 100px !important;
+          font-size: 14px !important;
+        }
+        #dash-print-zone th, #dash-print-zone td {
+          border: 1.5px solid #333 !important;
+          padding: 13px 18px !important;
+          font-size: 14px !important;
+          vertical-align: middle !important;
+          line-height: 1.5 !important;
+        }
+        #dash-print-zone th {
+          font-weight: 700 !important;
+          background: #d4d4d4 !important;
+          color: #111 !important;
+          text-align: left !important;
+          white-space: nowrap !important;
+          font-size: 12px !important;
+        }
+        #dash-print-zone td { white-space: nowrap !important; }
+        #dash-print-zone tbody tr:nth-child(even) td { background: #f2f2f2 !important; }
+        #dash-print-zone tfoot td {
+          font-weight: 700 !important;
+          background: #c0c0c0 !important;
+          color: #111 !important;
+          font-size: 14px !important;
+        }
+      `}</style>
       {/* Hidden print zone – content read by handlePrint via innerHTML */}
       <DashPrintZone
         decl={printDecl}
@@ -752,8 +863,86 @@ export default function FiscaDashboardPage() {
 
         {/* Recent declarations */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Déclarations récentes</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base">
+                Déclarations récentes
+                {declarations.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({filteredDeclarations.length}{hasActiveFilters ? ` / ${declarations.length}` : ""})
+                  </span>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {hasActiveFilters && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs text-muted-foreground hover:text-red-500"
+                    onClick={() => { setFilterType(""); setFilterMois(""); setFilterAnnee(""); setFilterDirection(""); setFilterDateFrom(""); setFilterDateTo("") }}
+                  >
+                    <X size={14} className="mr-1" /> Effacer filtres
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={showFilters ? "secondary" : "outline"}
+                  className="h-8 text-xs"
+                  onClick={() => setShowFilters(!showFilters)}
+                >
+                  <Filter size={14} className="mr-1" /> Filtrer
+                </Button>
+              </div>
+            </div>
+            {showFilters && (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 text-sm">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Type</label>
+                  <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
+                    <option value="">Tous</option>
+                    <option value="encaissement">Encaissement</option>
+                    <option value="tva_immo">TVA / IMMO</option>
+                    <option value="tva_biens">TVA / Biens &amp; Serv</option>
+                    <option value="droits_timbre">Droits Timbre</option>
+                    <option value="ca_tap">CA 7% &amp; CA Glob 1%</option>
+                    <option value="etat_tap">ETAT TAP</option>
+                    <option value="ca_siege">CA Siège</option>
+                    <option value="irg">Situation IRG</option>
+                    <option value="taxe2">Taxe 2%</option>
+                    <option value="taxe_masters">Taxe Maîtres 1,5%</option>
+                    <option value="taxe_vehicule">Taxe Véhicule</option>
+                    <option value="taxe_formation">Taxe Formation</option>
+                    <option value="acompte">Acompte Provisionnel</option>
+                    <option value="ibs">IBS Étrangers</option>
+                    <option value="taxe_domicil">Taxe Domiciliation</option>
+                    <option value="tva_autoliq">TVA Auto Liquidation</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Mois</label>
+                  <select value={filterMois} onChange={e => setFilterMois(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
+                    <option value="">Tous</option>
+                    {Object.entries(MONTHS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Année</label>
+                  <input type="number" placeholder="ex: 2025" value={filterAnnee} onChange={e => setFilterAnnee(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Direction</label>
+                  <input type="text" placeholder="Rechercher..." value={filterDirection} onChange={e => setFilterDirection(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Du</label>
+                  <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Au</label>
+                  <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {recentDeclarations.length === 0 ? (
@@ -765,11 +954,18 @@ export default function FiscaDashboardPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Type de déclaration</TableHead>
-                      <TableHead>Direction</TableHead>
-                      <TableHead>Mois</TableHead>
-                      <TableHead>Année</TableHead>
-                      <TableHead>Date d'enregistrement</TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")}>
+                        Type de déclaration <SortIcon col="type" />
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort("direction")}>
+                        Direction <SortIcon col="direction" />
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort("periode")}>
+                        Période <SortIcon col="periode" />
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort("date")}>
+                        Date d&apos;enregistrement <SortIcon col="date" />
+                      </TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -786,12 +982,11 @@ export default function FiscaDashboardPage() {
                           <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">—</span>}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
-                              {MONTHS[decl.mois] || decl.mois}
+                              {MONTHS[decl.mois] || decl.mois} {decl.annee}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-medium">{decl.annee}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {new Date(decl.createdAt).toLocaleString("fr-DZ")}
+                            {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-center gap-2">
@@ -831,13 +1026,7 @@ export default function FiscaDashboardPage() {
                 </Table>
               </div>
             )}
-            {declarations.length > 10 && (
-              <div className="mt-4 text-center">
-                <Button variant="outline" size="sm" onClick={() => router.push("/fisca/historique")}>
-                  Voir toutes les déclarations ({declarations.length})
-                </Button>
-              </div>
-            )}
+
           </CardContent>
         </Card>
       </div>
