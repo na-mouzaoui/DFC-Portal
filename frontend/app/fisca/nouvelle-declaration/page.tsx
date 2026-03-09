@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
@@ -184,12 +184,14 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
 // TAB 2 & 3 – TVA/IMMO  and  TVA/BIENS & SERV (controlled, same structure)
 // ─────────────────────────────────────────────────────────────────────────────
 type TvaRow = {
-  nomRaisonSociale: string; idFiscal: string; adresse: string; numRC: string
-  dateFacture: string; refFacture: string; montantHT: string; tvaDeductible: string; nature: string
+  nomRaisonSociale: string; adresse: string; nif: string; authNif: string
+  numRC: string; authRC: string; numFacture: string; dateFacture: string
+  montantHT: string; tva: string
 }
 const EMPTY_TVA: TvaRow = {
-  nomRaisonSociale: "", idFiscal: "", adresse: "", numRC: "",
-  dateFacture: "", refFacture: "", montantHT: "", tvaDeductible: "", nature: "",
+  nomRaisonSociale: "", adresse: "", nif: "", authNif: "",
+  numRC: "", authRC: "", numFacture: "", dateFacture: "",
+  montantHT: "", tva: "",
 }
 
 interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAction<TvaRow[]>>;
@@ -204,12 +206,13 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
 
   const totalHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const totalTVA = rows.reduce((s, r) => s + num(r.tvaDeductible), 0)
+  const totalTVA = rows.reduce((s, r) => s + num(r.tva), 0)
+  const totalTTC = totalHT + totalTVA
 
   const headers = [
-    "Nom / Raison Sociale", "ID Fiscal", "Adresse", "N° RC / Agrément",
-    "Date Facture", "Réf. Facture", "Montant Op. HT", "TVA Déductible",
-    "Nature de l'opération",
+    "Nom / Raison Sociale", "Adresse", "NIF", "Auth. NIF",
+    "N° RC", "Auth. N° RC", "N° Facture", "Date",
+    "Montant HT", "TVA", "Montant TTC",
   ]
 
   return (
@@ -226,38 +229,37 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input value={row.nomRaisonSociale} onChange={(e) => update(i, "nomRaisonSociale", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 160 }} placeholder="Nom / Raison sociale" /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.idFiscal} onChange={(e) => update(i, "idFiscal", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="ID Fiscal" /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.adresse} onChange={(e) => update(i, "adresse", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="Adresse" /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.numRC} onChange={(e) => update(i, "numRC", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 120 }} placeholder="N° RC / Agrément" /></td>
-                <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.refFacture} onChange={(e) => update(i, "refFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="Référence" /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantHT} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 120 }} placeholder="0.00" /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tvaDeductible} onChange={(e) => update(i, "tvaDeductible", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 120 }} placeholder="0.00" /></td>
-                <td className="px-1 py-1 border-b">
-                  <select value={row.nature} onChange={(e) => update(i, "nature", e.target.value)}
-                    className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1" style={{ minWidth: 160 }}>
-                    <option value="">— Choisir —</option>
-                    <option value="bien_amortissable">Bien amortissable</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </td>
-                <td className="px-2 py-1 text-center border-b">
-                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row, i) => {
+              const ttc = num(row.montantHT) + num(row.tva)
+              return (
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
+                  <td className="px-1 py-1 border-b"><Input value={row.nomRaisonSociale} onChange={(e) => update(i, "nomRaisonSociale", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 160 }} placeholder="Nom / Raison sociale" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.adresse} onChange={(e) => update(i, "adresse", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="Adresse" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.nif} onChange={(e) => update(i, "nif", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="NIF" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.authNif} onChange={(e) => update(i, "authNif", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="Auth. NIF" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.numRC} onChange={(e) => update(i, "numRC", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° RC" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.authRC} onChange={(e) => update(i, "authRC", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="Auth. N° RC" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
+                  <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
+                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantHT} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tva} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{ttc > 0 ? fmt(ttc) : "—"}</td>
+                  <td className="px-2 py-1 text-center border-b">
+                    <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                      className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
-              <td colSpan={7} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td colSpan={9} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalTVA)}</td>
-              <td colSpan={2} className="border-t" />
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalTTC)}</td>
+              <td className="border-t" />
             </tr>
           </tfoot>
         </table>
@@ -380,7 +382,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
               <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires soumis à 7%</td>
               <td className="px-1 py-1 border-b">
                 <Input type="number" min={0} step="0.01" value={b12} onChange={(e) => setB12(e.target.value)}
-                  className="h-7 px-2 text-xs" placeholder="B12 – Saisir" style={{ minWidth: 160 }} />
+                  className="h-7 px-2 text-xs" placeholder="Saisir le CA HT soumis à 7%" style={{ minWidth: 200 }} />
               </td>
               <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                 {b12 ? fmt(c12) : "—"}
@@ -390,7 +392,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
               <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires global soumis à 1%</td>
               <td className="px-1 py-1 border-b">
                 <Input type="number" min={0} step="0.01" value={b13} onChange={(e) => setB13(e.target.value)}
-                  className="h-7 px-2 text-xs" placeholder="B13 – Saisir" style={{ minWidth: 160 }} />
+                  className="h-7 px-2 text-xs" placeholder="Saisir le CA HT global soumis à 1%" style={{ minWidth: 200 }} />
               </td>
               <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                 {b13 ? fmt(c13) : "—"}
@@ -423,6 +425,15 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
 // MONTANT TAP = Total(TAP 2%)
 // ─────────────────────────────────────────────────────────────────────────────
 type TAPRow = { wilayaCode: string; commune: string; tap2: string }
+type SiegeEncRow = { ttc: string; ht: string }
+
+const SIEGE_G1_LABELS = ["Encaissement", "Encaissement Exon\u00e9r\u00e9e"]
+const SIEGE_G2_LABELS = [
+  "Encaissement MOBIPOST", "Encaissement POST PAID", "Encaissement RACIMO",
+  "Encaissement DME", "Encaissement SOFIA", "Encaissement CCP RECOUVREMENT A",
+  "Encaissement CCP RECOUVREMENT B", "Encaissement CCP TPE",
+  "Encaissement BNA TPE", "Encaissement MASTER ALGERIE POSTE",
+]
 
 const MONTHS = [
   { value: "01", label: "Janvier" },   { value: "02", label: "Février" },
@@ -459,14 +470,14 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-gray-500">Mois</label>
           <select value={mois} onChange={(e) => setMois(e.target.value)}
-            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-300">
+            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-300">
             {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-gray-500">Année</label>
           <select value={annee} onChange={(e) => setAnnee(e.target.value)}
-            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-300">
+            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-300">
             {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -506,7 +517,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                   <td className="px-1 py-1 border-b">
                     <select value={row.wilayaCode}
                       onChange={(e) => { updateRow(i, "wilayaCode", e.target.value); updateRow(i, "commune", "") }}
-                      className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-red-300"
+                      className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300"
                       style={{ minWidth: 190 }}>
                       <option value="">— Wilaya —</option>
                       {WILAYAS.map((w) => (
@@ -519,7 +530,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                   <td className="px-1 py-1 border-b">
                     <select value={row.commune} onChange={(e) => updateRow(i, "commune", e.target.value)}
                       disabled={!row.wilayaCode}
-                      className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-red-300 disabled:opacity-40"
+                      className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300 disabled:opacity-40"
                       style={{ minWidth: 165 }}>
                       <option value="">— Commune —</option>
                       {(wilaya?.communes ?? []).map((c) => (
@@ -567,15 +578,633 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB 7 – CHIFFRE D'AFFAIRE ENCAISSÉ SIÈGE
+// ─────────────────────────────────────────────────────────────────────────────
+interface Tab7Props { rows: SiegeEncRow[]; setRows: React.Dispatch<React.SetStateAction<SiegeEncRow[]>>; onSave: () => void; isSubmitting: boolean }
+function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
+  const upd = (i: number, f: keyof SiegeEncRow, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const g1 = rows.slice(0, 2)
+  const g2 = rows.slice(2, 12)
+  const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
+  const t1ht  = g1.reduce((s, r) => s + num(r.ht), 0)
+  const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
+  const t2ht  = g2.reduce((s, r) => s + num(r.ht), 0)
+  const totalRow: React.CSSProperties = { background: "#f3f4f6", fontWeight: 700 }
+  const grandRow: React.CSSProperties = { background: "#dcfce7", fontWeight: 700 }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 border-b" style={{ width: "55%" }}>Désignation</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b" style={{ width: "22.5%" }}>TTC</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b" style={{ width: "22.5%" }}>HT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SIEGE_G1_LABELS.map((lbl, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-4 py-1 text-xs border-b">{lbl}</td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ht} onChange={(e) => upd(i, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+              </tr>
+            ))}
+            <tr style={totalRow}>
+              <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 1</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ht)}</td>
+            </tr>
+            {SIEGE_G2_LABELS.map((lbl, i) => (
+              <tr key={i + 2} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-4 py-1 text-xs border-b">{lbl}</td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ht} onChange={(e) => upd(i + 2, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+              </tr>
+            ))}
+            <tr style={totalRow}>
+              <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 2</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ht)}</td>
+            </tr>
+            <tr style={grandRow}>
+              <td className="px-4 py-2 text-xs font-bold text-green-800">TOTAL GÉNÉRAL</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ttc + t2ttc)}</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ht + t2ht)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 8 – SITUATION IRG
+// ─────────────────────────────────────────────────────────────────────────────
+type IrgRow = { assietteImposable: string; montant: string }
+const IRG_LABELS = [
+  "IRG sur Salaire Barème", "Autre IRG 10%", "Autre IRG 15%",
+  "Jetons de présence 15%", "Tantième 15%",
+]
+interface Tab8Props { rows: IrgRow[]; setRows: React.Dispatch<React.SetStateAction<IrgRow[]>>; onSave: () => void; isSubmitting: boolean }
+function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
+  const upd = (i: number, f: keyof IrgRow, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const total = rows.reduce((s, r) => s + num(r.montant), 0)
+  const totalAssiet = rows.reduce((s, r) => s + num(r.assietteImposable), 0)
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Assiette Imposable</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {IRG_LABELS.map((lbl, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 220 }}>{lbl}</td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].assietteImposable} onChange={(e) => upd(i, "assietteImposable", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalAssiet)}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 9 – SITUATION TAXE 2%
+// ─────────────────────────────────────────────────────────────────────────────
+type Taxe2Row = { base: string; montant: string }
+const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
+interface Tab9Props { rows: Taxe2Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe2Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
+  const upd = (i: number, f: keyof Taxe2Row, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
+  const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant de la base</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant de la Taxe 2%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TAXE2_LABELS.map((lbl, i) => (
+              <tr key={i} className="bg-white">
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>{lbl}</td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalBase)}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalMont)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 10 – ÉTAT DE LA TAXE 1,5% DES MASTERS
+// ─────────────────────────────────────────────────────────────────────────────
+type MasterRow = { date: string; nomMaster: string; numFacture: string; dateFacture: string; montantHT: string; taxe15: string; mois: string; observation: string }
+const EMPTY_MASTER: MasterRow = { date: "", nomMaster: "", numFacture: "", dateFacture: "", montantHT: "", taxe15: "", mois: "", observation: "" }
+interface Tab10Props { rows: MasterRow[]; setRows: React.Dispatch<React.SetStateAction<MasterRow[]>>; onSave: () => void; isSubmitting: boolean }
+function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER }])
+  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
+  const upd = (i: number, f: keyof MasterRow, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const totalHT   = rows.reduce((s, r) => s + num(r.montantHT), 0)
+  const totalTaxe = rows.reduce((s, r) => s + num(r.taxe15), 0)
+  const iw = { minWidth: 110 }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Date</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Nom du Master</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">N° de Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Date de la Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Facture HT</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taxe 1,5%</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Mois</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Observation</th>
+              <th className="px-2 py-2 border-b w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
+                <td className="px-1 py-1 border-b"><Input type="date" value={row.date} onChange={(e) => upd(i, "date", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.nomMaster} onChange={(e) => upd(i, "nomMaster", e.target.value)} className="h-7 px-2 text-xs" placeholder="Nom du Master" style={{ minWidth: 160 }} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "—"}</td>
+                <td className="px-1 py-1 border-b">
+                  <select value={row.mois} onChange={(e) => upd(i, "mois", e.target.value)}
+                    className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none" style={{ minWidth: 110 }}>
+                    <option value="">— Mois —</option>
+                    {["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+                      .map((m, idx) => <option key={idx} value={m}>{m}</option>)}
+                  </select>
+                </td>
+                <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 140 }} /></td>
+                <td className="px-2 py-1 text-center border-b">
+                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td colSpan={5} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(totalTaxe)}</td>
+              <td colSpan={3} className="border-t" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 11 – TAXE DE VÉHICULE
+// ─────────────────────────────────────────────────────────────────────────────
+interface Tab11Props { montant: string; setMontant: (v: string) => void; onSave: () => void; isSubmitting: boolean }
+function TabTaxeVehicule({ montant, setMontant, onSave, isSubmitting }: Tab11Props) {
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="bg-white">
+              <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 280 }}>Taxe de véhicule</td>
+              <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(num(montant))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 12 – TAXE DE FORMATION
+// ─────────────────────────────────────────────────────────────────────────────
+type Taxe12Row = { montant: string }
+const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
+interface Tab12Props { rows: Taxe12Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe12Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
+  const upd = (i: number, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { montant: v } : r))
+  const total = rows.reduce((s, r) => s + num(r.montant), 0)
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TAXE12_LABELS.map((lbl, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 280 }}>{lbl}</td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={rows[i].montant} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 13 – SITUATION DE L'ACOMPTE PROVISIONNEL (year only, 12 months)
+// ─────────────────────────────────────────────────────────────────────────────
+const MONTH_LABELS_SHORT = ["Janv","Fév","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"]
+interface Tab13Props { months: string[]; setMonths: React.Dispatch<React.SetStateAction<string[]>>; annee: string; onSave: () => void; isSubmitting: boolean }
+function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Props) {
+  const upd = (i: number, v: string) =>
+    setMonths((prev) => prev.map((m, idx) => idx === i ? v : m))
+  const yy = annee.slice(-2)
+  const total = months.reduce((s, v) => s + num(v), 0)
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 100 }}>Désignation</th>
+              {MONTH_LABELS_SHORT.map((m) => (
+                <th key={m} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 90 }}>{m} {yy}</th>
+              ))}
+              <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 110 }}>TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="bg-white">
+              <td className="px-3 py-1 text-xs border-b font-medium text-gray-800">Montant</td>
+              {months.map((v, i) => (
+                <td key={i} className="px-1 py-1 border-b">
+                  <Input type="number" min={0} step="0.01" value={v} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 80 }} />
+                </td>
+              ))}
+              <td className="px-3 py-1 text-xs border-b font-semibold text-green-700 bg-green-50">{fmt(total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 14 – IBS SUR FOURNISSEURS ÉTRANGERS
+// ─────────────────────────────────────────────────────────────────────────────
+type Ibs14Row = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; montantNetDevise: string; montantIBS: string; montantNetDinars: string }
+const EMPTY_IBS14: Ibs14Row = { numFacture: "", montantBrutDevise: "", tauxChange: "", montantBrutDinars: "", montantNetDevise: "", montantIBS: "", montantNetDinars: "" }
+interface Tab14Props { rows: Ibs14Row[]; setRows: React.Dispatch<React.SetStateAction<Ibs14Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_IBS14 }])
+  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
+  const upd = (i: number, f: keyof Ibs14Row, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const s = (f: keyof Ibs14Row) => rows.reduce((acc, r) => acc + num(r[f] as string), 0)
+  const iw = { minWidth: 120 }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">N° de Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Devise</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date du Contrat</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Dinars</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net Transférable en Devise</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant de l'IBS (Taux...%)</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net Transférable en Dinars</th>
+              <th className="px-2 py-2 border-b w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
+                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantIBS} onChange={(e) => upd(i,"montantIBS",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDinars} onChange={(e) => upd(i,"montantNetDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-2 py-1 text-center border-b">
+                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantBrutDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("tauxChange"))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantBrutDinars"))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantNetDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantIBS"))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantNetDinars"))}</td>
+              <td className="border-t" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 15 – TAXE DOMICILIATION BANCAIRE SUR FOURNISSEURS ÉTRANGERS
+// ─────────────────────────────────────────────────────────────────────────────
+type Taxe15Row = { numFacture: string; dateFacture: string; raisonSociale: string; montantNetDevise: string; monnaie: string; tauxChange: string; montantDinars: string; tauxTaxe: string; montantAPayer: string }
+const EMPTY_TAXE15: Taxe15Row = { numFacture: "", dateFacture: "", raisonSociale: "", montantNetDevise: "", monnaie: "", tauxChange: "", montantDinars: "", tauxTaxe: "", montantAPayer: "" }
+interface Tab15Props { rows: Taxe15Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe15Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_TAXE15 }])
+  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
+  const upd = (i: number, f: keyof Taxe15Row, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const iw = { minWidth: 110 }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">N° de Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Date de la Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Raison Sociale</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net en Devise</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Monnaie / Devises</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date de la Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Facture en Dinars</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux Taxe...%</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant à Payer en Dinars</th>
+              <th className="px-2 py-2 border-b w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
+                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i,"dateFacture",e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.raisonSociale} onChange={(e) => upd(i,"raisonSociale",e.target.value)} className="h-7 px-2 text-xs" placeholder="Raison Sociale" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.monnaie} onChange={(e) => upd(i,"monnaie",e.target.value)} className="h-7 px-2 text-xs" placeholder="EUR / USD…" style={{ minWidth: 80 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantDinars} onChange={(e) => upd(i,"montantDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.tauxTaxe} onChange={(e) => upd(i,"tauxTaxe",e.target.value)} className="h-7 px-2 text-xs" placeholder="Taux %" style={{ minWidth: 80 }} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantAPayer} onChange={(e) => upd(i,"montantAPayer",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-2 py-1 text-center border-b">
+                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
+              <td className="border-t" />
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
+              <td className="border-t" />
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
+              <td className="border-t" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 16 – TVA AUTO LIQUIDATION SUR FOURNISSEURS ÉTRANGERS
+// ─────────────────────────────────────────────────────────────────────────────
+type Tva16Row = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; tva19: string }
+const EMPTY_TVA16: Tva16Row = { numFacture: "", montantBrutDevise: "", tauxChange: "", montantBrutDinars: "", tva19: "" }
+interface Tab16Props { rows: Tva16Row[]; setRows: React.Dispatch<React.SetStateAction<Tva16Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA16 }])
+  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
+  const upd = (i: number, f: keyof Tva16Row, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const iw = { minWidth: 130 }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">N° de Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Devises</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date de la Facture</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Dinars</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TVA 19%</th>
+              <th className="px-2 py-2 border-b w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
+                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tva19} onChange={(e) => upd(i,"tva19",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-2 py-1 text-center border-b">
+                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-green-100 font-semibold">
+              <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
+              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
+              <td className="border-t" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" size="sm" onClick={addRow}
+          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
+          <Plus size={13} /> Ajouter une ligne
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { key: "encaissement",  label: "Encaissement",       color: "#2db34b", title: "ENCAISSEMENT" },
-  { key: "tva_immo",      label: "TVA / IMMO",         color: "#1d6fb8", title: "ÉTAT TVA / IMMOBILISATIONS" },
-  { key: "tva_biens",     label: "TVA / Biens & Serv", color: "#7c3aed", title: "ÉTAT TVA / BIENS & SERVICES" },
-  { key: "droits_timbre", label: "Droits Timbre",      color: "#0891b2", title: "ÉTAT DROITS DE TIMBRE" },
-  { key: "ca_tap",        label: "CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
-  { key: "etat_tap",      label: "ETAT TAP",           color: "#be123c", title: "ÉTAT TAP" },
+  { key: "encaissement",   label: "1 – Encaissement",              color: "#2db34b", title: "ENCAISSEMENT" },
+  { key: "tva_immo",       label: "2 – TVA / IMMO",                color: "#2db34b", title: "ÉTAT TVA / IMMOBILISATIONS" },
+  { key: "tva_biens",      label: "3 – TVA / Biens & Serv",        color: "#2db34b", title: "ÉTAT TVA / BIENS & SERVICES" },
+  { key: "droits_timbre",  label: "4 – Droits Timbre",             color: "#2db34b", title: "ÉTAT DROITS DE TIMBRE" },
+  { key: "ca_tap",         label: "5 – CA 7% & CA Glob 1%",        color: "#2db34b", title: "CA 7% & CA GLOBAL 1%" },
+  { key: "etat_tap",       label: "6 – ETAT TAP",                  color: "#2db34b", title: "ÉTAT TAP" },
+  { key: "ca_siege",       label: "7 – CA Siège",                  color: "#2db34b", title: "CHIFFRE D'AFFAIRE ENCAISSÉ SIÈGE" },
+  { key: "irg",            label: "8 – Situation IRG",             color: "#2db34b", title: "SITUATION IRG" },
+  { key: "taxe2",          label: "9 – Taxe 2%",                   color: "#2db34b", title: "SITUATION DE LA TAXE 2%" },
+  { key: "taxe_masters",   label: "10 – Taxe Maîtres 1,5%",       color: "#2db34b", title: "ÉTAT DE LA TAXE 1,5% DES MASTERS" },
+  { key: "taxe_vehicule",  label: "11 – Taxe Véhicule",            color: "#2db34b", title: "TAXE DE VÉHICULE" },
+  { key: "taxe_formation", label: "12 – Taxe Formation",           color: "#2db34b", title: "TAXE DE FORMATION" },
+  { key: "acompte",        label: "13 – Acompte Provisionnel",     color: "#2db34b", title: "SITUATION DE L'ACOMPTE PROVISIONNEL DE L'ANNÉE EN COURS" },
+  { key: "ibs",            label: "14 – IBS Fournisseurs Étrangers", color: "#2db34b", title: "IBS SUR FOURNISSEURS ÉTRANGERS" },
+  { key: "taxe_domicil",  label: "15 – Taxe Domiciliation",        color: "#2db34b", title: "TAXE DOMICILIATION BANCAIRE SUR FOURNISSEURS ÉTRANGERS" },
+  { key: "tva_autoliq",   label: "16 – TVA Auto Liquidation",      color: "#2db34b", title: "TVA AUTO LIQUIDATION SUR FOURNISSEURS ÉTRANGERS" },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -593,16 +1222,26 @@ interface PrintZoneProps {
   timbreRows: TimbreRow[]
   b12: string; b13: string
   tapRows: TAPRow[]
+  caSiegeRows: SiegeEncRow[]
+  irgRows: IrgRow[]
+  taxe2Rows: Taxe2Row[]
+  masterRows: MasterRow[]
+  taxe11Montant: string
+  taxe12Rows: Taxe12Row[]
+  acompteMonths: string[]
+  ibs14Rows: Ibs14Row[]
+  taxe15Rows: Taxe15Row[]
+  tva16Rows: Tva16Row[]
 }
 
-function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows }: PrintZoneProps) {
+function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows, caSiegeRows, irgRows, taxe2Rows, masterRows, taxe11Montant, taxe12Rows, acompteMonths, ibs14Rows, taxe15Rows, tva16Rows }: PrintZoneProps) {
   const tab  = TABS.find((t) => t.key === activeTab)!
   const mon  = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const c12  = num(b12) * 0.07
   const c13  = num(b13) * 0.01
 
   const thStyle: React.CSSProperties = {
-    border: "1px solid #000", padding: "4px 6px", backgroundColor: "#ddd", color: "#000",
+    border: "1px solid #000", padding: "4px 6px", backgroundColor: "#fff", color: "#000",
     fontSize: 9, fontWeight: 700, textAlign: "left", whiteSpace: "nowrap",
   }
   const tdStyle: React.CSSProperties = {
@@ -612,27 +1251,25 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
   return (
     <div id="print-zone" style={{ display: "none" }}>
       {/* ── PDF header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, borderBottom: "2px solid #333", paddingBottom: 8 }}>
-        {/* LEFT – période */}
-        <div style={{ minWidth: 180 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#333" }}>Période</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "#000", marginTop: 2 }}>{mon} {annee}</div>
-        </div>
-
-        {/* CENTER – title */}
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#000" }}>{tab.title}</div>
-          <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>Déclaration Fiscale</div>
-        </div>
-
-        {/* RIGHT – logo + direction */}
-        <div style={{ minWidth: 200, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12, borderBottom: "2px solid #000", marginBottom: 20 }}>
+        {/* LEFT – logo + ATM MOBILIS + direction */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Logo" style={{ height: 40, objectFit: "contain" }} />
-          {direction && (
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#333", textAlign: "right" }}>{direction}</div>
-          )}
+          <img src="/logo.png" alt="Logo" style={{ height: 52, objectFit: "contain" }} />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#000", letterSpacing: 0.5, textTransform: "uppercase" }}>ATM MOBILIS</div>
+            {direction && <div style={{ fontSize: 11, color: "#000", marginTop: 2 }}>{direction}</div>}
+          </div>
         </div>
+        {/* RIGHT – période */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#000", textTransform: "uppercase", letterSpacing: 0.5 }}>Période</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#000" }}>{mon} {annee}</div>
+        </div>
+      </div>
+      {/* ── Centered title ── */}
+      <div style={{ textAlign: "center", fontSize: 15, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5, color: "#000", marginBottom: 20 }}>
+        {tab.title}
       </div>
 
       {/* ── Table content per tab ── */}
@@ -668,10 +1305,13 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
 
       {(activeTab === "tva_immo" || activeTab === "tva_biens") && (() => {
         const rows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
+        const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
+        const tTVA = rows.reduce((s, r) => s + num(r.tva), 0)
+        const tTTC = tHT + tTVA
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
-              {["#","Nom / Raison Sociale","ID Fiscal","Adresse","N° RC","Date Fact.","Réf.","Montant HT","TVA Déd.","Nature"].map((h) => (
+              {["#","Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT","TVA","Montant TTC"].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr></thead>
@@ -680,22 +1320,24 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
                 <tr key={i} style={{ background: "#fff", color: "#000" }}>
                   <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nomRaisonSociale}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.idFiscal}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.adresse}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nif}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.authNif}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numRC}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.authRC}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numFacture}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.dateFacture}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.refFacture}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tvaDeductible ? fmt(num(r.tvaDeductible)) : ""}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nature === "bien_amortissable" ? "Bien amortissable" : r.nature === "autre" ? "Autre" : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tva ? fmt(num(r.tva)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{fmt(num(r.montantHT) + num(r.tva))}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
-              <td colSpan={7} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
-              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(rows.reduce((s,r) => s+num(r.montantHT),0))}</td>
-              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(rows.reduce((s,r) => s+num(r.tvaDeductible),0))}</td>
-              <td style={{ ...tdStyle, backgroundColor: "#ddd", color: "#000" }} />
+              <td colSpan={9} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tHT)}</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTVA)}</td>
+              <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTTC)}</td>
             </tr></tfoot>
           </table>
         )
@@ -774,6 +1416,268 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
           </table>
         </>
       )}
+
+      {activeTab === "ca_siege" && (() => {
+        const g1 = caSiegeRows.slice(0, 2)
+        const g2 = caSiegeRows.slice(2, 12)
+        const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
+        const t1ht  = g1.reduce((s, r) => s + num(r.ht), 0)
+        const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
+        const t2ht  = g2.reduce((s, r) => s + num(r.ht), 0)
+        return (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              {["D\u00e9signation", "TTC", "HT"].map(h => <th key={h} style={thStyle}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {SIEGE_G1_LABELS.map((lbl, i) => (
+                <tr key={i}><td style={tdStyle}>{lbl}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{caSiegeRows[i]?.ttc ? fmt(num(caSiegeRows[i].ttc)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{caSiegeRows[i]?.ht ? fmt(num(caSiegeRows[i].ht)) : ""}</td>
+                </tr>
+              ))}
+              <tr style={{ fontWeight: 700 }}><td style={tdStyle}>TOTAL 1</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t1ttc)}</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t1ht)}</td>
+              </tr>
+              {SIEGE_G2_LABELS.map((lbl, i) => (
+                <tr key={i}><td style={tdStyle}>{lbl}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{caSiegeRows[i + 2]?.ttc ? fmt(num(caSiegeRows[i + 2].ttc)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{caSiegeRows[i + 2]?.ht ? fmt(num(caSiegeRows[i + 2].ht)) : ""}</td>
+                </tr>
+              ))}
+              <tr style={{ fontWeight: 700 }}><td style={tdStyle}>TOTAL 2</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t2ttc)}</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t2ht)}</td>
+              </tr>
+              <tr style={{ fontWeight: 700 }}><td style={tdStyle}>TOTAL G\u00c9N\u00c9RAL</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t1ttc + t2ttc)}</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{fmt(t1ht + t2ht)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "irg" && (() => {
+        const totalAssiette = irgRows.reduce((s,r)=>s+num(r.assietteImposable),0)
+        const totalMontant  = irgRows.reduce((s,r)=>s+num(r.montant),0)
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              {["Désignation","Assiette Imposable","Montant"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {IRG_LABELS.map((lbl,i)=>(
+                <tr key={i}>
+                  <td style={tdStyle}>{lbl}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{irgRows[i]?.assietteImposable?fmt(num(irgRows[i].assietteImposable)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{irgRows[i]?.montant?fmt(num(irgRows[i].montant)):""}</td>
+                </tr>
+              ))}
+              <tr style={{fontWeight:700}}>
+                <td style={tdStyle}>TOTAL</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalAssiette)}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalMontant)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "taxe2" && (() => {
+        const totalBase = taxe2Rows.reduce((s,r)=>s+num(r.base),0)
+        const totalMont = taxe2Rows.reduce((s,r)=>s+num(r.montant),0)
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              {["Désignation","Montant de la base","Montant de la Taxe 2%"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {TAXE2_LABELS.map((lbl,i)=>(
+                <tr key={i}>
+                  <td style={tdStyle}>{lbl}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{taxe2Rows[i]?.base?fmt(num(taxe2Rows[i].base)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{taxe2Rows[i]?.montant?fmt(num(taxe2Rows[i].montant)):""}</td>
+                </tr>
+              ))}
+              <tr style={{fontWeight:700}}><td style={tdStyle}>TOTAL</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalBase)}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalMont)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "taxe_masters" && (() => {
+        const totalHT   = masterRows.reduce((s,r)=>s+num(r.montantHT),0)
+        const totalTaxe = masterRows.reduce((s,r)=>s+num(r.montantHT)*0.015,0)
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              {["#","Date","Nom du Master","N° Facture","Date Facture","Montant HT","Taxe 1,5%","Mois","Observation"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {masterRows.map((r,i)=>(
+                <tr key={i}>
+                  <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
+                  <td style={tdStyle}>{r.date}</td>
+                  <td style={tdStyle}>{r.nomMaster}</td>
+                  <td style={tdStyle}>{r.numFacture}</td>
+                  <td style={tdStyle}>{r.dateFacture}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantHT?fmt(num(r.montantHT)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantHT?fmt(num(r.montantHT)*0.015):""}</td>
+                  <td style={tdStyle}>{r.mois}</td>
+                  <td style={tdStyle}>{r.observation}</td>
+                </tr>
+              ))}
+              <tr style={{fontWeight:700}}>
+                <td style={tdStyle} colSpan={5}>TOTAL</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalHT)}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(totalTaxe)}</td>
+                <td colSpan={2} style={tdStyle}/>
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "taxe_vehicule" && (
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["Désignation","Montant"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+          <tbody>
+            <tr><td style={tdStyle}>Taxe de véhicule</td><td style={{...tdStyle,textAlign:"right"}}>{taxe11Montant?fmt(num(taxe11Montant)):""}</td></tr>
+            <tr style={{fontWeight:700}}><td style={tdStyle}>TOTAL</td><td style={{...tdStyle,textAlign:"right"}}>{fmt(num(taxe11Montant))}</td></tr>
+          </tbody>
+        </table>
+      )}
+
+      {activeTab === "taxe_formation" && (() => {
+        const total = taxe12Rows.reduce((s,r)=>s+num(r.montant),0)
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["Désignation","Montant"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <tbody>
+              {TAXE12_LABELS.map((lbl,i)=>(
+                <tr key={i}><td style={tdStyle}>{lbl}</td><td style={{...tdStyle,textAlign:"right"}}>{taxe12Rows[i]?.montant?fmt(num(taxe12Rows[i].montant)):""}</td></tr>
+              ))}
+              <tr style={{fontWeight:700}}><td style={tdStyle}>TOTAL</td><td style={{...tdStyle,textAlign:"right"}}>{fmt(total)}</td></tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "acompte" && (() => {
+        const yy = annee.slice(-2)
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              <th style={thStyle}>Désignation</th>
+              {MONTH_LABELS_SHORT.map(m=><th key={m} style={thStyle}>{m} {yy}</th>)}
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td style={tdStyle}>Montant</td>
+                {acompteMonths.map((v,i)=>(<td key={i} style={{...tdStyle,textAlign:"right"}}>{v?fmt(num(v)):""}</td>))}
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "ibs" && (() => {
+        const numCols: (keyof Ibs14Row)[] = ["montantBrutDevise","montantBrutDinars","montantNetDevise","montantIBS","montantNetDinars"]
+        return (
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              {["#","N° Facture","Montant Brut Devise","Taux Change/Date","Montant Brut Dinars","Montant Net Devise","Montant IBS","Montant Net Dinars"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {ibs14Rows.map((r,i)=>(
+                <tr key={i}>
+                  <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
+                  <td style={tdStyle}>{r.numFacture}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDevise?fmt(num(r.montantBrutDevise)):""}</td>
+                  <td style={tdStyle}>{r.tauxChange}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDinars?fmt(num(r.montantBrutDinars)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDevise?fmt(num(r.montantNetDevise)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantIBS?fmt(num(r.montantIBS)):""}</td>
+                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDinars?fmt(num(r.montantNetDinars)):""}</td>
+                </tr>
+              ))}
+              <tr style={{fontWeight:700}}>
+                <td style={tdStyle} colSpan={2}>TOTAL</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
+                <td style={tdStyle}/>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantIBS),0))}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantNetDinars),0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        )
+      })()}
+
+      {activeTab === "taxe_domicil" && (
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>
+            {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. à Payer"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {taxe15Rows.map((r,i)=>(
+              <tr key={i}>
+                <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
+                <td style={tdStyle}>{r.numFacture}</td>
+                <td style={tdStyle}>{r.dateFacture}</td>
+                <td style={tdStyle}>{r.raisonSociale}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDevise?fmt(num(r.montantNetDevise)):""}</td>
+                <td style={tdStyle}>{r.monnaie}</td>
+                <td style={tdStyle}>{r.tauxChange}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.montantDinars?fmt(num(r.montantDinars)):""}</td>
+                <td style={tdStyle}>{r.tauxTaxe}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.montantAPayer?fmt(num(r.montantAPayer)):""}</td>
+              </tr>
+            ))}
+            <tr style={{fontWeight:700}}>
+              <td style={tdStyle} colSpan={4}>TOTAL</td>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
+              <td style={tdStyle}/><td style={tdStyle}/>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
+              <td style={tdStyle}/>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+
+      {activeTab === "tva_autoliq" && (
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>
+            {["#","N° Facture","Montant Brut Devises","Taux Change/Date","Montant Brut Dinars","TVA 19%"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {tva16Rows.map((r,i)=>(
+              <tr key={i}>
+                <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
+                <td style={tdStyle}>{r.numFacture}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDevise?fmt(num(r.montantBrutDevise)):""}</td>
+                <td style={tdStyle}>{r.tauxChange}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDinars?fmt(num(r.montantBrutDinars)):""}</td>
+                <td style={{...tdStyle,textAlign:"right"}}>{r.tva19?fmt(num(r.tva19)):""}</td>
+              </tr>
+            ))}
+            <tr style={{fontWeight:700}}>
+              <td style={tdStyle} colSpan={2}>TOTAL</td>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
+              <td style={tdStyle}/>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
+              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -815,6 +1719,16 @@ export default function NouvelleDeclarationPage() {
   const [b12,           setB12]           = useState("")
   const [b13,           setB13]           = useState("")
   const [tapRows,       setTapRows]       = useState<TAPRow[]>([{ wilayaCode: "", commune: "", tap2: "" }])
+  const [siegeEncRows,  setSiegeEncRows]  = useState<SiegeEncRow[]>(Array(12).fill(null).map(() => ({ ttc: "", ht: "" })))
+  const [irgRows,        setIrgRows]        = useState<IrgRow[]>(Array(5).fill(null).map(() => ({ assietteImposable: "", montant: "" })))
+  const [taxe2Rows,      setTaxe2Rows]      = useState<Taxe2Row[]>([{ base: "", montant: "" }])
+  const [masterRows,     setMasterRows]     = useState<MasterRow[]>([{ ...EMPTY_MASTER }])
+  const [taxe11Montant,  setTaxe11Montant]  = useState("")
+  const [taxe12Rows,     setTaxe12Rows]     = useState<Taxe12Row[]>([{ montant: "" }, { montant: "" }])
+  const [acompteMonths,  setAcompteMonths]  = useState<string[]>(Array(12).fill(""))
+  const [ibs14Rows,      setIbs14Rows]      = useState<Ibs14Row[]>([{ ...EMPTY_IBS14 }])
+  const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
+  const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -849,13 +1763,13 @@ export default function NouvelleDeclarationPage() {
         }
         break
       case "tva_immo":
-        if (tvaImmoRows.some(r => !r.nomRaisonSociale.trim() || !r.idFiscal.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.refFacture.trim() || !r.montantHT || !r.tvaDeductible || !r.nature)) {
+        if (tvaImmoRows.some(r => !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !r.tva)) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
           validationError = true
         }
         break
       case "tva_biens":
-        if (tvaBiensRows.some(r => !r.nomRaisonSociale.trim() || !r.idFiscal.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.refFacture.trim() || !r.montantHT || !r.tvaDeductible || !r.nature)) {
+        if (tvaBiensRows.some(r => !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !r.tva)) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
           validationError = true
         }
@@ -875,6 +1789,24 @@ export default function NouvelleDeclarationPage() {
       case "etat_tap":
         if (tapRows.some(r => !r.wilayaCode || !r.commune.trim() || !r.tap2)) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "ca_siege":
+        if (siegeEncRows.every(r => !r.ttc && !r.ht)) {
+          toast({ title: "⚠ Champs incomplets", description: "Veuillez renseigner au moins une ligne du tableau Siège.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "irg":
+        if (irgRows.every(r => !r.assietteImposable && !r.montant)) {
+          toast({ title: "⚠ Champs incomplets", description: "Veuillez renseigner au moins une ligne IRG.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "taxe2":
+        if (!taxe2Rows[0].base && !taxe2Rows[0].montant) {
+          toast({ title: "⚠ Champs incomplets", description: "Veuillez renseigner la ligne Taxe 2%.", variant: "destructive" })
           validationError = true
         }
         break
@@ -899,6 +1831,16 @@ export default function NouvelleDeclarationPage() {
       b12: "",
       b13: "",
       tapRows: [] as TAPRow[],
+      caSiegeRows: [] as SiegeEncRow[],
+      irgRows: [] as IrgRow[],
+      taxe2Rows: [] as Taxe2Row[],
+      masterRows: [] as MasterRow[],
+      taxe11Montant: "",
+      taxe12Rows: [] as Taxe12Row[],
+      acompteMonths: [] as string[],
+      ibs14Rows: [] as Ibs14Row[],
+      taxe15Rows: [] as Taxe15Row[],
+      tva16Rows: [] as Tva16Row[],
     }
     
     // Remplir uniquement les données du tableau actif
@@ -922,12 +1864,82 @@ export default function NouvelleDeclarationPage() {
       case "etat_tap":
         baseDecl.tapRows = tapRows
         break
+      case "ca_siege":
+        baseDecl.caSiegeRows = siegeEncRows
+        break
+      case "irg":
+        baseDecl.irgRows = irgRows
+        break
+      case "taxe2":
+        baseDecl.taxe2Rows = taxe2Rows
+        break
+      case "taxe_masters":
+        baseDecl.masterRows = masterRows
+        break
+      case "taxe_vehicule":
+        baseDecl.taxe11Montant = taxe11Montant
+        break
+      case "taxe_formation":
+        baseDecl.taxe12Rows = taxe12Rows
+        break
+      case "acompte":
+        baseDecl.acompteMonths = acompteMonths
+        break
+      case "ibs":
+        baseDecl.ibs14Rows = ibs14Rows
+        break
+      case "taxe_domicil":
+        baseDecl.taxe15Rows = taxe15Rows
+        break
+      case "tva_autoliq":
+        baseDecl.tva16Rows = tva16Rows
+        break
     }
     
     try {
       const existing = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
       localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existing]))
     } catch { /* quota or SSR */ }
+
+    // Persist to database (non-blocking)
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      let tabData: unknown = {}
+      switch (activeTab) {
+        case "encaissement":   tabData = { encRows }; break
+        case "tva_immo":       tabData = { tvaImmoRows }; break
+        case "tva_biens":      tabData = { tvaBiensRows }; break
+        case "droits_timbre":  tabData = { timbreRows }; break
+        case "ca_tap":         tabData = { b12, b13 }; break
+        case "etat_tap":       tabData = { tapRows }; break
+        case "ca_siege":       tabData = { caSiegeRows: siegeEncRows }; break
+        case "irg":            tabData = { irgRows }; break
+        case "taxe2":          tabData = { taxe2Rows }; break
+        case "taxe_masters":   tabData = { masterRows }; break
+        case "taxe_vehicule":  tabData = { taxe11Montant }; break
+        case "taxe_formation": tabData = { taxe12Rows }; break
+        case "acompte":        tabData = { acompteMonths }; break
+        case "ibs":            tabData = { ibs14Rows }; break
+        case "taxe_domicil":   tabData = { taxe15Rows }; break
+        case "tva_autoliq":    tabData = { tva16Rows }; break
+      }
+      await fetch(`${apiBase}/api/fiscal`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          tabKey: activeTab,
+          mois,
+          annee,
+          direction,
+          dataJson: JSON.stringify(tabData),
+        }),
+      })
+    } catch { /* silently fail if backend unavailable */ }
     
     const tabLabel = TABS.find((t) => t.key === activeTab)?.label ?? activeTab
     toast({ title: "✓ Déclaration enregistrée", description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.` })
@@ -941,48 +1953,21 @@ export default function NouvelleDeclarationPage() {
 
   return (
     <LayoutWrapper user={user}>
-      {/* ── Print CSS ── */}
-      <style>{`
-        @media print {
-          @page { size: A4 landscape; margin: 12mm 10mm; }
-          body > * { display: none !important; }
-          body { margin: 0; padding: 0; }
-          #print-zone { 
-            display: block !important;
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 12mm 10mm !important;
-            background: white !important;
-            color: black !important;
-            font-family: Arial, sans-serif !important;
-          }
-          #print-zone * { 
-            display: block !important;
-            color: black !important;
-            background: white !important;
-          }
-          table { 
-            width: 100% !important;
-            border-collapse: collapse !important;
-            border: 1px solid #000 !important;
-          }
-          tr, td, th {
-            display: table-cell !important;
-            border: 1px solid #000 !important;
-            color: black !important;
-          }
-        }
-      `}</style>
-
-      {/* Hidden print zone – always rendered, shown only when printing */}
+      {/* Hidden print zone – content read via innerHTML for printing */}
       <PrintZone
         activeTab={activeTab} direction={direction} mois={mois} annee={annee}
         encRows={encRows} tvaImmoRows={tvaImmoRows} tvaBiensRows={tvaBiensRows}
         timbreRows={timbreRows} b12={b12} b13={b13} tapRows={tapRows}
+        caSiegeRows={siegeEncRows}
+        irgRows={irgRows}
+        taxe2Rows={taxe2Rows}
+        masterRows={masterRows}
+        taxe11Montant={taxe11Montant}
+        taxe12Rows={taxe12Rows}
+        acompteMonths={acompteMonths}
+        ibs14Rows={ibs14Rows}
+        taxe15Rows={taxe15Rows}
+        tva16Rows={tva16Rows}
       />
 
       <div className="space-y-5 w-full" ref={printRef}>
@@ -1003,8 +1988,9 @@ export default function NouvelleDeclarationPage() {
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Direction</label>
                 <select value={direction} onChange={(e) => setDirection(e.target.value)}
-                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300">
                   <option value="">— Sélectionner une direction —</option>
+                  <option value="Siège">Siège</option>
                   {regions.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </div>
@@ -1012,7 +1998,8 @@ export default function NouvelleDeclarationPage() {
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Mois</label>
                 <select value={mois} onChange={(e) => setMois(e.target.value)}
-                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                  disabled={activeTab === "acompte"}
+                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed">
                   {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
@@ -1020,126 +2007,188 @@ export default function NouvelleDeclarationPage() {
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Année</label>
                 <select value={annee} onChange={(e) => setAnnee(e.target.value)}
-                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300">
                   {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
-              {/* Preview badge */}
-              <div className="flex items-center gap-2 pb-0.5">
-                <span className="text-xs text-gray-400">Période :</span>
-                <span className="text-sm font-bold px-3 py-1 rounded-full border"
-                  style={{ borderColor: activeColor, color: activeColor, background: activeColor + "15" }}>
-                  {mon} {annee}
-                </span>
-                {direction && (
-                  <span className="text-xs text-gray-500 italic truncate max-w-[200px]">{direction}</span>
-                )}
+              {/* Tableau */}
+              <div className="space-y-1 flex-1 min-w-[220px]">
+                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tableau</label>
+                <select value={activeTab} onChange={(e) => setActiveTab(e.target.value)}
+                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: TABS.find(t => t.key === activeTab)?.color ?? undefined }}>
+                  {TABS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* ── Tabs ── */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="flex h-auto flex-wrap gap-1 bg-gray-100 p-1 rounded-lg w-full">
-            {TABS.map((t) => (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="flex-1 min-w-[130px] text-sm font-semibold py-2 transition-all data-[state=active]:shadow"
-                style={activeTab === t.key ? { backgroundColor: PRIMARY_COLOR, color: "white" } : {}}
-              >
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {/* ── TAB 1 – Encaissement */}
-          <TabsContent value="encaissement">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: "#2db34b" }}>
-                  Encaissement – Saisie des montants
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabEncaissement rows={encRows} setRows={setEncRows} onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB 2 – TVA / IMMO */}
-          <TabsContent value="tva_immo">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  État TVA / Immobilisations – Liste des factures
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB 3 – TVA / BIENS & SERV */}
-          <TabsContent value="tva_biens">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  État TVA / Biens &amp; Services – Liste des factures
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB 4 – Droits Timbre */}
-          <TabsContent value="droits_timbre">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  État Droits de Timbre – Saisie des montants
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabDroitsTimbre rows={timbreRows} setRows={setTimbreRows} onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB 5 – CA 7% & CA GLOB 1% */}
-          <TabsContent value="ca_tap">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  CA soumis à 7% &amp; CA Global soumis à 1% – Calcul automatique
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabCA b12={b12} setB12={setB12} b13={b13} setB13={setB13} onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB 6 – ETAT TAP */}
-          <TabsContent value="etat_tap">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  État TAP – Saisie par Wilaya / Commune
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabTAP rows={tapRows} setRows={setTapRows}
-                  mois={mois} setMois={setMois} annee={annee} setAnnee={setAnnee}
-                  onSave={handleSave} isSubmitting={isSubmitting} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {/* ── Table content ── */}
+        <div>
+          {activeTab === "encaissement" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>Encaissement – Saisie des montants</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabEncaissement rows={encRows} setRows={setEncRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "tva_immo" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État TVA / Immobilisations – Liste des factures</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "tva_biens" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État TVA / Biens &amp; Services – Liste des factures</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "droits_timbre" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État Droits de Timbre – Saisie des montants</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabDroitsTimbre rows={timbreRows} setRows={setTimbreRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "ca_tap" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>CA soumis à 7% &amp; CA Global soumis à 1% – Calcul automatique</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabCA b12={b12} setB12={setB12} b13={b13} setB13={setB13} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "etat_tap" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État TAP – Saisie par Wilaya / Commune</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTAP rows={tapRows} setRows={setTapRows}
+                    mois={mois} setMois={setMois} annee={annee} setAnnee={setAnnee}
+                    onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "ca_siege" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N7 – Chiffre d’affaire encaissé Siège</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabCaSiege rows={siegeEncRows} setRows={setSiegeEncRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "irg" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N8 – Situation IRG</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabIRG rows={irgRows} setRows={setIrgRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "taxe2" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N9 – Situation de la Taxe 2%</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTaxe2 rows={taxe2Rows} setRows={setTaxe2Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "taxe_masters" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N10 – État de la Taxe 1,5% des Masters</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabMasters rows={masterRows} setRows={setMasterRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "taxe_vehicule" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N11 – Taxe de Véhicule</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTaxeVehicule montant={taxe11Montant} setMontant={setTaxe11Montant} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "taxe_formation" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N12 – Taxe de Formation</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTaxeFormation rows={taxe12Rows} setRows={setTaxe12Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "acompte" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N13 – Acompte Provisionnel</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabAcompte months={acompteMonths} setMonths={setAcompteMonths} annee={annee} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "ibs" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N14 – IBS sur Fournisseurs Étrangers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabIBS rows={ibs14Rows} setRows={setIbs14Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "taxe_domicil" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N15 – Taxe Domiciliation Bancaire</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTaxeDomicil rows={taxe15Rows} setRows={setTaxe15Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "tva_autoliq" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N16 – TVA Auto Liquidation</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTvaAutoLiq rows={tva16Rows} setRows={setTva16Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+          </div>
       </div>
     </LayoutWrapper>
   )

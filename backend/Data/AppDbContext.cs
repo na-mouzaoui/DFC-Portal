@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Checkbook> Checkbooks { get; set; }
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
+    public DbSet<FiscalDeclaration> FiscalDeclarations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -113,6 +114,23 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.BankId }).IsUnique();
             entity.Property(e => e.PositionsJson).IsRequired();
+        });
+
+        // FiscalDeclaration configuration
+        modelBuilder.Entity<FiscalDeclaration>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.TabKey, e.Mois, e.Annee });
+            entity.Property(e => e.DataJson).IsRequired();
+            entity.Property(e => e.TabKey).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Direction).HasMaxLength(200);
+            entity.Property(e => e.Mois).HasMaxLength(10);
+            entity.Property(e => e.Annee).HasMaxLength(10);
         });
 
         // Seed data

@@ -37,8 +37,8 @@ export function LoginForm() {
           if (payload.role === "admin") destination = "/admin/dashboard"
         }
       } catch { /* use default */ }
+      setLoading(false)
       router.push(destination)
-      router.refresh()
     } else {
       setError(result.error || "Erreur de connexion")
       setLoading(false)
