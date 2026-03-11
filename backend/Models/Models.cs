@@ -149,3 +149,16 @@ public class FiscalDeclaration
 
     public User User { get; set; } = null!;
 }
+
+public class FiscalFournisseur
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string RaisonSociale { get; set; } = string.Empty;
+    public string RC { get; set; } = string.Empty;  // Registre de Commerce
+    public string NIF { get; set; } = string.Empty; // Numéro d'Identification Fiscale
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public User User { get; set; } = null!;
+}

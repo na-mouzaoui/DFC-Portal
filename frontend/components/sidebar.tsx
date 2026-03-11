@@ -16,6 +16,7 @@ import {
   Calculator,
   FilePlus,
   ClipboardList,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { logout } from "@/lib/auth-client"
@@ -31,6 +32,7 @@ const imprimeChecqueLinks = [
 const fiscaLinks = [
   { name: "Dashboard", href: "/fisca/dashboard", icon: LayoutDashboard },
   { name: "Nouvelle Déclaration", href: "/fisca/nouvelle-declaration", icon: FilePlus },
+  { name: "Fournisseurs", href: "/fisca/fournisseurs", icon: Users },
 ]
 
 interface SidebarProps {

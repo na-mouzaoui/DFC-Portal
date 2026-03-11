@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<Checkbook> Checkbooks { get; set; }
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
     public DbSet<FiscalDeclaration> FiscalDeclarations { get; set; }
+    public DbSet<FiscalFournisseur> FiscalFournisseurs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -114,6 +115,20 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.BankId }).IsUnique();
             entity.Property(e => e.PositionsJson).IsRequired();
+        });
+
+        // FiscalFournisseur configuration
+        modelBuilder.Entity<FiscalFournisseur>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(e => e.RaisonSociale).IsRequired().HasMaxLength(300);
+            entity.Property(e => e.RC).HasMaxLength(100);
+            entity.Property(e => e.NIF).HasMaxLength(100);
+            entity.HasIndex(e => e.UserId);
         });
 
         // FiscalDeclaration configuration
