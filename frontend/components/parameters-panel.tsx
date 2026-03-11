@@ -1,10 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { BankManagement } from "./bank-management"
 import { CalibrationTool } from "./calibration-tool"
-import { SupplierManagement } from "./supplier-management"
 import { CheckbookManagement } from "./checkbook-management"
+import { SupplierManagement } from "./supplier-management"
 
 type ParametersPanelProps = {
   preSelectedBankId?: string
@@ -13,17 +12,8 @@ type ParametersPanelProps = {
 export function ParametersPanel({ preSelectedBankId }: ParametersPanelProps) {
   const [banksVersion, setBanksVersion] = useState(0)
 
-  const handleBanksChange = () => setBanksVersion((version) => version + 1)
-
   return (
     <div className="space-y-10">
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Gestion des banques</h2>
-        </div>
-        <BankManagement onChange={handleBanksChange} />
-      </section>
-
       <section className="space-y-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">Gestion des chéquiers</h2>

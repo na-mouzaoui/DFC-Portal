@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import AdminUserManagement from "@/components/admin-user-management";
 import AdminRegionConfig from "@/components/admin-region-config";
 import AdminAuditLogs from "@/components/admin-audit-logs";
+import { BankManagement } from "@/components/bank-management";
+import { FiscalFournisseursManagement } from "@/components/fiscal-fournisseurs-management";
 import { logout } from "@/lib/auth-client";
 
 export default function AdminDashboard() {
@@ -53,10 +55,11 @@ export default function AdminDashboard() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="users">Utilisateurs</TabsTrigger>
             <TabsTrigger value="regions">Régions</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
+            <TabsTrigger value="gestion">Gestion</TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="space-y-4">
@@ -88,6 +91,25 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <AdminAuditLogs />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="gestion" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Gestion des banques</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BankManagement />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Gestion des fournisseurs fiscaux</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <FiscalFournisseursManagement />
               </CardContent>
             </Card>
           </TabsContent>
