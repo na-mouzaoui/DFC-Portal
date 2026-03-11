@@ -31,8 +31,87 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Pencil, Trash2, Plus, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Pencil, Trash2, Plus, Eye, EyeOff, KeyRound, Info } from "lucide-react";
 import { getRoleLabel } from "@/lib/roles";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+const ROLE_OPTIONS = [
+  {
+    value: "direction",
+    label: "Global",
+    privileges: [
+      "Accès complet à toutes les régions",
+      "Voir et imprimer tous les chèques",
+      "Accès aux déclarations fiscales de toutes les directions",
+      "Gestion des fournisseurs et carnet de chèques",
+    ],
+  },
+  {
+    value: "comptabilite",
+    label: "Finance",
+    privileges: [
+      "Accès aux fonctionnalités financières",
+      "Création et impression de chèques",
+      "Gestion des déclarations fiscales",
+      "Gestion des fournisseurs et carnet de chèques",
+    ],
+  },
+  {
+    value: "regionale",
+    label: "Régionale",
+    privileges: [
+      "Accès limité à sa région assignée uniquement",
+      "Création et impression de chèques régionaux",
+      "Consultation de l'historique de sa région",
+    ],
+  },
+];
+
+function RoleSelector({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <TooltipProvider>
+      <div className="flex gap-2">
+        {ROLE_OPTIONS.map((opt) => (
+          <Tooltip key={opt.value}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onChange(opt.value)}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                  value === opt.value
+                    ? "border-green-500 bg-green-50 text-green-700"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                {opt.label}
+                <Info className="h-3.5 w-3.5 opacity-50" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+              <p className="font-semibold mb-1">Privilèges — {opt.label}</p>
+              <ul className="space-y-0.5 list-disc list-inside">
+                {opt.privileges.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
+  );
+}
 
 interface User {
   id: number;
@@ -43,6 +122,7 @@ interface User {
   phoneNumber: string;
   role: string;
   region: string | null;
+  accessModules: string;
   createdAt: string;
 }
 
@@ -72,6 +152,7 @@ export default function AdminUserManagement() {
     phoneNumber: "",
     role: "comptabilite",
     region: "",
+    accessModules: ["cheque", "fisca"] as string[],
   });
 
   useEffect(() => {
@@ -155,7 +236,10 @@ export default function AdminUserManagement() {
         method: "POST",
         headers,
         credentials: "include",
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          accessModules: formData.accessModules.join(","),
+        }),
       });
 
       if (!response.ok) {
@@ -192,7 +276,10 @@ export default function AdminUserManagement() {
         method: "PUT",
         headers,
         credentials: "include",
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          accessModules: formData.accessModules.join(","),
+        }),
       });
 
       if (!response.ok) {
@@ -289,6 +376,7 @@ export default function AdminUserManagement() {
       phoneNumber: user.phoneNumber,
       role: user.role,
       region: user.region || "",
+      accessModules: user.accessModules ? user.accessModules.split(",").map(s => s.trim()).filter(Boolean) : ["cheque", "fisca"],
     });
     setIsEditOpen(true);
   };
@@ -303,6 +391,7 @@ export default function AdminUserManagement() {
       phoneNumber: "",
       role: "comptabilite",
       region: "",
+      accessModules: ["cheque", "fisca"],
     });
     setShowPassword(false);
   };
@@ -414,17 +503,42 @@ export default function AdminUserManagement() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">Rôle *</Label>
-                <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="direction">Global</SelectItem>
-                    <SelectItem value="comptabilite">Finance</SelectItem>
-                    <SelectItem value="regionale">Régionale</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Rôle *</Label>
+                <RoleSelector
+                  value={formData.role}
+                  onChange={(value) => setFormData({ ...formData, role: value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Accès aux modules *</Label>
+                <div className="flex gap-3">
+                  {[
+                    { id: "cheque", label: "Imprime Chèque" },
+                    { id: "fisca", label: "Fiscalité" },
+                  ].map((mod) => (
+                    <label
+                      key={mod.id}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium cursor-pointer transition-colors ${
+                        formData.accessModules.includes(mod.id)
+                          ? "border-green-500 bg-green-50 text-green-700"
+                          : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={formData.accessModules.includes(mod.id)}
+                        onChange={(e) => {
+                          const mods = e.target.checked
+                            ? [...formData.accessModules, mod.id]
+                            : formData.accessModules.filter((m) => m !== mod.id);
+                          setFormData({ ...formData, accessModules: mods });
+                        }}
+                      />
+                      {mod.label}
+                    </label>
+                  ))}
+                </div>
               </div>
               {formData.role === "regionale" && (
                 <div className="space-y-2">
@@ -464,6 +578,7 @@ export default function AdminUserManagement() {
               <TableHead>Téléphone</TableHead>
               <TableHead>Rôle</TableHead>
               <TableHead>Région</TableHead>
+              <TableHead>Modules</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -480,6 +595,15 @@ export default function AdminUserManagement() {
                   <Badge className="bg-green-100 text-green-800">{getRoleLabel(user.role)}</Badge>
                 </TableCell>
                 <TableCell>{user.region || "-"}</TableCell>
+                <TableCell>
+                  <div className="flex gap-1 flex-wrap">
+                    {(user.accessModules || "cheque,fisca").split(",").map((m) => (
+                      <Badge key={m} variant="outline" className="text-xs">
+                        {m.trim() === "cheque" ? "Chèque" : m.trim() === "fisca" ? "Fisca" : m.trim()}
+                      </Badge>
+                    ))}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <Button
@@ -571,17 +695,42 @@ export default function AdminUserManagement() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-role">Rôle</Label>
-              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="direction">Global</SelectItem>
-                  <SelectItem value="comptabilite">Finance</SelectItem>
-                  <SelectItem value="regionale">Régionale</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Rôle</Label>
+              <RoleSelector
+                value={formData.role}
+                onChange={(value) => setFormData({ ...formData, role: value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Accès aux modules</Label>
+              <div className="flex gap-3">
+                {[
+                  { id: "cheque", label: "Imprime Chèque" },
+                  { id: "fisca", label: "Fiscalité" },
+                ].map((mod) => (
+                  <label
+                    key={mod.id}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium cursor-pointer transition-colors ${
+                      formData.accessModules.includes(mod.id)
+                        ? "border-green-500 bg-green-50 text-green-700"
+                        : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={formData.accessModules.includes(mod.id)}
+                      onChange={(e) => {
+                        const mods = e.target.checked
+                          ? [...formData.accessModules, mod.id]
+                          : formData.accessModules.filter((m) => m !== mod.id);
+                        setFormData({ ...formData, accessModules: mods });
+                      }}
+                    />
+                    {mod.label}
+                  </label>
+                ))}
+              </div>
             </div>
             {formData.role === "regionale" && (
               <div className="space-y-2">

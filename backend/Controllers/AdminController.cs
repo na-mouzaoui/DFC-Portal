@@ -55,6 +55,7 @@ public class AdminController : ControllerBase
                 u.PhoneNumber,
                 u.Role,
                 u.Region,
+                u.AccessModules,
                 u.CreatedAt
             })
             .ToListAsync();
@@ -87,6 +88,7 @@ public class AdminController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Region,
+            user.AccessModules,
             user.CreatedAt
         });
     }
@@ -123,6 +125,7 @@ public class AdminController : ControllerBase
             PhoneNumber = request.PhoneNumber,
             Role = request.Role,
             Region = request.Role == "regionale" ? request.Region : null,
+            AccessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -148,6 +151,7 @@ public class AdminController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Region,
+            user.AccessModules,
             user.CreatedAt
         });
     }
@@ -189,6 +193,9 @@ public class AdminController : ControllerBase
             user.Region = request.Role == "regionale" ? request.Region : null;
         }
 
+        if (request.AccessModules != null)
+            user.AccessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules;
+
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
@@ -214,7 +221,8 @@ public class AdminController : ControllerBase
             user.Direction,
             user.PhoneNumber,
             user.Role,
-            user.Region
+            user.Region,
+            user.AccessModules
         });
     }
 
@@ -321,6 +329,7 @@ public class CreateUserRequest
     public string PhoneNumber { get; set; } = string.Empty;
     public string Role { get; set; } = "comptabilite";
     public string? Region { get; set; }
+    public string? AccessModules { get; set; }
 }
 
 public class UpdateUserRequest
@@ -332,4 +341,5 @@ public class UpdateUserRequest
     public string? Role { get; set; }
     public string? Region { get; set; }
     public string? Password { get; set; }
+    public string? AccessModules { get; set; }
 }

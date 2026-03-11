@@ -50,6 +50,7 @@ public class AuthController : ControllerBase
                 phoneNumber = user.PhoneNumber,
                 role = user.Role,
                 region = user.Region,
+                accessModules = user.AccessModules,
                 createdAt = user.CreatedAt
             }
         });
@@ -117,6 +118,7 @@ public class AuthController : ControllerBase
                 phoneNumber = user.PhoneNumber,
                 role = user.Role,
                 region = user.Region,
+                accessModules = user.AccessModules,
                 createdAt = user.CreatedAt
             }
         });

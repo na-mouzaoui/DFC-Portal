@@ -8,6 +8,7 @@ export interface User {
   role: string
   direction: string
   region?: string
+  accessModules?: string
   createdAt: string
 }
 

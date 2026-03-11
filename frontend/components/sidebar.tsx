@@ -43,6 +43,9 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
 
   const isFiscaPath = pathname.startsWith("/fisca")
+  const modules = (user.accessModules || "cheque,fisca").split(",").map((m: string) => m.trim())
+  const hasChecque = modules.includes("cheque")
+  const hasFisca = modules.includes("fisca")
   const [openImprimeChecque, setOpenImprimeChecque] = useState(!isFiscaPath)
   const [openFisca, setOpenFisca] = useState(isFiscaPath)
 
@@ -147,14 +150,14 @@ export function Sidebar({ user }: SidebarProps) {
         </div>
       </div>
       <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
-        {renderGroup(
+        {hasChecque && renderGroup(
           "Imprime Chèque",
           Printer,
           imprimeChecqueLinks,
           openImprimeChecque,
           () => setOpenImprimeChecque((v) => !v),
         )}
-        {renderGroup(
+        {hasFisca && renderGroup(
           "Fisca",
           Calculator,
           fiscaLinks,
