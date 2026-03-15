@@ -36,7 +36,10 @@ public class FiscalFournisseursController : ControllerBase
             .Select(f => new {
                 id = f.Id,
                 raisonSociale = f.RaisonSociale,
+                adresse = f.Adresse,
+                authNif = f.AuthNIF,
                 rc = f.RC,
+                authRc = f.AuthRC,
                 nif = f.NIF,
                 createdAt = f.CreatedAt,
                 updatedAt = f.UpdatedAt
@@ -58,7 +61,10 @@ public class FiscalFournisseursController : ControllerBase
         {
             UserId = userId,
             RaisonSociale = dto.RaisonSociale.Trim(),
+            Adresse = dto.Adresse?.Trim() ?? string.Empty,
+            AuthNIF = dto.AuthNIF?.Trim() ?? string.Empty,
             RC = dto.RC?.Trim() ?? string.Empty,
+            AuthRC = dto.AuthRC?.Trim() ?? string.Empty,
             NIF = dto.NIF?.Trim() ?? string.Empty,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -70,7 +76,10 @@ public class FiscalFournisseursController : ControllerBase
         return CreatedAtAction(nameof(GetAll), new { id = fournisseur.Id }, new {
             id = fournisseur.Id,
             raisonSociale = fournisseur.RaisonSociale,
+            adresse = fournisseur.Adresse,
+            authNif = fournisseur.AuthNIF,
             rc = fournisseur.RC,
+            authRc = fournisseur.AuthRC,
             nif = fournisseur.NIF,
             createdAt = fournisseur.CreatedAt,
             updatedAt = fournisseur.UpdatedAt
@@ -92,7 +101,10 @@ public class FiscalFournisseursController : ControllerBase
             return NotFound(new { message = "Fournisseur introuvable." });
 
         fournisseur.RaisonSociale = dto.RaisonSociale.Trim();
+        fournisseur.Adresse = dto.Adresse?.Trim() ?? string.Empty;
+        fournisseur.AuthNIF = dto.AuthNIF?.Trim() ?? string.Empty;
         fournisseur.RC = dto.RC?.Trim() ?? string.Empty;
+        fournisseur.AuthRC = dto.AuthRC?.Trim() ?? string.Empty;
         fournisseur.NIF = dto.NIF?.Trim() ?? string.Empty;
         fournisseur.UpdatedAt = DateTime.UtcNow;
 
@@ -100,7 +112,10 @@ public class FiscalFournisseursController : ControllerBase
         return Ok(new {
             id = fournisseur.Id,
             raisonSociale = fournisseur.RaisonSociale,
+            adresse = fournisseur.Adresse,
+            authNif = fournisseur.AuthNIF,
             rc = fournisseur.RC,
+            authRc = fournisseur.AuthRC,
             nif = fournisseur.NIF,
             createdAt = fournisseur.CreatedAt,
             updatedAt = fournisseur.UpdatedAt
@@ -127,6 +142,9 @@ public class FiscalFournisseursController : ControllerBase
 public class FiscalFournisseurDto
 {
     public string RaisonSociale { get; set; } = string.Empty;
+    public string? Adresse { get; set; }
+    public string? AuthNIF { get; set; }
     public string? RC { get; set; }
+    public string? AuthRC { get; set; }
     public string? NIF { get; set; }
 }

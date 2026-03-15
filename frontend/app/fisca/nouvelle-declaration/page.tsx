@@ -184,36 +184,148 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 2 & 3 – TVA/IMMO  and  TVA/BIENS & SERV (controlled, same structure)
 // ─────────────────────────────────────────────────────────────────────────────
+type FiscalFournisseurOption = {
+  id: number
+  raisonSociale: string
+  adresse: string
+  nif: string
+  authNif: string
+  rc: string
+  authRc: string
+}
+
 type TvaRow = {
+  fournisseurId?: string
   nomRaisonSociale: string; adresse: string; nif: string; authNif: string
   numRC: string; authRC: string; numFacture: string; dateFacture: string
-  montantHT: string; tva: string
+  montantHT: string; tva: string; tauxTVA?: TvaRate | ""
 }
 const EMPTY_TVA: TvaRow = {
+  fournisseurId: "",
   nomRaisonSociale: "", adresse: "", nif: "", authNif: "",
   numRC: "", authRC: "", numFacture: "", dateFacture: "",
-  montantHT: "", tva: "",
+  montantHT: "", tva: "", tauxTVA: "",
+}
+
+const TVA_RATE_OPTIONS = [
+  { value: "19", label: "19%" },
+  { value: "9", label: "9%" },
+] as const
+
+type TvaRate = (typeof TVA_RATE_OPTIONS)[number]["value"]
+
+const normalizeTvaRate = (value?: string): TvaRate | "" => {
+  if (value === "19" || value === "9") return value
+  return ""
+}
+
+const calculateTvaFromRate = (montantHT: string, tauxTVA?: string) => {
+  const rate = normalizeTvaRate(tauxTVA)
+  return rate ? num(montantHT) * (Number(rate) / 100) : 0
+}
+
+const getTvaAmount = (row: TvaRow, useRateSelection: boolean) => {
+  const rate = normalizeTvaRate(row.tauxTVA)
+  if (useRateSelection && rate) {
+    return calculateTvaFromRate(row.montantHT, rate)
+  }
+  return num(row.tva)
+}
+
+const getTvaRateLabel = (tauxTVA?: string) => {
+  const rate = normalizeTvaRate(tauxTVA)
+  return rate ? `${rate}%` : "—"
+}
+
+const printValueOrZero = (value: unknown) => {
+  const normalized = safeString(value).trim()
+  return normalized ? normalized : "0"
+}
+
+const safeString = (value: unknown) => {
+  if (typeof value === "string") return value
+  if (value === null || value === undefined) return ""
+  return String(value)
+}
+
+const normalizeFiscalFournisseurOption = (value: unknown): FiscalFournisseurOption | null => {
+  if (!value || typeof value !== "object") return null
+  const raw = value as Record<string, unknown>
+  const id = Number(raw.id)
+  if (!Number.isFinite(id)) return null
+
+  return {
+    id,
+    raisonSociale: safeString(raw.raisonSociale),
+    adresse: safeString(raw.adresse),
+    nif: safeString(raw.nif),
+    authNif: safeString(raw.authNif),
+    rc: safeString(raw.rc),
+    authRc: safeString(raw.authRc),
+  }
 }
 
 interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAction<TvaRow[]>>;
   onSave: () => void;
   isSubmitting: boolean;
+  fournisseurs: FiscalFournisseurOption[];
+  withSelectableRate?: boolean;
 }
 
-function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
+function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSelectableRate = false }: Tab23Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof TvaRow, val: string) =>
-    setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
+    setRows((p) =>
+      p.map((r, idx) => {
+        if (idx !== i) return r
+        const next = { ...r, [field]: val } as TvaRow
+        if (withSelectableRate && (field === "montantHT" || field === "tauxTVA")) {
+          const rate = normalizeTvaRate(next.tauxTVA)
+          next.tva = next.montantHT && rate ? calculateTvaFromRate(next.montantHT, rate).toFixed(2) : ""
+        }
+        return next
+      }),
+    )
+
+  const selectFournisseur = (i: number, fournisseurId: string) =>
+    setRows((p) =>
+      p.map((r, idx) => {
+        if (idx !== i) return r
+        const selected = fournisseurs.find((f) => String(f.id) === fournisseurId)
+        if (!selected) {
+          return {
+            ...r,
+            fournisseurId: "",
+            nomRaisonSociale: "",
+            adresse: "",
+            nif: "",
+            authNif: "",
+            numRC: "",
+            authRC: "",
+          }
+        }
+        return {
+          ...r,
+          fournisseurId,
+          nomRaisonSociale: selected.raisonSociale ?? "",
+          adresse: selected.adresse ?? "",
+          nif: selected.nif ?? "",
+          authNif: selected.authNif ?? "",
+          numRC: selected.rc ?? "",
+          authRC: selected.authRc ?? "",
+        }
+      }),
+    )
 
   const totalHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const totalTVA = rows.reduce((s, r) => s + num(r.tva), 0)
+  const totalTVA = rows.reduce((s, r) => s + getTvaAmount(r, withSelectableRate), 0)
   const totalTTC = totalHT + totalTVA
 
   const headers = [
     "Nom / Raison Sociale", "Adresse", "NIF", "Auth. NIF",
     "N° RC", "Auth. N° RC", "N° Facture", "Date",
-    "Montant HT", "TVA", "Montant TTC",
+    "Montant HT", ...(withSelectableRate ? ["Taux TVA"] : []), "TVA", "Montant TTC",
   ]
 
   return (
@@ -231,20 +343,56 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
           </thead>
           <tbody>
             {rows.map((row, i) => {
-              const ttc = num(row.montantHT) + num(row.tva)
+              const currentRow: TvaRow = { ...EMPTY_TVA, ...row, fournisseurId: row.fournisseurId ?? "" }
+              const rowTva = getTvaAmount(currentRow, withSelectableRate)
+              const ttc = num(currentRow.montantHT) + rowTva
+              const supplierPlaceholder = currentRow.nomRaisonSociale?.trim() || "Sélectionner…"
               return (
                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                  <td className="px-1 py-1 border-b"><Input value={row.nomRaisonSociale} onChange={(e) => update(i, "nomRaisonSociale", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 160 }} placeholder="Nom / Raison sociale" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.adresse} onChange={(e) => update(i, "adresse", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="Adresse" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.nif} onChange={(e) => update(i, "nif", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="NIF" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.authNif} onChange={(e) => update(i, "authNif", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="Auth. NIF" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.numRC} onChange={(e) => update(i, "numRC", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° RC" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.authRC} onChange={(e) => update(i, "authRC", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="Auth. N° RC" /></td>
-                  <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
-                  <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
-                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantHT} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
-                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tva} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  <td className="px-1 py-1 border-b">
+                    <select
+                      value={currentRow.fournisseurId ?? ""}
+                      onChange={(e) => selectFournisseur(i, e.target.value)}
+                      className="h-7 rounded border border-gray-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-300"
+                      style={{ minWidth: 220 }}
+                    >
+                      <option value="">{supplierPlaceholder}</option>
+                      {fournisseurs.map((f) => (
+                        <option key={f.id} value={String(f.id)}>{f.raisonSociale || "—"}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.adresse ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 150 }} placeholder="Auto" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.nif ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.authNif ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.numRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.authRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
+                  <td className="px-1 py-1 border-b"><Input value={currentRow.numFacture ?? ""} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
+                  <td className="px-1 py-1 border-b"><Input type="date" value={currentRow.dateFacture ?? ""} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
+                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  {withSelectableRate && (
+                    <td className="px-1 py-1 border-b">
+                      <select
+                        value={normalizeTvaRate(currentRow.tauxTVA)}
+                        onChange={(e) => update(i, "tauxTVA", e.target.value)}
+                        className="h-7 rounded border border-gray-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-300"
+                        style={{ minWidth: 110 }}
+                      >
+                        <option value="">Taux</option>
+                        {TVA_RATE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
+                  {withSelectableRate ? (
+                    <td className="px-3 py-1 border-b text-xs text-right text-gray-700 font-semibold bg-gray-50/50" style={{ minWidth: 110 }}>
+                      {currentRow.montantHT && normalizeTvaRate(currentRow.tauxTVA) ? fmt(rowTva) : "—"}
+                    </td>
+                  ) : (
+                    <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={currentRow.tva ?? ""} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  )}
                   <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{ttc > 0 ? fmt(ttc) : "—"}</td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
@@ -258,6 +406,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting }: Tab23Props) {
             <tr className="bg-green-100 font-semibold">
               <td colSpan={9} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
+              {withSelectableRate && <td className="px-3 py-2 text-xs text-center border-t text-gray-500">—</td>}
               <td className="px-3 py-2 text-xs border-t">{fmt(totalTVA)}</td>
               <td className="px-3 py-2 text-xs border-t">{fmt(totalTTC)}</td>
               <td className="border-t" />
@@ -1284,37 +1433,42 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
 
       {(activeTab === "tva_immo" || activeTab === "tva_biens") && (() => {
         const rows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
+        const showRateColumn = activeTab === "tva_immo" || activeTab === "tva_biens"
         const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-        const tTVA = rows.reduce((s, r) => s + num(r.tva), 0)
+        const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, showRateColumn), 0)
         const tTTC = tHT + tTVA
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
-              {["#","Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT","TVA","Montant TTC"].map((h) => (
+              {["#","Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} style={{ background: "#fff", color: "#000" }}>
+              {rows.map((r, i) => {
+                const rowTva = getTvaAmount(r, showRateColumn)
+                const rowTTC = num(r.montantHT) + rowTva
+                return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                   <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nomRaisonSociale}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.adresse}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.nif}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.authNif}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numRC}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.authRC}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.nomRaisonSociale)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.adresse)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.nif)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.authNif)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.numRC)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.authRC)}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numFacture}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.dateFacture}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tva ? fmt(num(r.tva)) : ""}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{fmt(num(r.montantHT) + num(r.tva))}</td>
+                  {showRateColumn && <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{getTvaRateLabel(r.tauxTVA)}</td>}
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : r.tva ? fmt(num(r.tva)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT || rowTva ? fmt(rowTTC) : ""}</td>
                 </tr>
-              ))}
+              })}
             </tbody>
             <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
               <td colSpan={9} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tHT)}</td>
+              {showRateColumn && <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#ddd", color: "#000" }}>—</td>}
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTVA)}</td>
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTTC)}</td>
             </tr></tfoot>
@@ -1672,6 +1826,7 @@ export default function NouvelleDeclarationPage() {
 
   // ── Regions (fetched from API) ──
   const [regions, setRegions] = useState<{ id: number; name: string }[]>([])
+  const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   useEffect(() => {
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
     fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"}/api/regions`, {
@@ -1680,6 +1835,24 @@ export default function NouvelleDeclarationPage() {
     })
       .then((r) => r.json())
       .then((data: { id: number; name: string }[]) => setRegions(data))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"}/api/fiscal-fournisseurs`, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((data: unknown) => {
+        const normalized = Array.isArray(data)
+          ? data
+              .map((item) => normalizeFiscalFournisseurOption(item))
+              .filter((item): item is FiscalFournisseurOption => item !== null)
+          : []
+        setFiscalFournisseurs(normalized)
+      })
       .catch(() => {})
   }, [])
 
@@ -1752,13 +1925,13 @@ export default function NouvelleDeclarationPage() {
         }
         break
       case "tva_immo":
-        if (tvaImmoRows.some(r => !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !r.tva)) {
+        if (tvaImmoRows.some(r => !r.fournisseurId || !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !normalizeTvaRate(r.tauxTVA))) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
           validationError = true
         }
         break
       case "tva_biens":
-        if (tvaBiensRows.some(r => !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !r.tva)) {
+        if (tvaBiensRows.some(r => !r.fournisseurId || !r.nomRaisonSociale.trim() || !r.nif.trim() || !r.adresse.trim() || !r.numRC.trim() || !r.dateFacture || !r.numFacture.trim() || !r.montantHT || !normalizeTvaRate(r.tauxTVA))) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
           validationError = true
         }
@@ -2040,7 +2213,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État TVA / Immobilisations – Liste des factures</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate />
                 </CardContent>
               </Card>
             )}
@@ -2050,7 +2223,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>État TVA / Biens &amp; Services – Liste des factures</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate />
                 </CardContent>
               </Card>
             )}

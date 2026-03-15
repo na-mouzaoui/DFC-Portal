@@ -22,7 +22,7 @@ export default function GestionFournisseursPage() {
         <div>
           <h1 className="text-2xl font-bold">Fournisseurs Fiscaux</h1>
           <p className="text-sm text-muted-foreground">
-            Gérez vos fournisseurs (Raison Sociale, RC, NIF)
+            Gérez vos fournisseurs (Nom / Raison Sociale, Adresse, NIF, Auth. NIF, N° RC, Auth. N° RC)
           </p>
         </div>
         <FiscalFournisseursManagement />

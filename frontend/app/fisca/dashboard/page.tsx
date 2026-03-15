@@ -13,7 +13,8 @@ import { FileText, CheckCircle, Clock, AlertTriangle, Eye, Trash2, Printer, Filt
 import { useToast } from "@/hooks/use-toast"
 
 type EncRow = { designation: string; ttc: string }
-type TvaRow = { nomRaisonSociale: string; adresse: string; nif: string; authNif: string; numRC: string; authRC: string; numFacture: string; dateFacture: string; montantHT: string; tva: string }
+type TvaRate = "19" | "9"
+type TvaRow = { nomRaisonSociale: string; adresse: string; nif: string; authNif: string; numRC: string; authRC: string; numFacture: string; dateFacture: string; montantHT: string; tva: string; tauxTVA?: TvaRate | "" }
 type TimbreRow = { designation: string; caTTCEsp: string; droitTimbre: string }
 type TAPRow = { wilayaCode: string; commune: string; tap2: string }
 type SiegeEncRow = { ttc: string; ht: string }
@@ -95,6 +96,25 @@ const DASH_TABS = [
 const fmt = (v: number | string) =>
   isNaN(Number(v)) || v === "" ? "–" : Number(v).toLocaleString("fr-DZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string) => parseFloat(v) || 0
+const normalizeTvaRate = (value?: string): TvaRate | "" => {
+  if (value === "19" || value === "9") return value
+  return ""
+}
+const getTvaAmount = (row: TvaRow, showRateColumn: boolean) => {
+  const rate = normalizeTvaRate(row.tauxTVA)
+  if (showRateColumn && rate) {
+    return num(row.montantHT) * (Number(rate) / 100)
+  }
+  return num(row.tva)
+}
+const getTvaRateLabel = (value?: string) => {
+  const rate = normalizeTvaRate(value)
+  return rate ? `${rate}%` : "—"
+}
+const textOrZero = (value?: string) => {
+  const normalized = (value ?? "").trim()
+  return normalized ? normalized : "0"
+}
 const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px", textAlign: "left", fontWeight: 600 }
 const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
 
@@ -135,40 +155,43 @@ function EncTable({ rows }: { rows: EncRow[] }) {
   )
 }
 
-function TvaTable({ rows }: { rows: TvaRow[] }) {
+function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateColumn?: boolean }) {
   const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const tTVA = rows.reduce((s, r) => s + num(r.tva), 0)
+  const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, showRateColumn), 0)
   const tTTC = tHT + tTVA
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT","TVA","Montant TTC"].map((h) => (
+          {["Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
-          <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.nomRaisonSociale || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.adresse || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.nif || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.authNif || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numRC || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.authRC || "—"}</td>
+        {rows.map((r, i) => {
+          const rowTva = getTvaAmount(r, showRateColumn)
+          return <tr key={i} style={{ background: "#fff", color: "#000" }}>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.nomRaisonSociale)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.adresse)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.nif)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.authNif)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.numRC)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.authRC)}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFacture || "—"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFacture || "—"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantHT)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tva)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(r.montantHT) + num(r.tva))}</td>
+            {showRateColumn && <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "center" }}>{getTvaRateLabel(r.tauxTVA)}</td>}
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : fmt(r.tva)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(r.montantHT) + rowTva)}</td>
           </tr>
-        ))}
+        })}
       </tbody>
       <tfoot>
         <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
           <td colSpan={8} style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tHT)}</td>
+          {showRateColumn && <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "center" }}>—</td>}
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTVA)}</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTTC)}</td>
         </tr>
@@ -549,8 +572,8 @@ function Tva16Table({ rows }: { rows: Tva16Row[] }) {
 function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDeclaration; color: string }) {
   switch (tabKey) {
     case "encaissement":  return <EncTable rows={decl.encRows ?? []} />
-    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} />
-    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} />
+    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} showRateColumn />
+    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} showRateColumn />
     case "droits_timbre": return <TimbreTable rows={decl.timbreRows ?? []} />
     case "ca_tap":        return <CATable b12={decl.b12 ?? ""} b13={decl.b13 ?? ""} />
     case "etat_tap":      return <TAPTable rows={decl.tapRows ?? []} />

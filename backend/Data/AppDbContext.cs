@@ -126,7 +126,10 @@ public class AppDbContext : DbContext
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.Property(e => e.RaisonSociale).IsRequired().HasMaxLength(300);
+            entity.Property(e => e.Adresse).HasMaxLength(500);
+            entity.Property(e => e.AuthNIF).HasMaxLength(150);
             entity.Property(e => e.RC).HasMaxLength(100);
+            entity.Property(e => e.AuthRC).HasMaxLength(150);
             entity.Property(e => e.NIF).HasMaxLength(100);
             entity.HasIndex(e => e.UserId);
         });

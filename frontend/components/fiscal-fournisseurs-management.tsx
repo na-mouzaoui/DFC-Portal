@@ -36,7 +36,10 @@ import { Plus, Pencil, Trash2, Upload, Download, Search, Loader2 } from "lucide-
 interface FiscalFournisseur {
   id: number
   raisonSociale: string
+  adresse: string
+  authNif: string
   rc: string
+  authRc: string
   nif: string
   createdAt: string
   updatedAt: string
@@ -44,11 +47,57 @@ interface FiscalFournisseur {
 
 interface FormData {
   raisonSociale: string
+  adresse: string
+  authNif: string
   rc: string
+  authRc: string
   nif: string
 }
 
-const EMPTY_FORM: FormData = { raisonSociale: "", rc: "", nif: "" }
+const EMPTY_FORM: FormData = { raisonSociale: "", adresse: "", authNif: "", rc: "", authRc: "", nif: "" }
+
+const parseCsvLine = (line: string) => {
+  const values: string[] = []
+  let current = ""
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i]
+
+    if (char === '"') {
+      const next = line[i + 1]
+      if (inQuotes && next === '"') {
+        current += '"'
+        i += 1
+      } else {
+        inQuotes = !inQuotes
+      }
+      continue
+    }
+
+    if (char === ";" && !inQuotes) {
+      values.push(current.trim())
+      current = ""
+      continue
+    }
+
+    current += char
+  }
+
+  values.push(current.trim())
+  return values
+}
+
+const normalizeCsvHeader = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[àâä]/g, "a")
+    .replace(/[éèêë]/g, "e")
+    .replace(/[îï]/g, "i")
+    .replace(/[ôö]/g, "o")
+    .replace(/[ùûü]/g, "u")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 
 export function FiscalFournisseursManagement() {
   const { toast } = useToast()
@@ -83,11 +132,22 @@ export function FiscalFournisseursManagement() {
   useEffect(() => { fetchFournisseurs() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCreate = () => { setEditTarget(null); setForm(EMPTY_FORM); setDialogOpen(true) }
-  const openEdit = (f: FiscalFournisseur) => { setEditTarget(f); setForm({ raisonSociale: f.raisonSociale, rc: f.rc, nif: f.nif }); setDialogOpen(true) }
+  const openEdit = (f: FiscalFournisseur) => {
+    setEditTarget(f)
+    setForm({
+      raisonSociale: f.raisonSociale,
+      adresse: f.adresse,
+      authNif: f.authNif,
+      rc: f.rc,
+      authRc: f.authRc,
+      nif: f.nif,
+    })
+    setDialogOpen(true)
+  }
 
   const handleSave = async () => {
     if (!form.raisonSociale.trim()) {
-      toast({ title: "Validation", description: "La raison sociale est obligatoire.", variant: "destructive" })
+      toast({ title: "Validation", description: "Le champ Nom / Raison Sociale est obligatoire.", variant: "destructive" })
       return
     }
     setSaving(true)
@@ -97,7 +157,14 @@ export function FiscalFournisseursManagement() {
       const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raisonSociale: form.raisonSociale.trim(), rc: form.rc.trim(), nif: form.nif.trim() }),
+        body: JSON.stringify({
+          raisonSociale: form.raisonSociale.trim(),
+          adresse: form.adresse.trim(),
+          authNIF: form.authNif.trim(),
+          rc: form.rc.trim(),
+          authRC: form.authRc.trim(),
+          nif: form.nif.trim(),
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -131,8 +198,15 @@ export function FiscalFournisseursManagement() {
   }
 
   const handleExport = () => {
-    const rows = filtered.map((f) => [`"${f.raisonSociale.replace(/"/g, '""')}"`, `"${f.rc.replace(/"/g, '""')}"`, `"${f.nif.replace(/"/g, '""')}"`])
-    const csv = [["Raison Sociale", "RC", "NIF"].join(";"), ...rows.map((r) => r.join(";"))].join("\r\n")
+    const rows = filtered.map((f) => [
+      `"${f.raisonSociale.replace(/"/g, '""')}"`,
+      `"${f.adresse.replace(/"/g, '""')}"`,
+      `"${f.nif.replace(/"/g, '""')}"`,
+      `"${f.authNif.replace(/"/g, '""')}"`,
+      `"${f.rc.replace(/"/g, '""')}"`,
+      `"${f.authRc.replace(/"/g, '""')}"`,
+    ])
+    const csv = [["Nom / Raison Sociale", "Adresse", "NIF", "Auth. NIF", "N° RC", "Auth. N° RC"].join(";"), ...rows.map((r) => r.join(";"))].join("\r\n")
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -146,16 +220,64 @@ export function FiscalFournisseursManagement() {
     e.target.value = ""
     const reader = new FileReader()
     reader.onload = async (ev) => {
-      const lines = ((ev.target?.result as string) || "").replace(/\r/g, "").split("\n").filter(Boolean).slice(1)
+      const source = ((ev.target?.result as string) || "").replace(/\r/g, "")
+      const allLines = source.split("\n").map((line) => line.trim()).filter(Boolean)
+      if (allLines.length === 0) {
+        toast({ title: "Import CSV", description: "Le fichier est vide.", variant: "destructive" })
+        return
+      }
+
+      const firstLine = parseCsvLine(allLines[0])
+      const headers = firstLine.map(normalizeCsvHeader)
+      const hasHeader = headers.some((h) =>
+        [
+          "nom raison sociale",
+          "raison sociale",
+          "adresse",
+          "nif",
+          "auth nif",
+          "n rc",
+          "no rc",
+          "numero rc",
+          "auth n rc",
+          "auth no rc",
+          "auth numero rc",
+        ].includes(h),
+      )
+
+      const lines = hasHeader ? allLines.slice(1) : allLines
+
+      const headerIndex = (candidates: string[], fallback: number) => {
+        if (!hasHeader) return fallback
+        const index = headers.findIndex((h) => candidates.includes(h))
+        return index >= 0 ? index : fallback
+      }
+
+      const idxNom = headerIndex(["nom raison sociale", "raison sociale"], 0)
+      const idxAdresse = headerIndex(["adresse"], 1)
+      const idxNif = headerIndex(["nif"], 2)
+      const idxAuthNif = headerIndex(["auth nif"], 3)
+      const idxRc = headerIndex(["n rc", "no rc", "numero rc"], 4)
+      const idxAuthRc = headerIndex(["auth n rc", "auth no rc", "auth numero rc"], 5)
+
       let created = 0, errors = 0
       for (const line of lines) {
-        const cols = line.split(";").map((c) => c.replace(/^"|"$/g, "").replace(/""/g, '"').trim())
-        if (!cols[0]) continue
+        const cols = parseCsvLine(line)
+        const isLegacyFormat = !hasHeader && cols.length <= 3
+        const nom = isLegacyFormat ? cols[0] ?? "" : cols[idxNom] ?? cols[0] ?? ""
+        if (!nom.trim()) continue
         try {
           const res = await authFetch("/api/fiscal-fournisseurs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ raisonSociale: cols[0] ?? "", rc: cols[1] ?? "", nif: cols[2] ?? "" }),
+            body: JSON.stringify({
+              raisonSociale: nom,
+              adresse: isLegacyFormat ? "" : cols[idxAdresse] ?? "",
+              nif: isLegacyFormat ? cols[2] ?? "" : cols[idxNif] ?? "",
+              authNIF: isLegacyFormat ? "" : cols[idxAuthNif] ?? "",
+              rc: isLegacyFormat ? cols[1] ?? "" : cols[idxRc] ?? "",
+              authRC: isLegacyFormat ? "" : cols[idxAuthRc] ?? "",
+            }),
           })
           if (res.ok) created++; else errors++
         } catch { errors++ }
@@ -168,7 +290,14 @@ export function FiscalFournisseursManagement() {
 
   const filtered = fournisseurs.filter((f) => {
     const q = search.toLowerCase()
-    return f.raisonSociale.toLowerCase().includes(q) || f.rc.toLowerCase().includes(q) || f.nif.toLowerCase().includes(q)
+    return (
+      f.raisonSociale.toLowerCase().includes(q) ||
+      f.adresse.toLowerCase().includes(q) ||
+      f.nif.toLowerCase().includes(q) ||
+      f.authNif.toLowerCase().includes(q) ||
+      f.rc.toLowerCase().includes(q) ||
+      f.authRc.toLowerCase().includes(q)
+    )
   })
 
   return (
@@ -199,24 +328,30 @@ export function FiscalFournisseursManagement() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">#</TableHead>
-              <TableHead>Raison Sociale</TableHead>
-              <TableHead>RC</TableHead>
+              <TableHead>Nom / Raison Sociale</TableHead>
+              <TableHead>Adresse</TableHead>
               <TableHead>NIF</TableHead>
+              <TableHead>Auth. NIF</TableHead>
+              <TableHead>N° RC</TableHead>
+              <TableHead>Auth. N° RC</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {fetching ? (
-              <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-32 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">{search ? "Aucun résultat." : "Aucun fournisseur enregistré."}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{search ? "Aucun résultat." : "Aucun fournisseur enregistré."}</TableCell></TableRow>
             ) : (
               filtered.map((f, idx) => (
                 <TableRow key={f.id}>
                   <TableCell className="font-mono text-muted-foreground">{idx + 1}</TableCell>
                   <TableCell className="font-medium">{f.raisonSociale}</TableCell>
-                  <TableCell>{f.rc || "—"}</TableCell>
+                  <TableCell>{f.adresse || "—"}</TableCell>
                   <TableCell>{f.nif || "—"}</TableCell>
+                  <TableCell>{f.authNif || "—"}</TableCell>
+                  <TableCell>{f.rc || "—"}</TableCell>
+                  <TableCell>{f.authRc || "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(f)} title="Modifier"><Pencil className="h-4 w-4" /></Button>
@@ -237,16 +372,28 @@ export function FiscalFournisseursManagement() {
           <DialogHeader><DialogTitle>{editTarget ? "Modifier le fournisseur" : "Nouveau fournisseur"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="raisonSociale">Raison Sociale <span className="text-destructive">*</span></Label>
+              <Label htmlFor="raisonSociale">Nom / Raison Sociale <span className="text-destructive">*</span></Label>
               <Input id="raisonSociale" value={form.raisonSociale} onChange={(e) => setForm({ ...form, raisonSociale: e.target.value })} placeholder="Ex: SARL ALGÉRIE TÉLÉCOMS" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rc">Registre de Commerce (RC)</Label>
-              <Input id="rc" value={form.rc} onChange={(e) => setForm({ ...form, rc: e.target.value })} placeholder="Ex: 16B123456" />
+              <Label htmlFor="adresse">Adresse</Label>
+              <Input id="adresse" value={form.adresse} onChange={(e) => setForm({ ...form, adresse: e.target.value })} placeholder="Ex: Alger Centre" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nif">Numéro d'Identification Fiscale (NIF)</Label>
               <Input id="nif" value={form.nif} onChange={(e) => setForm({ ...form, nif: e.target.value })} placeholder="Ex: 000016001234567" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="authNif">Auth. NIF</Label>
+              <Input id="authNif" value={form.authNif} onChange={(e) => setForm({ ...form, authNif: e.target.value })} placeholder="Ex: 2026/00123" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rc">N° RC</Label>
+              <Input id="rc" value={form.rc} onChange={(e) => setForm({ ...form, rc: e.target.value })} placeholder="Ex: 16B123456" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="authRc">Auth. N° RC</Label>
+              <Input id="authRc" value={form.authRc} onChange={(e) => setForm({ ...form, authRc: e.target.value })} placeholder="Ex: RC/2026/0145" />
             </div>
           </div>
           <DialogFooter>
