@@ -50,15 +50,14 @@ export function DashboardStats({ stats, checks, users, currentUser, regions = []
   const [endDate, setEndDate] = useState("")
   const [showFilters, setShowFilters] = useState(false)
 
-  // Filtrer les chèques par région pour les profils régionaux
-  let filteredChecks = currentUser.role === "regionale" && currentUser.region && regions.length > 0
+  // Le backend filtre déjà les chèques par région pour les profils régionaux.
+  // Le frontend affine en vérifiant que l'émetteur est bien un profil régional de la même région.
+  let filteredChecks = currentUser.role === "regionale" && currentUser.region
     ? checks.filter(check => {
-        // Trouver la région de l'utilisateur
-        const userRegion = regions.find(r => r.name === currentUser.region)
-        if (!userRegion) return false
-        
-        // Vérifier si la ville du chèque est dans les wilayas de la région
-        return userRegion.wilayas?.includes(check.city)
+        const checkUser = users.find(u => String(u.id) === String(check.userId))
+        // Si l'utilisateur n'est pas trouvé dans la liste, on fait confiance au backend
+        if (!checkUser) return true
+        return checkUser.role === "regionale" && checkUser.region === currentUser.region
       })
     : checks
 
@@ -131,7 +130,7 @@ export function DashboardStats({ stats, checks, users, currentUser, regions = []
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           format: "Excel (Stats)",
-          recordCount: filteredStats.length,
+          recordCount: filteredChecks.length,
           dateRange: null,
         }),
       })
@@ -150,7 +149,7 @@ export function DashboardStats({ stats, checks, users, currentUser, regions = []
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           format: "PDF (Stats)",
-          recordCount: filteredStats.length,
+          recordCount: filteredChecks.length,
           dateRange: null,
         }),
       })
