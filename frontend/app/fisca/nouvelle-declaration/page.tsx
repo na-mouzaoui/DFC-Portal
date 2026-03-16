@@ -1593,6 +1593,92 @@ const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
   return "encaissement"
 }
 
+type TvaInvoiceDuplicateInfo = {
+  fournisseur: string
+  reference: string
+  date: string
+}
+
+const normalizeInvoicePart = (value: unknown) => safeString(value).trim().toUpperCase()
+
+const normalizeInvoiceDate = (value: unknown) => {
+  const raw = safeString(value).trim()
+  if (!raw) return ""
+  if (raw.includes("T")) return raw.slice(0, 10)
+  return raw
+}
+
+const getInvoiceSupplierKey = (row: TvaRow) => {
+  const supplierId = normalizeInvoicePart(row.fournisseurId)
+  if (supplierId) return `ID:${supplierId}`
+  const supplierName = normalizeInvoicePart(row.nomRaisonSociale)
+  if (supplierName) return `NAME:${supplierName}`
+  return ""
+}
+
+const getInvoiceDisplayInfo = (row: TvaRow): TvaInvoiceDuplicateInfo => ({
+  fournisseur: safeString(row.nomRaisonSociale).trim() || safeString(row.fournisseurId).trim() || "—",
+  reference: safeString(row.numFacture).trim(),
+  date: normalizeInvoiceDate(row.dateFacture),
+})
+
+const getInvoiceCompositeKey = (row: TvaRow) => {
+  const supplierKey = getInvoiceSupplierKey(row)
+  const reference = normalizeInvoicePart(row.numFacture)
+  const date = normalizeInvoiceDate(row.dateFacture)
+  if (!supplierKey || !reference || !date) return ""
+  return `${supplierKey}|${reference}|${date}`
+}
+
+const findDuplicateInTvaRows = (rows: TvaRow[]): TvaInvoiceDuplicateInfo | null => {
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const key = getInvoiceCompositeKey(row)
+    if (!key) continue
+    if (seen.has(key)) {
+      return getInvoiceDisplayInfo(row)
+    }
+    seen.add(key)
+  }
+  return null
+}
+
+const findDuplicateAcrossSavedDeclarations = (
+  rows: TvaRow[],
+  declarations: SavedDeclaration[],
+  editingDeclarationId: string | null,
+): TvaInvoiceDuplicateInfo | null => {
+  const existingKeys = new Set<string>()
+
+  for (const declaration of declarations) {
+    if (editingDeclarationId && safeString(declaration.id) === editingDeclarationId) {
+      continue
+    }
+
+    const historicalRows = [
+      ...(declaration.tvaImmoRows ?? []),
+      ...(declaration.tvaBiensRows ?? []),
+    ]
+
+    for (const historicalRow of historicalRows) {
+      const key = getInvoiceCompositeKey(historicalRow)
+      if (key) {
+        existingKeys.add(key)
+      }
+    }
+  }
+
+  for (const row of rows) {
+    const key = getInvoiceCompositeKey(row)
+    if (!key) continue
+    if (existingKeys.has(key)) {
+      return getInvoiceDisplayInfo(row)
+    }
+  }
+
+  return null
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRINT ZONE – hidden on screen, visible only when printing
 // Renders a static read-only A4 landscape version of the active tab's data
@@ -2302,6 +2388,38 @@ export default function NouvelleDeclarationPage() {
 
     if (validationError) return
 
+    let existingDeclarations: SavedDeclaration[] = []
+    try {
+      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
+      existingDeclarations = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
+    } catch {
+      existingDeclarations = []
+    }
+
+    if (activeTab === "tva_immo" || activeTab === "tva_biens") {
+      const currentRows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
+
+      const duplicateInCurrentTable = findDuplicateInTvaRows(currentRows)
+      if (duplicateInCurrentTable) {
+        toast({
+          title: "⚠ Facture en doublon",
+          description: `Doublon détecté dans le tableau: Fournisseur "${duplicateInCurrentTable.fournisseur}", Référence "${duplicateInCurrentTable.reference}", Date "${duplicateInCurrentTable.date}".`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const duplicateInHistory = findDuplicateAcrossSavedDeclarations(currentRows, existingDeclarations, editingDeclarationId)
+      if (duplicateInHistory) {
+        toast({
+          title: "⚠ Facture déjà enregistrée",
+          description: `Cette facture existe déjà (tableau 2/3, toutes périodes): Fournisseur "${duplicateInHistory.fournisseur}", Référence "${duplicateInHistory.reference}", Date "${duplicateInHistory.date}".`,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
     setIsSubmitting(true)
     await new Promise((r) => setTimeout(r, 400))
 
@@ -2388,16 +2506,14 @@ export default function NouvelleDeclarationPage() {
     }
     
     try {
-      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
-      const existing = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
       if (editingDeclarationId) {
-        const hasTarget = existing.some((item) => safeString(item.id) === editingDeclarationId)
+        const hasTarget = existingDeclarations.some((item) => safeString(item.id) === editingDeclarationId)
         const updated = hasTarget
-          ? existing.map((item) => (safeString(item.id) === editingDeclarationId ? baseDecl : item))
-          : [baseDecl, ...existing]
+          ? existingDeclarations.map((item) => (safeString(item.id) === editingDeclarationId ? baseDecl : item))
+          : [baseDecl, ...existingDeclarations]
         localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
       } else {
-        localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existing]))
+        localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existingDeclarations]))
       }
     } catch { /* quota or SSR */ }
 
