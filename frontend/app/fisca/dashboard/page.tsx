@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { FileText, CheckCircle, Clock, AlertTriangle, Eye, Trash2, Printer, Filter, ChevronUp, ChevronDown, X } from "lucide-react"
+import { FileText, CheckCircle, Clock, AlertTriangle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type EncRow = { designation: string; ttc: string }
@@ -111,9 +111,9 @@ const getTvaRateLabel = (value?: string) => {
   const rate = normalizeTvaRate(value)
   return rate ? `${rate}%` : "—"
 }
-const textOrZero = (value?: string) => {
+const textForPdf = (value?: string) => {
   const normalized = (value ?? "").trim()
-  return normalized ? normalized : "0"
+  return normalized === "0" ? "" : normalized
 }
 const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px", textAlign: "left", fontWeight: 600 }
 const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
@@ -172,12 +172,12 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
         {rows.map((r, i) => {
           const rowTva = getTvaAmount(r, showRateColumn)
           return <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.nomRaisonSociale)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.adresse)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.nif)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.authNif)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.numRC)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textOrZero(r.authRC)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.nomRaisonSociale)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.adresse)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.nif)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authNif)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.numRC)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authRC)}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFacture || "—"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFacture || "—"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantHT)}</td>
@@ -741,6 +741,10 @@ export default function FiscaDashboardPage() {
     }, 200)
   }
 
+  const handleEdit = (decl: SavedDeclaration, tabKey: string) => {
+    router.push(`/fisca/nouvelle-declaration?editId=${encodeURIComponent(decl.id)}&tab=${encodeURIComponent(tabKey)}`)
+  }
+
   const getDeclarationType = (decl: SavedDeclaration) => {
     if ((decl.encRows?.length ?? 0) > 0) return { key: "encaissement", label: "Encaissement", color: "#2db34b" }
     if ((decl.tvaImmoRows?.length ?? 0) > 0) return { key: "tva_immo", label: "TVA / IMMO", color: "#1d6fb8" }
@@ -996,7 +1000,12 @@ export default function FiscaDashboardPage() {
                     {recentDeclarations.map((decl) => {
                       const declType = getDeclarationType(decl)
                       return (
-                        <TableRow key={decl.id} className="hover:bg-gray-50">
+                        <TableRow
+                          key={decl.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleView(decl, declType.key)}
+                          title="Cliquer pour consulter"
+                        >
                           <TableCell>
                             <Badge variant="outline" className="text-xs" style={{ borderColor: declType.color, color: declType.color }}>
                               {declType.label}
@@ -1016,17 +1025,23 @@ export default function FiscaDashboardPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 w-8 p-0 border-blue-300 text-blue-600 hover:bg-blue-50"
-                                onClick={() => handleView(decl, declType.key)}
-                                title="Consulter"
+                                className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleEdit(decl, declType.key)
+                                }}
+                                title="Modifier"
                               >
-                                <Eye size={16} />
+                                <Pencil size={16} />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-8 w-8 p-0 border-gray-300 text-gray-600 hover:bg-gray-50"
-                                onClick={() => handlePrint(decl, declType.key)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handlePrint(decl, declType.key)
+                                }}
                                 title="Imprimer"
                               >
                                 <Printer size={16} />
@@ -1035,7 +1050,10 @@ export default function FiscaDashboardPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => handleDelete(decl.id)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDelete(decl.id)
+                                }}
                                 title="Supprimer"
                               >
                                 <Trash2 size={16} />

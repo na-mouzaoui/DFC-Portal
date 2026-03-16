@@ -237,9 +237,9 @@ const getTvaRateLabel = (tauxTVA?: string) => {
   return rate ? `${rate}%` : "—"
 }
 
-const printValueOrZero = (value: unknown) => {
+const printNullableText = (value: unknown) => {
   const normalized = safeString(value).trim()
-  return normalized ? normalized : "0"
+  return normalized === "0" ? "" : normalized
 }
 
 const safeString = (value: unknown) => {
@@ -275,6 +275,10 @@ interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAct
 function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSelectableRate = false }: Tab23Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
+  const toSupplierValue = (value: string | undefined | null) => {
+    const normalized = safeString(value).trim()
+    return normalized ? normalized : "0"
+  }
   const update    = (i: number, field: keyof TvaRow, val: string) =>
     setRows((p) =>
       p.map((r, idx) => {
@@ -308,12 +312,12 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
         return {
           ...r,
           fournisseurId,
-          nomRaisonSociale: selected.raisonSociale ?? "",
-          adresse: selected.adresse ?? "",
-          nif: selected.nif ?? "",
-          authNif: selected.authNif ?? "",
-          numRC: selected.rc ?? "",
-          authRC: selected.authRc ?? "",
+          nomRaisonSociale: toSupplierValue(selected.raisonSociale),
+          adresse: toSupplierValue(selected.adresse),
+          nif: toSupplierValue(selected.nif),
+          authNif: toSupplierValue(selected.authNif),
+          numRC: toSupplierValue(selected.rc),
+          authRC: toSupplierValue(selected.authRc),
         }
       }),
     )
@@ -1335,6 +1339,260 @@ const TABS = [
   { key: "tva_autoliq",   label: "16 – TVA Auto Liquidation",      color: "#2db34b", title: "TVA AUTO LIQUIDATION SUR FOURNISSEURS ÉTRANGERS" },
 ]
 
+type FiscalTabKey =
+  | "encaissement"
+  | "tva_immo"
+  | "tva_biens"
+  | "droits_timbre"
+  | "ca_tap"
+  | "etat_tap"
+  | "ca_siege"
+  | "irg"
+  | "taxe2"
+  | "taxe_masters"
+  | "taxe_vehicule"
+  | "taxe_formation"
+  | "acompte"
+  | "ibs"
+  | "taxe_domicil"
+  | "tva_autoliq"
+
+interface SavedDeclaration {
+  id: string
+  createdAt: string
+  direction: string
+  mois: string
+  annee: string
+  encRows?: EncRow[]
+  tvaImmoRows?: TvaRow[]
+  tvaBiensRows?: TvaRow[]
+  timbreRows?: TimbreRow[]
+  b12?: string
+  b13?: string
+  tapRows?: TAPRow[]
+  caSiegeRows?: SiegeEncRow[]
+  irgRows?: IrgRow[]
+  taxe2Rows?: Taxe2Row[]
+  masterRows?: MasterRow[]
+  taxe11Montant?: string
+  taxe12Rows?: Taxe12Row[]
+  acompteMonths?: string[]
+  ibs14Rows?: Ibs14Row[]
+  taxe15Rows?: Taxe15Row[]
+  tva16Rows?: Tva16Row[]
+}
+
+const isFiscalTabKey = (value: string): value is FiscalTabKey => {
+  return [
+    "encaissement",
+    "tva_immo",
+    "tva_biens",
+    "droits_timbre",
+    "ca_tap",
+    "etat_tap",
+    "ca_siege",
+    "irg",
+    "taxe2",
+    "taxe_masters",
+    "taxe_vehicule",
+    "taxe_formation",
+    "acompte",
+    "ibs",
+    "taxe_domicil",
+    "tva_autoliq",
+  ].includes(value)
+}
+
+const normalizeMonthValue = (value: string) => {
+  return MONTHS.some((month) => month.value === value)
+    ? value
+    : String(new Date().getMonth() + 1).padStart(2, "0")
+}
+
+const normalizeYearValue = (value: string) => {
+  return YEARS.includes(value) ? value : String(CURRENT_YEAR)
+}
+
+const fillRows = <T,>(rows: T[], size: number, makeDefault: () => T) => {
+  const next = rows.slice(0, size)
+  while (next.length < size) {
+    next.push(makeDefault())
+  }
+  return next
+}
+
+const normalizeEncRows = (rows?: EncRow[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    designation: safeString((row as Partial<EncRow>).designation),
+    ttc: safeString((row as Partial<EncRow>).ttc),
+  }))
+  return normalized.length > 0 ? normalized : [{ designation: "", ttc: "" }]
+}
+
+const normalizeTvaRows = (rows?: TvaRow[]) => {
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<TvaRow>
+    return {
+      ...EMPTY_TVA,
+      fournisseurId: safeString(source.fournisseurId),
+      nomRaisonSociale: safeString(source.nomRaisonSociale),
+      adresse: safeString(source.adresse),
+      nif: safeString(source.nif),
+      authNif: safeString(source.authNif),
+      numRC: safeString(source.numRC),
+      authRC: safeString(source.authRC),
+      numFacture: safeString(source.numFacture),
+      dateFacture: safeString(source.dateFacture),
+      montantHT: safeString(source.montantHT),
+      tva: safeString(source.tva),
+      tauxTVA: normalizeTvaRate(source.tauxTVA),
+    }
+  })
+  return normalized.length > 0 ? normalized : [{ ...EMPTY_TVA }]
+}
+
+const normalizeTimbreRows = (rows?: TimbreRow[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    designation: safeString((row as Partial<TimbreRow>).designation),
+    caTTCEsp: safeString((row as Partial<TimbreRow>).caTTCEsp),
+    droitTimbre: safeString((row as Partial<TimbreRow>).droitTimbre),
+  }))
+  return normalized.length > 0 ? normalized : [{ designation: "", caTTCEsp: "", droitTimbre: "" }]
+}
+
+const normalizeTapRows = (rows?: TAPRow[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    wilayaCode: safeString((row as Partial<TAPRow>).wilayaCode),
+    commune: safeString((row as Partial<TAPRow>).commune),
+    tap2: safeString((row as Partial<TAPRow>).tap2),
+  }))
+  return normalized.length > 0 ? normalized : [{ wilayaCode: "", commune: "", tap2: "" }]
+}
+
+const normalizeSiegeRows = (rows?: SiegeEncRow[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    ttc: safeString((row as Partial<SiegeEncRow>).ttc),
+    ht: safeString((row as Partial<SiegeEncRow>).ht),
+  }))
+  return fillRows(normalized, 12, () => ({ ttc: "", ht: "" }))
+}
+
+const normalizeIrgRows = (rows?: IrgRow[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    assietteImposable: safeString((row as Partial<IrgRow>).assietteImposable),
+    montant: safeString((row as Partial<IrgRow>).montant),
+  }))
+  return fillRows(normalized, 5, () => ({ assietteImposable: "", montant: "" }))
+}
+
+const normalizeTaxe2Rows = (rows?: Taxe2Row[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    base: safeString((row as Partial<Taxe2Row>).base),
+    montant: safeString((row as Partial<Taxe2Row>).montant),
+  }))
+  return fillRows(normalized, 1, () => ({ base: "", montant: "" }))
+}
+
+const normalizeMasterRows = (rows?: MasterRow[]) => {
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<MasterRow>
+    return {
+      ...EMPTY_MASTER,
+      date: safeString(source.date),
+      nomMaster: safeString(source.nomMaster),
+      numFacture: safeString(source.numFacture),
+      dateFacture: safeString(source.dateFacture),
+      montantHT: safeString(source.montantHT),
+      taxe15: safeString(source.taxe15),
+      mois: safeString(source.mois),
+      observation: safeString(source.observation),
+    }
+  })
+  return normalized.length > 0 ? normalized : [{ ...EMPTY_MASTER }]
+}
+
+const normalizeTaxe12Rows = (rows?: Taxe12Row[]) => {
+  const normalized = (rows ?? []).map((row) => ({
+    montant: safeString((row as Partial<Taxe12Row>).montant),
+  }))
+  return fillRows(normalized, 2, () => ({ montant: "" }))
+}
+
+const normalizeAcompteMonths = (months?: string[]) => {
+  return Array.from({ length: 12 }, (_, idx) => safeString(months?.[idx]))
+}
+
+const normalizeIbsRows = (rows?: Ibs14Row[]) => {
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<Ibs14Row>
+    return {
+      ...EMPTY_IBS14,
+      numFacture: safeString(source.numFacture),
+      montantBrutDevise: safeString(source.montantBrutDevise),
+      tauxChange: safeString(source.tauxChange),
+      montantBrutDinars: safeString(source.montantBrutDinars),
+      montantNetDevise: safeString(source.montantNetDevise),
+      montantIBS: safeString(source.montantIBS),
+      montantNetDinars: safeString(source.montantNetDinars),
+    }
+  })
+  return normalized.length > 0 ? normalized : [{ ...EMPTY_IBS14 }]
+}
+
+const normalizeTaxe15Rows = (rows?: Taxe15Row[]) => {
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<Taxe15Row>
+    return {
+      ...EMPTY_TAXE15,
+      numFacture: safeString(source.numFacture),
+      dateFacture: safeString(source.dateFacture),
+      raisonSociale: safeString(source.raisonSociale),
+      montantNetDevise: safeString(source.montantNetDevise),
+      monnaie: safeString(source.monnaie),
+      tauxChange: safeString(source.tauxChange),
+      montantDinars: safeString(source.montantDinars),
+      tauxTaxe: safeString(source.tauxTaxe),
+      montantAPayer: safeString(source.montantAPayer),
+    }
+  })
+  return normalized.length > 0 ? normalized : [{ ...EMPTY_TAXE15 }]
+}
+
+const normalizeTva16Rows = (rows?: Tva16Row[]) => {
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<Tva16Row>
+    return {
+      ...EMPTY_TVA16,
+      numFacture: safeString(source.numFacture),
+      montantBrutDevise: safeString(source.montantBrutDevise),
+      tauxChange: safeString(source.tauxChange),
+      montantBrutDinars: safeString(source.montantBrutDinars),
+      tva19: safeString(source.tva19),
+    }
+  })
+  return normalized.length > 0 ? normalized : [{ ...EMPTY_TVA16 }]
+}
+
+const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
+  if ((decl.encRows?.length ?? 0) > 0) return "encaissement"
+  if ((decl.tvaImmoRows?.length ?? 0) > 0) return "tva_immo"
+  if ((decl.tvaBiensRows?.length ?? 0) > 0) return "tva_biens"
+  if ((decl.timbreRows?.length ?? 0) > 0) return "droits_timbre"
+  if (safeString(decl.b12).trim() || safeString(decl.b13).trim()) return "ca_tap"
+  if ((decl.tapRows?.length ?? 0) > 0) return "etat_tap"
+  if ((decl.caSiegeRows?.length ?? 0) > 0) return "ca_siege"
+  if ((decl.irgRows?.length ?? 0) > 0) return "irg"
+  if ((decl.taxe2Rows?.length ?? 0) > 0) return "taxe2"
+  if ((decl.masterRows?.length ?? 0) > 0) return "taxe_masters"
+  if (safeString(decl.taxe11Montant).trim()) return "taxe_vehicule"
+  if ((decl.taxe12Rows?.length ?? 0) > 0) return "taxe_formation"
+  if ((decl.acompteMonths?.length ?? 0) > 0) return "acompte"
+  if ((decl.ibs14Rows?.length ?? 0) > 0) return "ibs"
+  if ((decl.taxe15Rows?.length ?? 0) > 0) return "taxe_domicil"
+  if ((decl.tva16Rows?.length ?? 0) > 0) return "tva_autoliq"
+  return "encaissement"
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRINT ZONE – hidden on screen, visible only when printing
 // Renders a static read-only A4 landscape version of the active tab's data
@@ -1450,12 +1708,12 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
                 const rowTTC = num(r.montantHT) + rowTva
                 return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                   <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.nomRaisonSociale)}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.adresse)}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.nif)}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.authNif)}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.numRC)}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printValueOrZero(r.authRC)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.nomRaisonSociale)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.adresse)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.nif)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.authNif)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.numRC)}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.authRC)}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numFacture}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.dateFacture}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
@@ -1823,6 +2081,7 @@ export default function NouvelleDeclarationPage() {
   const { toast } = useToast()
   const router    = useRouter()
   const printRef  = useRef<HTMLDivElement>(null)
+  const [editQuery, setEditQuery] = useState<{ editId: string; tab: string }>({ editId: "", tab: "" })
 
   // ── Regions (fetched from API) ──
   const [regions, setRegions] = useState<{ id: number; name: string }[]>([])
@@ -1856,12 +2115,23 @@ export default function NouvelleDeclarationPage() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    setEditQuery({
+      editId: safeString(params.get("editId")).trim(),
+      tab: safeString(params.get("tab")).trim(),
+    })
+  }, [])
+
   // ── Global meta ──
   const [activeTab,  setActiveTab]  = useState("encaissement")
   const [direction,  setDirection]  = useState("")
   const [mois,       setMois]       = useState(String(new Date().getMonth() + 1).padStart(2, "0"))
   const [annee,      setAnnee]      = useState(String(CURRENT_YEAR))
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingDeclarationId, setEditingDeclarationId] = useState<string | null>(null)
+  const [editingCreatedAt, setEditingCreatedAt] = useState("")
 
   // ── Tab data (lifted) ──
   const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ttc: "" }])
@@ -1891,6 +2161,62 @@ export default function NouvelleDeclarationPage() {
       setDirection((prev) => prev || "Siège")
     }
   }, [user])
+
+  useEffect(() => {
+    if (!editQuery.editId) {
+      setEditingDeclarationId(null)
+      setEditingCreatedAt("")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
+      const declarations = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
+      const declaration = declarations.find((item) => safeString(item.id) === editQuery.editId)
+
+      if (!declaration) {
+        toast({
+          title: "⚠ Déclaration introuvable",
+          description: "La déclaration demandée n'existe pas ou a déjà été supprimée.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const requestedTab = isFiscalTabKey(editQuery.tab) ? editQuery.tab : resolveDeclarationTabKey(declaration)
+
+      setEditingDeclarationId(safeString(declaration.id) || editQuery.editId)
+      setEditingCreatedAt(safeString(declaration.createdAt) || new Date().toISOString())
+      setActiveTab(requestedTab)
+      setDirection(safeString(declaration.direction))
+      setMois(normalizeMonthValue(safeString(declaration.mois)))
+      setAnnee(normalizeYearValue(safeString(declaration.annee)))
+
+      setEncRows(normalizeEncRows(declaration.encRows))
+      setTvaImmoRows(normalizeTvaRows(declaration.tvaImmoRows))
+      setTvaBiensRows(normalizeTvaRows(declaration.tvaBiensRows))
+      setTimbreRows(normalizeTimbreRows(declaration.timbreRows))
+      setB12(safeString(declaration.b12))
+      setB13(safeString(declaration.b13))
+      setTapRows(normalizeTapRows(declaration.tapRows))
+      setSiegeEncRows(normalizeSiegeRows(declaration.caSiegeRows))
+      setIrgRows(normalizeIrgRows(declaration.irgRows))
+      setTaxe2Rows(normalizeTaxe2Rows(declaration.taxe2Rows))
+      setMasterRows(normalizeMasterRows(declaration.masterRows))
+      setTaxe11Montant(safeString(declaration.taxe11Montant))
+      setTaxe12Rows(normalizeTaxe12Rows(declaration.taxe12Rows))
+      setAcompteMonths(normalizeAcompteMonths(declaration.acompteMonths))
+      setIbs14Rows(normalizeIbsRows(declaration.ibs14Rows))
+      setTaxe15Rows(normalizeTaxe15Rows(declaration.taxe15Rows))
+      setTva16Rows(normalizeTva16Rows(declaration.tva16Rows))
+    } catch {
+      toast({
+        title: "⚠ Erreur de chargement",
+        description: "Impossible de charger la déclaration à modifier.",
+        variant: "destructive",
+      })
+    }
+  }, [editQuery.editId, editQuery.tab])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -1978,11 +2304,14 @@ export default function NouvelleDeclarationPage() {
 
     setIsSubmitting(true)
     await new Promise((r) => setTimeout(r, 400))
+
+    const declarationId = editingDeclarationId ?? Date.now().toString()
+    const declarationCreatedAt = editingCreatedAt || new Date().toISOString()
     
     // Enregistrer seulement le tableau actif
-    const baseDecl = {
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
+    const baseDecl: SavedDeclaration = {
+      id: declarationId,
+      createdAt: declarationCreatedAt,
       direction,
       mois,
       annee,
@@ -2059,8 +2388,17 @@ export default function NouvelleDeclarationPage() {
     }
     
     try {
-      const existing = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
-      localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existing]))
+      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
+      const existing = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
+      if (editingDeclarationId) {
+        const hasTarget = existing.some((item) => safeString(item.id) === editingDeclarationId)
+        const updated = hasTarget
+          ? existing.map((item) => (safeString(item.id) === editingDeclarationId ? baseDecl : item))
+          : [baseDecl, ...existing]
+        localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
+      } else {
+        localStorage.setItem("fiscal_declarations", JSON.stringify([baseDecl, ...existing]))
+      }
     } catch { /* quota or SSR */ }
 
     // Persist to database (non-blocking)
@@ -2104,7 +2442,10 @@ export default function NouvelleDeclarationPage() {
     } catch { /* silently fail if backend unavailable */ }
     
     const tabLabel = TABS.find((t) => t.key === activeTab)?.label ?? activeTab
-    toast({ title: "✓ Déclaration enregistrée", description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.` })
+    toast({
+      title: editingDeclarationId ? "✓ Déclaration modifiée" : "✓ Déclaration enregistrée",
+      description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.`,
+    })
     setIsSubmitting(false)
     router.push("/fisca/dashboard")
   }
@@ -2144,8 +2485,12 @@ export default function NouvelleDeclarationPage() {
         {/* ── Page header bar ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nouvelle Déclaration</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Remplissez chaque tableau, puis enregistrez.</p>
+            <h1 className="text-2xl font-bold text-gray-900">{editingDeclarationId ? "Modifier Déclaration" : "Nouvelle Déclaration"}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {editingDeclarationId
+                ? "Mettez à jour les informations du tableau puis enregistrez les modifications."
+                : "Remplissez chaque tableau, puis enregistrez."}
+            </p>
           </div>
 
         </div>

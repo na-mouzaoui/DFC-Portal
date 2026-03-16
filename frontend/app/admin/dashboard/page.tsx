@@ -55,9 +55,8 @@ export default function AdminDashboard() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="users">Utilisateurs</TabsTrigger>
-            <TabsTrigger value="regions">Régions</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
             <TabsTrigger value="gestion">Gestion</TabsTrigger>
           </TabsList>
@@ -69,17 +68,6 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <AdminUserManagement />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="regions" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuration des régions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AdminRegionConfig />
               </CardContent>
             </Card>
           </TabsContent>
@@ -96,6 +84,14 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="gestion" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration des régions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdminRegionConfig />
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <CardTitle>Gestion des banques</CardTitle>

@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Net;
 using System.Text;
-using static System.Net.WebRequestMethods;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,11 +38,80 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost", "http://127.0.0.1" };
 
+bool IsPrivateIpv4(IPAddress ip)
+{
+    var bytes = ip.GetAddressBytes();
+    return bytes.Length == 4
+        && (
+            bytes[0] == 10
+            || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+            || (bytes[0] == 192 && bytes[1] == 168)
+        );
+}
+
+bool IsConfiguredOriginAllowed(Uri requestOrigin)
+{
+    foreach (var configuredOrigin in allowedOrigins)
+    {
+        if (!Uri.TryCreate(configuredOrigin, UriKind.Absolute, out var configuredUri))
+        {
+            continue;
+        }
+
+        var sameScheme = string.Equals(configuredUri.Scheme, requestOrigin.Scheme, StringComparison.OrdinalIgnoreCase);
+        var sameHost = string.Equals(configuredUri.Host, requestOrigin.Host, StringComparison.OrdinalIgnoreCase);
+        if (!sameScheme || !sameHost)
+        {
+            continue;
+        }
+
+        // If configured origin has no explicit port (default 80/443), allow any port for that host.
+        if (configuredUri.IsDefaultPort || configuredUri.Port == requestOrigin.Port)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsOriginAllowed(string? origin)
+{
+    if (string.IsNullOrWhiteSpace(origin)) return false;
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri)) return false;
+    if (!string.Equals(originUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(originUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    if (IsConfiguredOriginAllowed(originUri))
+    {
+        return true;
+    }
+
+    // In development, allow loopback and private LAN origins to avoid CORS issues on alternate local hosts.
+    if (builder.Environment.IsDevelopment())
+    {
+        if (originUri.IsLoopback)
+        {
+            return true;
+        }
+
+        if (IPAddress.TryParse(originUri.Host, out var ipAddress) && IsPrivateIpv4(ipAddress))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.SetIsOriginAllowed(origin => allowedOrigins.Any(o => origin.StartsWith(o))) // autorise tous les ports sur localhost
+        policy.SetIsOriginAllowed(IsOriginAllowed)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -119,10 +188,11 @@ app.UseStaticFiles(new StaticFileOptions
     {
         // Add CORS headers to static files
         var origin = ctx.Context.Request.Headers["Origin"].ToString();
-        if (!string.IsNullOrEmpty(origin) && allowedOrigins.Any(o => origin.StartsWith(o)))
+        if (IsOriginAllowed(origin))
         {
             ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
             ctx.Context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+            ctx.Context.Response.Headers.Append("Vary", "Origin");
         }
     }
 });
