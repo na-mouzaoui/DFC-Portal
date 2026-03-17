@@ -86,14 +86,6 @@ export default function AdminDashboard() {
           <TabsContent value="gestion" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Configuration des régions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AdminRegionConfig />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
                 <CardTitle>Gestion des banques</CardTitle>
               </CardHeader>
               <CardContent>
@@ -106,6 +98,14 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <FiscalFournisseursManagement />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration des régions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdminRegionConfig />
               </CardContent>
             </Card>
           </TabsContent>

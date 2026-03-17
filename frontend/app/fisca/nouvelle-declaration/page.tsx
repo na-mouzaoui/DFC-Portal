@@ -11,76 +11,10 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
+import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ALGERIA WILAYAS (58 wilayas) with their numeric codes
-// ─────────────────────────────────────────────────────────────────────────────
-const WILAYAS: { code: string; name: string; communes: string[] }[] = [
-  { code: "01", name: "Adrar",               communes: ["Adrar", "Reggane", "Timimoun"] },
-  { code: "02", name: "Chlef",               communes: ["Chlef", "Ténès", "Boukadir"] },
-  { code: "03", name: "Laghouat",            communes: ["Laghouat", "Aflou", "Hassi R'Mel"] },
-  { code: "04", name: "Oum El Bouaghi",      communes: ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"] },
-  { code: "05", name: "Batna",               communes: ["Batna", "Barika", "Arris"] },
-  { code: "06", name: "Béjaïa",              communes: ["Béjaïa", "Akbou", "Souk El Tenine"] },
-  { code: "07", name: "Biskra",              communes: ["Biskra", "Tolga", "Ouled Djellal"] },
-  { code: "08", name: "Béchar",              communes: ["Béchar", "Abadla", "Kenadsa"] },
-  { code: "09", name: "Blida",               communes: ["Blida", "Boufarik", "Larbaa"] },
-  { code: "10", name: "Bouira",              communes: ["Bouira", "Lakhdaria", "Sour El Ghozlane"] },
-  { code: "11", name: "Tamanrasset",         communes: ["Tamanrasset", "In Salah", "In Guezzam"] },
-  { code: "12", name: "Tébessa",             communes: ["Tébessa", "Bir El Ater", "Cheria"] },
-  { code: "13", name: "Tlemcen",             communes: ["Tlemcen", "Maghnia", "Ghazaouet"] },
-  { code: "14", name: "Tiaret",              communes: ["Tiaret", "Frenda", "Ksar Chellala"] },
-  { code: "15", name: "Tizi Ouzou",          communes: ["Tizi Ouzou", "Azazga", "Tigzirt"] },
-  { code: "16", name: "Alger",               communes: ["Alger Centre", "Bab El Oued", "Hussein Dey", "El Harrach", "Kouba"] },
-  { code: "17", name: "Djelfa",              communes: ["Djelfa", "Messaad", "Ain Oussera"] },
-  { code: "18", name: "Jijel",               communes: ["Jijel", "El Milia", "Taher"] },
-  { code: "19", name: "Sétif",               communes: ["Sétif", "El Eulma", "Aïn Azel"] },
-  { code: "20", name: "Saïda",               communes: ["Saïda", "Aïn El Hadjar", "Ouled Brahim"] },
-  { code: "21", name: "Skikda",              communes: ["Skikda", "Collo", "El Harrouch"] },
-  { code: "22", name: "Sidi Bel Abbès",      communes: ["Sidi Bel Abbès", "Mascara", "Telagh"] },
-  { code: "23", name: "Annaba",              communes: ["Annaba", "El Hadjar", "Berrahal"] },
-  { code: "24", name: "Guelma",              communes: ["Guelma", "Bouchegouf", "Heliopolis"] },
-  { code: "25", name: "Constantine",         communes: ["Constantine", "El Khroub", "Aïn Smara"] },
-  { code: "26", name: "Médéa",               communes: ["Médéa", "Berrouaghia", "Ksar El Boukhari"] },
-  { code: "27", name: "Mostaganem",          communes: ["Mostaganem", "Aïn Tedles", "Sidi Ali"] },
-  { code: "28", name: "M'Sila",              communes: ["M'Sila", "Boussaâda", "Sidi Aïssa"] },
-  { code: "29", name: "Mascara",             communes: ["Mascara", "Sig", "Tighennif"] },
-  { code: "30", name: "Ouargla",             communes: ["Ouargla", "Hassi Messaoud", "Touggourt"] },
-  { code: "31", name: "Oran",                communes: ["Oran", "Es Sénia", "Bir El Djir", "Aïn Turk"] },
-  { code: "32", name: "El Bayadh",           communes: ["El Bayadh", "Brezina", "Rogassa"] },
-  { code: "33", name: "Illizi",              communes: ["Illizi", "Djanet", "In Amenas"] },
-  { code: "34", name: "Bordj Bou Arreridj",  communes: ["Bordj Bou Arreridj", "Ras El Oued", "Bir Kasdali"] },
-  { code: "35", name: "Boumerdès",           communes: ["Boumerdès", "Dellys", "Khemis El Khechna"] },
-  { code: "36", name: "El Tarf",             communes: ["El Tarf", "Ben Mehidi", "Besbes"] },
-  { code: "37", name: "Tindouf",             communes: ["Tindouf"] },
-  { code: "38", name: "Tissemsilt",          communes: ["Tissemsilt", "Bordj Bounaama", "Theniet El Had"] },
-  { code: "39", name: "El Oued",             communes: ["El Oued", "Guemar", "Bayadha"] },
-  { code: "40", name: "Khenchela",           communes: ["Khenchela", "Aïn Touila", "Baghaï"] },
-  { code: "41", name: "Souk Ahras",          communes: ["Souk Ahras", "Sedrata", "Taoura"] },
-  { code: "42", name: "Tipaza",              communes: ["Tipaza", "Cherchell", "Koléa"] },
-  { code: "43", name: "Mila",                communes: ["Mila", "Chelghoum Laïd", "Ferdjioua"] },
-  { code: "44", name: "Aïn Defla",           communes: ["Aïn Defla", "Khemis Miliana", "El Abadia"] },
-  { code: "45", name: "Naâma",               communes: ["Naâma", "Méchéria", "Aïn Sefra"] },
-  { code: "46", name: "Aïn Témouchent",      communes: ["Aïn Témouchent", "Beni Saf", "Hammam Bouhadjar"] },
-  { code: "47", name: "Ghardaïa",            communes: ["Ghardaïa", "Guerrara", "El Meniaa"] },
-  { code: "48", name: "Relizane",            communes: ["Relizane", "Mazouna", "Oued Rhiou"] },
-  { code: "49", name: "Timimoun",            communes: ["Timimoun", "Charouine"] },
-  { code: "50", name: "Bordj Badji Mokhtar", communes: ["Bordj Badji Mokhtar"] },
-  { code: "51", name: "Ouled Djellal",        communes: ["Ouled Djellal", "Sidi Khaled"] },
-  { code: "52", name: "Béni Abbès",           communes: ["Béni Abbès"] },
-  { code: "53", name: "In Salah",             communes: ["In Salah", "In Ghar"] },
-  { code: "54", name: "In Guezzam",           communes: ["In Guezzam", "Tin Zaouatine"] },
-  { code: "55", name: "Touggourt",            communes: ["Touggourt", "Nezla"] },
-  { code: "56", name: "Djanet",               communes: ["Djanet"] },
-  { code: "57", name: "El M'Ghair",           communes: ["El M'Ghair", "Djamaa"] },
-  { code: "58", name: "El Meniaa",            communes: ["El Meniaa"] },
-]
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -581,6 +515,8 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
 type TAPRow = { wilayaCode: string; commune: string; tap2: string }
 type SiegeEncRow = { ttc: string; ht: string }
 
+const WILAYA_COMMUNE_DATA: WilayaCommuneEntry[] = WILAYAS_COMMUNES
+
 const SIEGE_G1_LABELS = ["Encaissement", "Encaissement Exon\u00e9r\u00e9e"]
 const SIEGE_G2_LABELS = [
   "Encaissement MOBIPOST", "Encaissement POST PAID", "Encaissement RACIMO",
@@ -614,7 +550,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r))), [setRows])
 
   const totalTAP = rows.reduce((s, r) => s + num(r.tap2), 0)
-  const getWilaya = (code: string) => WILAYAS.find((w) => w.code === code)
+  const getWilaya = (code: string) => WILAYA_COMMUNE_DATA.find((w) => w.code === code)
 
   return (
     <div className="space-y-5">
@@ -652,8 +588,8 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300"
                       style={{ minWidth: 190 }}>
                       <option value="">— Wilaya —</option>
-                      {WILAYAS.map((w) => (
-                        <option key={w.code} value={w.code}>{w.code} – {w.name}</option>
+                      {WILAYA_COMMUNE_DATA.map((w) => (
+                        <option key={w.code} value={w.code}>{w.code} – {w.wilaya}</option>
                       ))}
                     </select>
                   </td>
@@ -665,9 +601,10 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300 disabled:opacity-40"
                       style={{ minWidth: 165 }}>
                       <option value="">— Commune —</option>
-                      {(wilaya?.communes ?? []).map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
+                      {(wilaya?.communes ?? []).map((c) => {
+                        const communeCode = String(c)
+                        return <option key={communeCode} value={communeCode}>{communeCode}</option>
+                      })}
                     </select>
                   </td>
 
@@ -1967,11 +1904,11 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
             </tr></thead>
             <tbody>
               {tapRows.map((r, i) => {
-                const w = WILAYAS.find((w) => w.code === r.wilayaCode)
+                const w = WILAYA_COMMUNE_DATA.find((w) => w.code === r.wilayaCode)
                 return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                   <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
                   <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700, backgroundColor: "#fff", color: "#000" }}>{r.wilayaCode}</td>
-                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{w?.name ?? ""}</td>
+                  <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{w?.wilaya ?? ""}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.commune}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.tap2 ? fmt(num(r.tap2)) : ""}</td>
                 </tr>

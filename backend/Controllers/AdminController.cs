@@ -100,32 +100,42 @@ public class AdminController : ControllerBase
         if (!await IsAdmin())
             return Forbid();
 
+        var email = (request.Email ?? string.Empty).Trim();
+        var password = request.Password ?? string.Empty;
+        var firstName = (request.FirstName ?? string.Empty).Trim();
+        var lastName = (request.LastName ?? string.Empty).Trim();
+        var direction = (request.Direction ?? string.Empty).Trim();
+        var role = string.IsNullOrWhiteSpace(request.Role) ? "comptabilite" : request.Role.Trim();
+        var region = string.IsNullOrWhiteSpace(request.Region) ? null : request.Region.Trim();
+        var accessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules.Trim();
+        var normalizedPhoneNumber = (request.PhoneNumber ?? string.Empty).Trim();
+
         // Validation
-        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             return BadRequest("Email et mot de passe requis");
 
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+        if (await _context.Users.AnyAsync(u => u.Email == email))
             return BadRequest("Cet email existe déjà");
 
-        if (!Regex.IsMatch((request.PhoneNumber ?? string.Empty).Trim(), @"^0\d{9}$"))
+        if (!Regex.IsMatch(normalizedPhoneNumber, @"^0\d{9}$"))
             return BadRequest("Le numéro de téléphone doit commencer par 0 et contenir exactement 10 chiffres");
 
-        if (request.Role == "regionale" && string.IsNullOrWhiteSpace(request.Region))
+        if (role == "regionale" && string.IsNullOrWhiteSpace(region))
             return BadRequest("La région est requise pour le rôle régionale");
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(password) ?? string.Empty;
 
         var user = new User
         {
-            Email = request.Email,
+            Email = email,
             PasswordHash = passwordHash,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            Direction = request.Direction,
-            PhoneNumber = request.PhoneNumber,
-            Role = request.Role,
-            Region = request.Role == "regionale" ? request.Region : null,
-            AccessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules,
+            FirstName = firstName,
+            LastName = lastName,
+            Direction = direction,
+            PhoneNumber = normalizedPhoneNumber,
+            Role = role,
+            Region = role == "regionale" ? region : null,
+            AccessModules = accessModules,
             CreatedAt = DateTime.UtcNow
         };
 
