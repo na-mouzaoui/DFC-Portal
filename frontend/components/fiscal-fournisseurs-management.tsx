@@ -54,6 +54,13 @@ interface FormData {
   nif: string
 }
 
+type ConflictDecision = "update" | "keep"
+
+interface ImportConflict {
+  existing: FiscalFournisseur
+  incoming: FormData
+}
+
 const EMPTY_FORM: FormData = { raisonSociale: "", adresse: "", authNif: "", rc: "", authRc: "", nif: "" }
 
 const parseCsvLine = (line: string) => {
@@ -99,6 +106,35 @@ const normalizeCsvHeader = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
 
+const normalizeSupplierName = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+
+const normalizeField = (value: string) => value.trim()
+
+const toSupplierPayload = (data: FormData) => ({
+  raisonSociale: data.raisonSociale.trim(),
+  adresse: data.adresse.trim(),
+  authNIF: data.authNif.trim(),
+  rc: data.rc.trim(),
+  authRC: data.authRc.trim(),
+  nif: data.nif.trim(),
+})
+
+const hasDifferentSupplierDetails = (existing: FiscalFournisseur, incoming: FormData) => {
+  return (
+    normalizeField(existing.adresse) !== normalizeField(incoming.adresse) ||
+    normalizeField(existing.nif) !== normalizeField(incoming.nif) ||
+    normalizeField(existing.authNif) !== normalizeField(incoming.authNif) ||
+    normalizeField(existing.rc) !== normalizeField(incoming.rc) ||
+    normalizeField(existing.authRc) !== normalizeField(incoming.authRc)
+  )
+}
+
 export function FiscalFournisseursManagement() {
   const { toast } = useToast()
 
@@ -114,7 +150,29 @@ export function FiscalFournisseursManagement() {
   const [deleteTarget, setDeleteTarget] = useState<FiscalFournisseur | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importConflicts, setImportConflicts] = useState<ImportConflict[]>([])
+  const [importDecisions, setImportDecisions] = useState<Record<string, ConflictDecision>>({})
+  const [pendingImportCreates, setPendingImportCreates] = useState<FormData[]>([])
+  const [pendingUnchanged, setPendingUnchanged] = useState(0)
+  const [pendingIgnoredCount, setPendingIgnoredCount] = useState(0)
+  const [importing, setImporting] = useState(false)
+
   const importRef = useRef<HTMLInputElement>(null)
+
+  const resetImportResolution = () => {
+    setImportDialogOpen(false)
+    setImportConflicts([])
+    setImportDecisions({})
+    setPendingImportCreates([])
+    setPendingUnchanged(0)
+    setPendingIgnoredCount(0)
+    setImporting(false)
+  }
+
+  const setConflictDecision = (fournisseurId: number, decision: ConflictDecision) => {
+    setImportDecisions((prev) => ({ ...prev, [String(fournisseurId)]: decision }))
+  }
 
   const fetchFournisseurs = async () => {
     setFetching(true)
@@ -150,6 +208,20 @@ export function FiscalFournisseursManagement() {
       toast({ title: "Validation", description: "Le champ Nom / Raison Sociale est obligatoire.", variant: "destructive" })
       return
     }
+
+    const normalizedName = normalizeSupplierName(form.raisonSociale)
+    const duplicate = fournisseurs.find(
+      (f) => normalizeSupplierName(f.raisonSociale) === normalizedName && (!editTarget || f.id !== editTarget.id),
+    )
+    if (duplicate) {
+      toast({
+        title: "Validation",
+        description: "Un fournisseur avec ce Nom / Raison Sociale existe déjà.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setSaving(true)
     try {
       const method = editTarget ? "PUT" : "POST"
@@ -157,14 +229,7 @@ export function FiscalFournisseursManagement() {
       const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          raisonSociale: form.raisonSociale.trim(),
-          adresse: form.adresse.trim(),
-          authNIF: form.authNif.trim(),
-          rc: form.rc.trim(),
-          authRC: form.authRc.trim(),
-          nif: form.nif.trim(),
-        }),
+        body: JSON.stringify(toSupplierPayload(form)),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -195,6 +260,81 @@ export function FiscalFournisseursManagement() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  const applyImportChanges = async (
+    creates: FormData[],
+    conflicts: ImportConflict[],
+    decisions: Record<string, ConflictDecision>,
+    unchangedCount: number,
+    ignoredCount: number,
+  ) => {
+    setImporting(true)
+    let created = 0
+    let updated = 0
+    let kept = 0
+    let errors = 0
+
+    for (const supplier of creates) {
+      try {
+        const res = await authFetch("/api/fiscal-fournisseurs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toSupplierPayload(supplier)),
+        })
+        if (res.ok) created += 1
+        else errors += 1
+      } catch {
+        errors += 1
+      }
+    }
+
+    for (const conflict of conflicts) {
+      const decision = decisions[String(conflict.existing.id)] ?? "keep"
+      if (decision === "keep") {
+        kept += 1
+        continue
+      }
+
+      try {
+        const res = await authFetch(`/api/fiscal-fournisseurs/${conflict.existing.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toSupplierPayload(conflict.incoming)),
+        })
+        if (res.ok) updated += 1
+        else errors += 1
+      } catch {
+        errors += 1
+      }
+    }
+
+    const summary: string[] = []
+    if (created > 0) summary.push(`${created} importé(s)`)
+    if (updated > 0) summary.push(`${updated} modifié(s)`)
+    if (kept > 0) summary.push(`${kept} conservé(s)`)
+    if (unchangedCount > 0) summary.push(`${unchangedCount} déjà existant(s)`)
+    if (ignoredCount > 0) summary.push(`${ignoredCount} ligne(s) ignorée(s)`)
+    if (summary.length === 0) summary.push("Aucun changement")
+
+    toast({
+      title: "Import terminé",
+      description: `${summary.join(", ")}${errors > 0 ? `, ${errors} erreur(s)` : ""}.`,
+      variant: errors > 0 ? "destructive" : "default",
+    })
+
+    resetImportResolution()
+    fetchFournisseurs()
+  }
+
+  const handleImportConflictConfirm = async () => {
+    await applyImportChanges(
+      pendingImportCreates,
+      importConflicts,
+      importDecisions,
+      pendingUnchanged,
+      pendingIgnoredCount,
+    )
   }
 
   const handleExport = () => {
@@ -260,30 +400,81 @@ export function FiscalFournisseursManagement() {
       const idxRc = headerIndex(["n rc", "no rc", "numero rc"], 4)
       const idxAuthRc = headerIndex(["auth n rc", "auth no rc", "auth numero rc"], 5)
 
-      let created = 0, errors = 0
+      const csvRowsByName = new Map<string, FormData>()
+      let ignoredCount = 0
       for (const line of lines) {
         const cols = parseCsvLine(line)
         const isLegacyFormat = !hasHeader && cols.length <= 3
-        const nom = isLegacyFormat ? cols[0] ?? "" : cols[idxNom] ?? cols[0] ?? ""
-        if (!nom.trim()) continue
-        try {
-          const res = await authFetch("/api/fiscal-fournisseurs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              raisonSociale: nom,
-              adresse: isLegacyFormat ? "" : cols[idxAdresse] ?? "",
-              nif: isLegacyFormat ? cols[2] ?? "" : cols[idxNif] ?? "",
-              authNIF: isLegacyFormat ? "" : cols[idxAuthNif] ?? "",
-              rc: isLegacyFormat ? cols[1] ?? "" : cols[idxRc] ?? "",
-              authRC: isLegacyFormat ? "" : cols[idxAuthRc] ?? "",
-            }),
-          })
-          if (res.ok) created++; else errors++
-        } catch { errors++ }
+        const nom = (isLegacyFormat ? cols[0] ?? "" : cols[idxNom] ?? cols[0] ?? "").trim()
+        if (!nom) {
+          ignoredCount += 1
+          continue
+        }
+
+        const formRow: FormData = {
+          raisonSociale: nom,
+          adresse: (isLegacyFormat ? "" : cols[idxAdresse] ?? "").trim(),
+          nif: (isLegacyFormat ? cols[2] ?? "" : cols[idxNif] ?? "").trim(),
+          authNif: (isLegacyFormat ? "" : cols[idxAuthNif] ?? "").trim(),
+          rc: (isLegacyFormat ? cols[1] ?? "" : cols[idxRc] ?? "").trim(),
+          authRc: (isLegacyFormat ? "" : cols[idxAuthRc] ?? "").trim(),
+        }
+
+        csvRowsByName.set(normalizeSupplierName(formRow.raisonSociale), formRow)
       }
-      toast({ title: "Import terminé", description: `${created} importé(s)${errors ? `, ${errors} erreur(s).` : "."}`, variant: errors > 0 ? "destructive" : "default" })
-      fetchFournisseurs()
+
+      const parsedRows = Array.from(csvRowsByName.values())
+      if (parsedRows.length === 0) {
+        toast({
+          title: "Import CSV",
+          description: ignoredCount > 0 ? "Aucune ligne valide à importer." : "Aucun fournisseur trouvé dans le fichier.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const existingByName = new Map<string, FiscalFournisseur>()
+      for (const fournisseur of fournisseurs) {
+        const key = normalizeSupplierName(fournisseur.raisonSociale)
+        if (key && !existingByName.has(key)) {
+          existingByName.set(key, fournisseur)
+        }
+      }
+
+      const toCreate: FormData[] = []
+      const conflicts: ImportConflict[] = []
+      let unchanged = 0
+
+      for (const row of parsedRows) {
+        const key = normalizeSupplierName(row.raisonSociale)
+        const existing = existingByName.get(key)
+        if (!existing) {
+          toCreate.push(row)
+          continue
+        }
+
+        if (hasDifferentSupplierDetails(existing, row)) {
+          conflicts.push({ existing, incoming: row })
+        } else {
+          unchanged += 1
+        }
+      }
+
+      if (conflicts.length > 0) {
+        const defaults: Record<string, ConflictDecision> = {}
+        for (const conflict of conflicts) {
+          defaults[String(conflict.existing.id)] = "keep"
+        }
+        setPendingImportCreates(toCreate)
+        setImportConflicts(conflicts)
+        setImportDecisions(defaults)
+        setPendingUnchanged(unchanged)
+        setPendingIgnoredCount(ignoredCount)
+        setImportDialogOpen(true)
+        return
+      }
+
+      await applyImportChanges(toCreate, [], {}, unchanged, ignoredCount)
     }
     reader.readAsText(file, "utf-8")
   }
@@ -401,6 +592,89 @@ export function FiscalFournisseursManagement() {
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editTarget ? "Enregistrer" : "Créer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Conflict Resolution */}
+      <Dialog
+        open={importDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !importing) {
+            resetImportResolution()
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Conflits détectés lors de l'import</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              {importConflicts.length} conflit(s) détecté(s), {pendingImportCreates.length} nouveau(x) fournisseur(s), {pendingUnchanged} déjà identique(s).
+            </p>
+            {pendingIgnoredCount > 0 && (
+              <p className="text-muted-foreground">{pendingIgnoredCount} ligne(s) CSV ont été ignorée(s) (nom vide).</p>
+            )}
+
+            {importConflicts.map((conflict) => {
+              const decision = importDecisions[String(conflict.existing.id)] ?? "keep"
+              return (
+                <div key={conflict.existing.id} className="space-y-3 rounded-md border p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-medium">{conflict.existing.raisonSociale}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={decision === "keep" ? "default" : "outline"}
+                        onClick={() => setConflictDecision(conflict.existing.id, "keep")}
+                        disabled={importing}
+                      >
+                        Garder les infos existantes
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={decision === "update" ? "default" : "outline"}
+                        onClick={() => setConflictDecision(conflict.existing.id, "update")}
+                        disabled={importing}
+                      >
+                        Modifier avec le CSV
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded border bg-muted/30 p-2">
+                      <p className="mb-1 font-medium text-emerald-700">Existant (base actuelle)</p>
+                      <p>Adresse existante: {conflict.existing.adresse || "—"}</p>
+                      <p>NIF existant: {conflict.existing.nif || "—"}</p>
+                      <p>Auth. NIF existant: {conflict.existing.authNif || "—"}</p>
+                      <p>N° RC existant: {conflict.existing.rc || "—"}</p>
+                      <p>Auth. N° RC existant: {conflict.existing.authRc || "—"}</p>
+                    </div>
+                    <div className="rounded border bg-muted/30 p-2">
+                      <p className="mb-1 font-medium text-blue-700">Import (fichier CSV)</p>
+                      <p>Adresse importée: {conflict.incoming.adresse || "—"}</p>
+                      <p>NIF importé: {conflict.incoming.nif || "—"}</p>
+                      <p>Auth. NIF importé: {conflict.incoming.authNif || "—"}</p>
+                      <p>N° RC importé: {conflict.incoming.rc || "—"}</p>
+                      <p>Auth. N° RC importé: {conflict.incoming.authRc || "—"}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={resetImportResolution} disabled={importing}>Annuler</Button>
+            <Button onClick={handleImportConflictConfirm} disabled={importing}>
+              {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Appliquer l'import
             </Button>
           </DialogFooter>
         </DialogContent>
