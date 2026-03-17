@@ -1714,29 +1714,120 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
 
   const thStyle: React.CSSProperties = {
     border: "1px solid #000", padding: "4px 6px", backgroundColor: "#fff", color: "#000",
-    fontSize: 9, fontWeight: 700, textAlign: "left", whiteSpace: "nowrap",
+    fontSize: 11, fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", verticalAlign: "middle",
   }
   const tdStyle: React.CSSProperties = {
-    border: "1px solid #000", padding: "3px 6px", fontSize: 9, backgroundColor: "#fff", color: "#000",
+    border: "1px solid #000", padding: "3px 6px", fontSize: 9, backgroundColor: "#fff", color: "#000", verticalAlign: "middle",
   }
 
   return (
     <div id="print-zone" style={{ display: "none" }}>
+      <style>{`
+        #print-zone table th,
+        #print-zone table td {
+          color: #000 !important;
+          text-align: center !important;
+          vertical-align: middle !important;
+          direction: ltr !important;
+        }
+        #print-zone table tbody td {
+          background-color: #fff !important;
+        }
+        #print-zone table thead th,
+        #print-zone table tfoot td,
+        #print-zone table tbody tr[style*="font-weight:700"] td,
+        #print-zone table tbody tr[style*="font-weight: 700"] td,
+        #print-zone table tbody tr[style*="font-weight:bold"] td,
+        #print-zone table tbody tr[style*="font-weight: bold"] td {
+          background-color: #2db34b !important;
+          color: #000 !important;
+          font-weight: 800 !important;
+        }
+      `}</style>
       {/* ── PDF header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12, borderBottom: "2px solid #000", marginBottom: 20 }}>
-        {/* LEFT – logo + ATM MOBILIS + direction */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", paddingBottom: 12, borderBottom: "2px solid #000", marginBottom: 20 }}>
+        {/* LEFT – logo + stacked info boxes */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="Logo" style={{ height: 52, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#000", letterSpacing: 0.5, textTransform: "uppercase" }}>ATM MOBILIS</div>
-            {direction && <div style={{ fontSize: 11, color: "#000", marginTop: 2 }}>{direction}</div>}
+          <div style={{ width: 260, border: "3px solid #000", backgroundColor: "#fff" }}>
+            <div
+              style={{
+                minHeight: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                textAlign: "left",
+                direction: "ltr",
+                padding: "0 10px",
+                borderBottom: "3px solid #000",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              ATM MOBILIS
+            </div>
+            <div
+              style={{
+                minHeight: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                textAlign: "left",
+                direction: "ltr",
+                padding: "0 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#000",
+              }}
+            >
+              DR : {direction || "—"}
+            </div>
           </div>
         </div>
-        {/* RIGHT – période */}
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10, color: "#000", textTransform: "uppercase", letterSpacing: 0.5 }}>Période</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#000" }}>{mon} {annee}</div>
+        {/* RIGHT – stacked month/year boxes */}
+        <div
+          style={{
+            width: 260,
+            border: "3px solid #000",
+            backgroundColor: "#fff",
+          }}
+        >
+          <div
+            style={{
+              minHeight: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              textAlign: "left",
+              direction: "ltr",
+              padding: "0 10px",
+              borderBottom: "3px solid #000",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#000",
+            }}
+          >
+            Déclaration Mois : {mon}
+          </div>
+          <div
+            style={{
+              minHeight: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              textAlign: "left",
+              direction: "ltr",
+              padding: "0 10px",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#000",
+            }}
+          >
+            Annee : {annee}
+          </div>
         </div>
       </div>
       {/* ── Centered title ── */}

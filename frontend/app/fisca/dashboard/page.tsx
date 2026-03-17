@@ -600,18 +600,87 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
   return (
     <div id="dash-print-zone" style={{ fontFamily: "Arial, sans-serif", color: "#000" }}>
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 100 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="Logo" style={{ height: 64, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#222", letterSpacing: 1, textTransform: "uppercase" }}>ATM MOBILIS</div>
-            {decl.direction && <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>{decl.direction}</div>}
+          <div style={{ width: 260, border: "3px solid #000", backgroundColor: "#fff" }}>
+            <div
+              style={{
+                minHeight: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                textAlign: "left",
+                direction: "ltr",
+                padding: "0 10px",
+                borderBottom: "3px solid #000",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#000",
+                textTransform: "uppercase",
+              }}
+            >
+              ATM MOBILIS
+            </div>
+            <div
+              style={{
+                minHeight: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                textAlign: "left",
+                direction: "ltr",
+                padding: "0 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#000",
+              }}
+            >
+              DR : {decl.direction || "—"}
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: "#777", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Période</div>
-          <div style={{ fontSize: 16, fontWeight: 400, color: "#333" }}>{moisLabel} {decl.annee}</div>
+        <div
+          style={{
+            width: 260,
+            border: "3px solid #000",
+            backgroundColor: "#fff",
+          }}
+        >
+          <div
+            style={{
+              minHeight: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              textAlign: "left",
+              direction: "ltr",
+              padding: "0 10px",
+              borderBottom: "3px solid #000",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#000",
+            }}
+          >
+            Déclaration Mois : {moisLabel}
+          </div>
+          <div
+            style={{
+              minHeight: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              textAlign: "left",
+              direction: "ltr",
+              padding: "0 10px",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#000",
+            }}
+          >
+            Annee : {decl.annee}
+          </div>
         </div>
       </div>
       {/* ── Centered title ── */}
@@ -832,21 +901,32 @@ export default function FiscaDashboardPage() {
           font-size: 14px !important;
           vertical-align: middle !important;
           line-height: 1.5 !important;
+          color: #000 !important;
+          text-align: center !important;
+          direction: ltr !important;
         }
         #dash-print-zone th {
           font-weight: 700 !important;
-          background: #d4d4d4 !important;
-          color: #111 !important;
-          text-align: left !important;
+          background: #2db34b !important;
+          color: #000 !important;
+          text-align: center !important;
           white-space: nowrap !important;
-          font-size: 12px !important;
+          font-size: 13px !important;
         }
         #dash-print-zone td { white-space: nowrap !important; }
-        #dash-print-zone tbody tr:nth-child(even) td { background: #f2f2f2 !important; }
+        #dash-print-zone tbody td { background: #fff !important; }
+        #dash-print-zone tbody tr[style*="font-weight:700"] td,
+        #dash-print-zone tbody tr[style*="font-weight: 700"] td,
+        #dash-print-zone tbody tr[style*="font-weight:bold"] td,
+        #dash-print-zone tbody tr[style*="font-weight: bold"] td {
+          background: #2db34b !important;
+          color: #000 !important;
+          font-weight: 800 !important;
+        }
         #dash-print-zone tfoot td {
           font-weight: 700 !important;
-          background: #c0c0c0 !important;
-          color: #111 !important;
+          background: #2db34b !important;
+          color: #000 !important;
           font-size: 14px !important;
         }
       `}</style>
