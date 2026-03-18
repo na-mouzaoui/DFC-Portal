@@ -29,6 +29,64 @@ public class FiscalController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
+    private async Task<string> GetCurrentUserRoleAsync(int userId)
+    {
+        var roleFromDatabase = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.Role)
+            .FirstOrDefaultAsync();
+
+        if (!string.IsNullOrWhiteSpace(roleFromDatabase))
+            return roleFromDatabase.Trim().ToLowerInvariant();
+
+        var roleClaim = User.FindFirst("role")?.Value
+            ?? User.FindFirst(ClaimTypes.Role)?.Value
+            ?? "";
+
+        return roleClaim.Trim().ToLowerInvariant();
+    }
+
+    private static int GetDeadlineDayForRole(string? role)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        return normalizedRole is "admin" or "comptabilite" or "finance" ? 15 : 10;
+    }
+
+    private static bool TryBuildPeriodDeadline(string mois, string annee, string? role, out DateTime deadline)
+    {
+        deadline = DateTime.MinValue;
+
+        if (!int.TryParse((mois ?? "").Trim(), out var month) || month < 1 || month > 12)
+            return false;
+
+        if (!int.TryParse((annee ?? "").Trim(), out var year) || year < 1900 || year > 9999)
+            return false;
+
+        var deadlineMonth = month == 12 ? 1 : month + 1;
+        var deadlineYear = month == 12 ? year + 1 : year;
+        var deadlineDay = GetDeadlineDayForRole(role);
+
+        deadline = new DateTime(deadlineYear, deadlineMonth, deadlineDay, 23, 59, 59, DateTimeKind.Local);
+        return true;
+    }
+
+    private static bool IsPeriodLocked(string mois, string annee, string? role, out DateTime deadline)
+    {
+        if (!TryBuildPeriodDeadline(mois, annee, role, out deadline))
+            return false;
+
+        return DateTime.Now > deadline;
+    }
+
+    private IActionResult BuildPeriodLockedResponse(string mois, string annee, DateTime deadline)
+    {
+        return Conflict(new
+        {
+            message = $"La période {mois}/{annee} est clôturée. Le délai était fixé au {deadline:dd/MM/yyyy HH:mm}."
+        });
+    }
+
     private static bool IsTvaTab(string tabKey) => tabKey is "tva_immo" or "tva_biens";
 
     private static string NormalizeInvoicePart(string? value) => (value ?? "").Trim().ToUpperInvariant();
@@ -214,6 +272,10 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Create([FromBody] FiscalDeclarationRequest request)
     {
         var userId = GetCurrentUserId();
+        var currentUserRole = await GetCurrentUserRoleAsync(userId);
+
+        if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var periodDeadline))
+            return BuildPeriodLockedResponse(request.Mois, request.Annee, periodDeadline);
 
         var duplicateCheck = await ValidateTvaInvoiceUniquenessAsync(request);
         if (duplicateCheck.hasConflict && duplicateCheck.response != null)
@@ -247,10 +309,17 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] FiscalDeclarationRequest request)
     {
         var userId = GetCurrentUserId();
+        var currentUserRole = await GetCurrentUserRoleAsync(userId);
         var decl = await _context.FiscalDeclarations
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
         if (decl == null) return NotFound();
+
+        if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var sourceDeadline))
+            return BuildPeriodLockedResponse(decl.Mois, decl.Annee, sourceDeadline);
+
+        if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var targetDeadline))
+            return BuildPeriodLockedResponse(request.Mois, request.Annee, targetDeadline);
 
         var duplicateCheck = await ValidateTvaInvoiceUniquenessAsync(request, id);
         if (duplicateCheck.hasConflict && duplicateCheck.response != null)
@@ -276,10 +345,14 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var userId = GetCurrentUserId();
+        var currentUserRole = await GetCurrentUserRoleAsync(userId);
         var decl = await _context.FiscalDeclarations
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
         if (decl == null) return NotFound();
+
+        if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var periodDeadline))
+            return BuildPeriodLockedResponse(decl.Mois, decl.Annee, periodDeadline);
 
         var info = new { decl.TabKey, decl.Mois, decl.Annee };
         _context.FiscalDeclarations.Remove(decl);

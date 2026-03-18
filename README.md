@@ -1,0 +1,112 @@
+# DFC Portal - Documentation fonctionnelle
+
+Ce document décrit le contenu de l'application en 3 parties :
+1. Impression de chèque
+2. Fisca
+3. Page Admin
+
+## 1. Impression de chèque
+
+### Objectif
+Permettre la création, la prévisualisation, l'impression et le suivi des chèques.
+
+### Fonctionnalités principales
+- Création d'un chèque avec montant, bénéficiaire, ville, date, banque et référence.
+- Conversion automatique du montant en lettres (pour l'impression).
+- Prévisualisation avant impression.
+- Génération et impression PDF du chèque(texts des champs sans fond du cheque).
+- Gestion des banques (ajout, modification, suppression) avec modèle PDF de chèque.
+- Calibrage des positions des champs par banque et par utilisateur.
+- Gestion des chéquiers (création, consultation, mise à jour, suppression selon droits).
+- Historique des chèques avec recherche, tri, filtres, export PDF/Excel.
+- Mise à jour du statut des chèques (émis, annulé, rejeté) avec motif si nécessaire.
+- Journalisation des actions (audit) et notifications temps réel des mises à jour.
+
+### Règles métier importantes
+- Le rôle direction n'a pas le droit de créer/imprimer des chèques.
+- Les utilisateurs régionale sont limités à leur périmètre régional (accès et données filtrées).
+- Référence de chèque vérifiée côté API.
+- Si un chéquier est plein, aucun nouveau chèque ne peut être émis dessus.
+- Le compteur d'utilisation du chéquier est incrémenté à chaque émission.
+- Un chéquier déjà utilisé ne peut plus être modifié.
+- Validation des chéquiers :
+  - série exactement 2 caractères,
+  - numéros dans la plage autorisée,
+  - numéro de fin >= numéro de début,
+  - unicité sur banque + série + numéro de départ.
+
+## 2. Fisca
+
+### Objectif
+Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclarations fiscales.
+
+### Fonctionnalités principales
+- Saisie des déclarations par onglet/tableau fiscal.
+- Gestion de la période (mois/année) et de la direction.
+- Sauvegarde d'une déclaration (création et modification).
+- Consultation des déclarations récentes dans le dashboard fiscal.
+- Consultation détaillée au clic ligne, impression PDF, modification, suppression.
+- Filtres avancés (type, période, direction, date) et tri dans le dashboard.
+- Gestion des fournisseurs fiscaux :
+  - CRUD,
+  - export CSV,
+  - import CSV intelligent avec déduplication,
+  - résolution des conflits (garder l'existant ou remplacer par CSV).
+- Gestion des wilayas/communes (tableau TAP) via une source TypeScript dédiée.
+
+### Règles métier importantes
+- Le rôle direction n'a pas accès à la création de déclarations fiscales.
+- Validation des champs obligatoires avant sauvegarde selon le tableau actif.
+- Unicité des factures pour les tableaux TVA (2 et 3) sur la clé :
+  - fournisseur,
+  - référence facture,
+  - date facture.
+- Cette unicité est contrôlée côté frontend et côté backend, y compris sur l'historique des périodes.
+- Règle de clôture de période (délai légal interne) :
+  - Comptes régionaux : date limite = 10 du mois suivant à 23:59:59.
+  - Comptes admin et finance : date limite = 15 du mois suivant à 23:59:59.
+  - Exemple : période Mars 2026 -> limite au 10 Avril 2026 (régional) et au 15 Avril 2026 (admin/finance), à 23:59:59.
+  - Au-delà du délai applicable au compte connecté : création, modification et suppression interdites.
+  - Le blocage est appliqué côté frontend et côté backend.
+- Les données peuvent exister localement (cache local) et sont aussi persistées côté API.
+
+## 3. Page Admin
+
+### Objectif
+Centraliser l'administration des utilisateurs, des référentiels et de l'audit.
+
+### Fonctionnalités principales
+- Tableau de bord admin en 3 onglets :
+  - Utilisateurs,
+  - Audit,
+  - Gestion.
+- Gestion des utilisateurs :
+  - création,
+  - modification,
+  - suppression,
+  - attribution du rôle,
+  - attribution de région,
+  - attribution des modules d'accès.
+- Journal d'audit :
+  - consultation des actions système,
+  - filtres (utilisateur, action, dates),
+  - tri et visualisation détaillée.
+- Espace Gestion (ordre actuel) :
+  1. Gestion des banques
+  2. Gestion des fournisseurs fiscaux
+  3. Configuration des régions
+- Configuration des régions :
+  - création,
+  - modification,
+  - suppression,
+  - affectation des villes.
+
+### Règles métier importantes
+- Accès réservé aux administrateurs.
+- Redirection automatique des non-admin vers les pages autorisées.
+- Validation numéro de téléphone utilisateur : doit commencer par 0 et contenir exactement 10 chiffres.
+- Si le rôle est regionale, la région est obligatoire.
+- Les actions sensibles sont tracées dans le journal d'audit.
+
+---
+

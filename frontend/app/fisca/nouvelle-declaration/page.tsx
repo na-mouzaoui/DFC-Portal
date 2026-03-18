@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
+import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
@@ -2246,6 +2247,8 @@ export default function NouvelleDeclarationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingDeclarationId, setEditingDeclarationId] = useState<string | null>(null)
   const [editingCreatedAt, setEditingCreatedAt] = useState("")
+  const [editingSourceMois, setEditingSourceMois] = useState("")
+  const [editingSourceAnnee, setEditingSourceAnnee] = useState("")
 
   // ── Tab data (lifted) ──
   const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ttc: "" }])
@@ -2280,6 +2283,8 @@ export default function NouvelleDeclarationPage() {
     if (!editQuery.editId) {
       setEditingDeclarationId(null)
       setEditingCreatedAt("")
+      setEditingSourceMois("")
+      setEditingSourceAnnee("")
       return
     }
 
@@ -2303,8 +2308,12 @@ export default function NouvelleDeclarationPage() {
       setEditingCreatedAt(safeString(declaration.createdAt) || new Date().toISOString())
       setActiveTab(requestedTab)
       setDirection(safeString(declaration.direction))
-      setMois(normalizeMonthValue(safeString(declaration.mois)))
-      setAnnee(normalizeYearValue(safeString(declaration.annee)))
+      const loadedMois = normalizeMonthValue(safeString(declaration.mois))
+      const loadedAnnee = normalizeYearValue(safeString(declaration.annee))
+      setMois(loadedMois)
+      setAnnee(loadedAnnee)
+      setEditingSourceMois(loadedMois)
+      setEditingSourceAnnee(loadedAnnee)
 
       setEncRows(normalizeEncRows(declaration.encRows))
       setTvaImmoRows(normalizeTvaRows(declaration.tvaImmoRows))
@@ -2352,6 +2361,30 @@ export default function NouvelleDeclarationPage() {
     }
     if (!annee) {
       toast({ title: "⚠ Année requise", description: "Veuillez sélectionner l'année avant d'enregistrer.", variant: "destructive" })
+      return
+    }
+
+    const isSourcePeriodLocked =
+      !!editingDeclarationId &&
+      !!editingSourceMois &&
+      !!editingSourceAnnee &&
+      isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, user.role)
+
+    if (isSourcePeriodLocked) {
+      toast({
+        title: "⛔ Période clôturée",
+        description: `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, user.role)} Aucune modification n'est autorisée.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (isFiscalPeriodLocked(mois, annee, user.role)) {
+      toast({
+        title: "⛔ Période clôturée",
+        description: `${getFiscalPeriodLockMessage(mois, annee, user.role)} Aucune création ou modification n'est autorisée.`,
+        variant: "destructive",
+      })
       return
     }
 
@@ -2597,6 +2630,15 @@ export default function NouvelleDeclarationPage() {
 
   const activeColor = TABS.find((t) => t.key === activeTab)?.color ?? "#2db34b"
   const mon = MONTHS.find((m) => m.value === mois)?.label ?? mois
+  const currentPeriodLockMessage = (() => {
+    if (editingDeclarationId && editingSourceMois && editingSourceAnnee && isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, user.role)) {
+      return `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, user.role)} Aucune modification n'est autorisée.`
+    }
+    if (isFiscalPeriodLocked(mois, annee, user.role)) {
+      return `${getFiscalPeriodLockMessage(mois, annee, user.role)} Aucune création ou modification n'est autorisée.`
+    }
+    return ""
+  })()
 
   return (
     <LayoutWrapper user={user}>
@@ -2681,6 +2723,11 @@ export default function NouvelleDeclarationPage() {
                 </select>
               </div>
             </div>
+            {currentPeriodLockMessage && (
+              <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                ⛔ {currentPeriodLockMessage}
+              </p>
+            )}
           </CardContent>
         </Card>
 

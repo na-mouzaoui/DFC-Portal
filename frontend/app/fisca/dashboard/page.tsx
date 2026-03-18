@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FileText, CheckCircle, Clock, AlertTriangle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 
 type EncRow = { designation: string; ttc: string }
 type TvaRate = "19" | "9"
@@ -756,8 +757,23 @@ export default function FiscaDashboardPage() {
     )
   }
 
-  const handleDelete = (id: string) => {
-    const updated = declarations.filter((d) => d.id !== id)
+  const isDeclarationLocked = (decl: SavedDeclaration) => isFiscalPeriodLocked(decl.mois, decl.annee, user.role)
+
+  const showPeriodLockedToast = (decl: SavedDeclaration, actionLabel: "modifier" | "supprimer") => {
+    toast({
+      title: "⛔ Période clôturée",
+      description: `${getFiscalPeriodLockMessage(decl.mois, decl.annee, user.role)} Impossible de ${actionLabel} cette déclaration.`,
+      variant: "destructive",
+    })
+  }
+
+  const handleDelete = (decl: SavedDeclaration) => {
+    if (isDeclarationLocked(decl)) {
+      showPeriodLockedToast(decl, "supprimer")
+      return
+    }
+
+    const updated = declarations.filter((d) => d.id !== decl.id)
     setDeclarations(updated)
     try {
       localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
@@ -811,6 +827,11 @@ export default function FiscaDashboardPage() {
   }
 
   const handleEdit = (decl: SavedDeclaration, tabKey: string) => {
+    if (isDeclarationLocked(decl)) {
+      showPeriodLockedToast(decl, "modifier")
+      return
+    }
+
     router.push(`/fisca/nouvelle-declaration?editId=${encodeURIComponent(decl.id)}&tab=${encodeURIComponent(tabKey)}`)
   }
 
@@ -1079,6 +1100,7 @@ export default function FiscaDashboardPage() {
                   <TableBody>
                     {recentDeclarations.map((decl) => {
                       const declType = getDeclarationType(decl)
+                      const isLocked = isDeclarationLocked(decl)
                       return (
                         <TableRow
                           key={decl.id}
@@ -1096,6 +1118,11 @@ export default function FiscaDashboardPage() {
                             <Badge variant="outline" className="text-xs">
                               {MONTHS[decl.mois] || decl.mois} {decl.annee}
                             </Badge>
+                            {isLocked && (
+                              <Badge variant="secondary" className="ml-2 text-[10px] text-red-600">
+                                Clôturée
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
@@ -1105,12 +1132,13 @@ export default function FiscaDashboardPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50"
+                                className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={isLocked}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   handleEdit(decl, declType.key)
                                 }}
-                                title="Modifier"
+                                title={isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
                               >
                                 <Pencil size={16} />
                               </Button>
@@ -1129,12 +1157,13 @@ export default function FiscaDashboardPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={isLocked}
                                 onClick={(event) => {
                                   event.stopPropagation()
-                                  handleDelete(decl.id)
+                                  handleDelete(decl)
                                 }}
-                                title="Supprimer"
+                                title={isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
                               >
                                 <Trash2 size={16} />
                               </Button>
