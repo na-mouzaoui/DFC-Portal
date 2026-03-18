@@ -29,28 +29,68 @@ public class FiscalController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
-    private async Task<string> GetCurrentUserRoleAsync(int userId)
+    private async Task<(string Role, string Direction, string Region)> GetCurrentUserContextAsync(int userId)
     {
-        var roleFromDatabase = await _context.Users
+        var userFromDatabase = await _context.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => u.Role)
+            .Select(u => new { u.Role, u.Direction, u.Region })
             .FirstOrDefaultAsync();
-
-        if (!string.IsNullOrWhiteSpace(roleFromDatabase))
-            return roleFromDatabase.Trim().ToLowerInvariant();
 
         var roleClaim = User.FindFirst("role")?.Value
             ?? User.FindFirst(ClaimTypes.Role)?.Value
             ?? "";
 
-        return roleClaim.Trim().ToLowerInvariant();
+        var normalizedRole = !string.IsNullOrWhiteSpace(userFromDatabase?.Role)
+            ? userFromDatabase!.Role.Trim().ToLowerInvariant()
+            : roleClaim.Trim().ToLowerInvariant();
+
+        return (
+            normalizedRole,
+            (userFromDatabase?.Direction ?? "").Trim(),
+            (userFromDatabase?.Region ?? "").Trim()
+        );
     }
 
     private static int GetDeadlineDayForRole(string? role)
     {
         var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
         return normalizedRole is "admin" or "comptabilite" or "finance" ? 15 : 10;
+    }
+
+    private static string ResolveDirectionForRole(string role, string? requestedDirection, string userDirection, string userRegion, string? existingDirection = null)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        var normalizedRequestedDirection = (requestedDirection ?? "").Trim();
+        var normalizedUserDirection = (userDirection ?? "").Trim();
+        var normalizedUserRegion = (userRegion ?? "").Trim();
+        var normalizedExistingDirection = (existingDirection ?? "").Trim();
+
+        if (normalizedRole == "admin")
+        {
+            if (!string.IsNullOrWhiteSpace(normalizedRequestedDirection))
+                return normalizedRequestedDirection;
+            if (!string.IsNullOrWhiteSpace(normalizedExistingDirection))
+                return normalizedExistingDirection;
+            return normalizedUserDirection;
+        }
+
+        if (normalizedRole is "comptabilite" or "finance")
+            return "Siège";
+
+        if (normalizedRole == "regionale")
+        {
+            if (!string.IsNullOrWhiteSpace(normalizedUserRegion))
+                return normalizedUserRegion;
+            if (!string.IsNullOrWhiteSpace(normalizedUserDirection))
+                return normalizedUserDirection;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedRequestedDirection))
+            return normalizedRequestedDirection;
+        if (!string.IsNullOrWhiteSpace(normalizedExistingDirection))
+            return normalizedExistingDirection;
+        return normalizedUserDirection;
     }
 
     private static bool TryBuildPeriodDeadline(string mois, string annee, string? role, out DateTime deadline)
@@ -272,7 +312,8 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Create([FromBody] FiscalDeclarationRequest request)
     {
         var userId = GetCurrentUserId();
-        var currentUserRole = await GetCurrentUserRoleAsync(userId);
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
 
         if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(request.Mois, request.Annee, periodDeadline);
@@ -287,7 +328,7 @@ public class FiscalController : ControllerBase
             TabKey    = request.TabKey,
             Mois      = request.Mois,
             Annee     = request.Annee,
-            Direction = request.Direction ?? "",
+            Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region),
             DataJson  = request.DataJson ?? "{}",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -309,7 +350,8 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] FiscalDeclarationRequest request)
     {
         var userId = GetCurrentUserId();
-        var currentUserRole = await GetCurrentUserRoleAsync(userId);
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
         var decl = await _context.FiscalDeclarations
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
@@ -328,7 +370,7 @@ public class FiscalController : ControllerBase
         decl.TabKey    = request.TabKey;
         decl.Mois      = request.Mois;
         decl.Annee     = request.Annee;
-        decl.Direction = request.Direction ?? decl.Direction;
+        decl.Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region, decl.Direction);
         decl.DataJson  = request.DataJson ?? decl.DataJson;
         decl.UpdatedAt = DateTime.UtcNow;
 
@@ -345,7 +387,8 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var userId = GetCurrentUserId();
-        var currentUserRole = await GetCurrentUserRoleAsync(userId);
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
         var decl = await _context.FiscalDeclarations
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 

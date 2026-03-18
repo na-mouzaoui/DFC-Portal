@@ -2269,15 +2269,37 @@ export default function NouvelleDeclarationPage() {
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
 
+  const normalizedUserRole = (user?.role ?? "").trim().toLowerCase()
+  const isAdminRole = normalizedUserRole === "admin"
+  const isRegionalRole = normalizedUserRole === "regionale"
+  const isFinanceRole = normalizedUserRole === "comptabilite" || normalizedUserRole === "finance"
+
+  const resolveDirectionForRole = useCallback(
+    (fallbackDirection = "") => {
+      const normalizedFallback = safeString(fallbackDirection).trim()
+
+      if (isRegionalRole) {
+        const regionalDirection = safeString(user?.region ?? user?.direction ?? "").trim()
+        return regionalDirection || normalizedFallback
+      }
+
+      if (isFinanceRole) {
+        return "Siège"
+      }
+
+      return normalizedFallback
+    },
+    [isRegionalRole, isFinanceRole, user],
+  )
+
+  const isDirectionLocked = isRegionalRole || isFinanceRole
+  const effectiveDirection = isAdminRole ? safeString(direction).trim() : resolveDirectionForRole(direction)
+
   // ── Auto-set direction based on user role ──
   useEffect(() => {
-    if (!user) return
-    if (user.role === "regionale") {
-      setDirection(user.region ?? user.direction ?? "")
-    } else if (user.role === "comptabilite" || user.role === "admin") {
-      setDirection((prev) => prev || "Siège")
-    }
-  }, [user])
+    if (!user || isAdminRole) return
+    setDirection((prev) => resolveDirectionForRole(prev))
+  }, [user, isAdminRole, resolveDirectionForRole])
 
   useEffect(() => {
     if (!editQuery.editId) {
@@ -2307,7 +2329,8 @@ export default function NouvelleDeclarationPage() {
       setEditingDeclarationId(safeString(declaration.id) || editQuery.editId)
       setEditingCreatedAt(safeString(declaration.createdAt) || new Date().toISOString())
       setActiveTab(requestedTab)
-      setDirection(safeString(declaration.direction))
+      const loadedDirection = safeString(declaration.direction).trim()
+      setDirection(isAdminRole ? loadedDirection : resolveDirectionForRole(loadedDirection))
       const loadedMois = normalizeMonthValue(safeString(declaration.mois))
       const loadedAnnee = normalizeYearValue(safeString(declaration.annee))
       setMois(loadedMois)
@@ -2339,7 +2362,7 @@ export default function NouvelleDeclarationPage() {
         variant: "destructive",
       })
     }
-  }, [editQuery.editId, editQuery.tab])
+  }, [editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -2350,8 +2373,10 @@ export default function NouvelleDeclarationPage() {
   }
 
   const handleSave = async () => {
+    const saveDirection = effectiveDirection
+
     // Validation : direction, mois, année obligatoires
-    if (!direction.trim()) {
+    if (!saveDirection) {
       toast({ title: "⚠ Direction requise", description: "Veuillez saisir la direction avant d'enregistrer.", variant: "destructive" })
       return
     }
@@ -2491,7 +2516,7 @@ export default function NouvelleDeclarationPage() {
     const baseDecl: SavedDeclaration = {
       id: declarationId,
       createdAt: declarationCreatedAt,
-      direction,
+      direction: saveDirection,
       mois,
       annee,
       encRows: [] as EncRow[],
@@ -2612,7 +2637,7 @@ export default function NouvelleDeclarationPage() {
           tabKey: activeTab,
           mois,
           annee,
-          direction,
+          direction: saveDirection,
           dataJson: JSON.stringify(tabData),
         }),
       })
@@ -2652,7 +2677,7 @@ export default function NouvelleDeclarationPage() {
       ) : (
         <>
         <PrintZone
-        activeTab={activeTab} direction={direction} mois={mois} annee={annee}
+        activeTab={activeTab} direction={effectiveDirection} mois={mois} annee={annee}
         encRows={encRows} tvaImmoRows={tvaImmoRows} tvaBiensRows={tvaBiensRows}
         timbreRows={timbreRows} b12={b12} b13={b13} tapRows={tapRows}
         caSiegeRows={siegeEncRows}
@@ -2688,11 +2713,14 @@ export default function NouvelleDeclarationPage() {
       {/* Direction */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Direction</label>
-                <select value={direction} onChange={(e) => setDirection(e.target.value)}
-                  disabled={user.role === "regionale"}
+                <select value={effectiveDirection} onChange={(e) => setDirection(e.target.value)}
+                  disabled={isDirectionLocked}
                   className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-60 disabled:cursor-not-allowed">
                   <option value="">— Sélectionner une direction —</option>
                   <option value="Siège">Siège</option>
+                  {isDirectionLocked && effectiveDirection && effectiveDirection !== "Siège" && !regions.some((r) => r.name === effectiveDirection) && (
+                    <option value={effectiveDirection}>{effectiveDirection}</option>
+                  )}
                   {regions.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </div>
