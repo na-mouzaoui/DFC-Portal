@@ -13,6 +13,7 @@ import { Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
+import { canManageFiscalTab, getManageableFiscalTabKeys, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
@@ -2269,10 +2270,21 @@ export default function NouvelleDeclarationPage() {
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
 
-  const normalizedUserRole = (user?.role ?? "").trim().toLowerCase()
-  const isAdminRole = normalizedUserRole === "admin"
-  const isRegionalRole = normalizedUserRole === "regionale"
-  const isFinanceRole = normalizedUserRole === "comptabilite" || normalizedUserRole === "finance"
+  const userRole = user?.role ?? ""
+  const isAdminRole = isAdminFiscalRole(userRole)
+  const isRegionalRole = isRegionalFiscalRole(userRole)
+  const isFinanceRole = isFinanceFiscalRole(userRole)
+  const manageableTabKeys = useMemo(() => new Set(getManageableFiscalTabKeys(userRole)), [userRole])
+  const availableTabs = useMemo(() => TABS.filter((tab) => manageableTabKeys.has(tab.key)), [manageableTabKeys])
+  const selectableYears = useMemo(
+    () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
+    [userRole],
+  )
+  const selectableMonths = useMemo(
+    () => MONTHS.filter((month) => !isFiscalPeriodLocked(month.value, annee, userRole)),
+    [annee, userRole],
+  )
+  const hasFiscalTabAccess = availableTabs.length > 0
 
   const resolveDirectionForRole = useCallback(
     (fallbackDirection = "") => {
@@ -2294,6 +2306,30 @@ export default function NouvelleDeclarationPage() {
 
   const isDirectionLocked = isRegionalRole || isFinanceRole
   const effectiveDirection = isAdminRole ? safeString(direction).trim() : resolveDirectionForRole(direction)
+
+  useEffect(() => {
+    if (availableTabs.length === 0) return
+    if (!availableTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(availableTabs[0].key)
+    }
+  }, [activeTab, availableTabs])
+
+  useEffect(() => {
+    if (!selectableYears.includes(annee)) {
+      const fallbackYear = selectableYears[0]
+      if (fallbackYear) {
+        setAnnee(fallbackYear)
+        return
+      }
+    }
+
+    if (!selectableMonths.some((month) => month.value === mois)) {
+      const fallbackMonth = selectableMonths[0]?.value
+      if (fallbackMonth) {
+        setMois(fallbackMonth)
+      }
+    }
+  }, [annee, mois, selectableMonths, selectableYears])
 
   // ── Auto-set direction based on user role ──
   useEffect(() => {
@@ -2325,6 +2361,16 @@ export default function NouvelleDeclarationPage() {
       }
 
       const requestedTab = isFiscalTabKey(editQuery.tab) ? editQuery.tab : resolveDeclarationTabKey(declaration)
+
+      if (!canManageFiscalTab(userRole, requestedTab)) {
+        toast({
+          title: "⛔ Accès refusé",
+          description: "Votre profil n'est pas autorisé à modifier ce tableau fiscal.",
+          variant: "destructive",
+        })
+        router.push("/fisca/dashboard")
+        return
+      }
 
       setEditingDeclarationId(safeString(declaration.id) || editQuery.editId)
       setEditingCreatedAt(safeString(declaration.createdAt) || new Date().toISOString())
@@ -2362,7 +2408,7 @@ export default function NouvelleDeclarationPage() {
         variant: "destructive",
       })
     }
-  }, [editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole])
+  }, [editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole, router, userRole])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -2374,6 +2420,24 @@ export default function NouvelleDeclarationPage() {
 
   const handleSave = async () => {
     const saveDirection = effectiveDirection
+
+    if (!canManageFiscalTab(userRole, activeTab)) {
+      toast({
+        title: "⛔ Accès refusé",
+        description: "Votre profil n'est pas autorisé à créer ou modifier ce tableau fiscal.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!selectableYears.includes(annee) || !selectableMonths.some((month) => month.value === mois)) {
+      toast({
+        title: "⛔ Période clôturée",
+        description: "Le mois ou l'année sélectionné(e) est hors délai.",
+        variant: "destructive",
+      })
+      return
+    }
 
     // Validation : direction, mois, année obligatoires
     if (!saveDirection) {
@@ -2393,21 +2457,21 @@ export default function NouvelleDeclarationPage() {
       !!editingDeclarationId &&
       !!editingSourceMois &&
       !!editingSourceAnnee &&
-      isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, user.role)
+      isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, userRole)
 
     if (isSourcePeriodLocked) {
       toast({
         title: "⛔ Période clôturée",
-        description: `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, user.role)} Aucune modification n'est autorisée.`,
+        description: `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, userRole)} Aucune modification n'est autorisée.`,
         variant: "destructive",
       })
       return
     }
 
-    if (isFiscalPeriodLocked(mois, annee, user.role)) {
+    if (isFiscalPeriodLocked(mois, annee, userRole)) {
       toast({
         title: "⛔ Période clôturée",
-        description: `${getFiscalPeriodLockMessage(mois, annee, user.role)} Aucune création ou modification n'est autorisée.`,
+        description: `${getFiscalPeriodLockMessage(mois, annee, userRole)} Aucune création ou modification n'est autorisée.`,
         variant: "destructive",
       })
       return
@@ -2656,11 +2720,11 @@ export default function NouvelleDeclarationPage() {
   const activeColor = TABS.find((t) => t.key === activeTab)?.color ?? "#2db34b"
   const mon = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const currentPeriodLockMessage = (() => {
-    if (editingDeclarationId && editingSourceMois && editingSourceAnnee && isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, user.role)) {
-      return `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, user.role)} Aucune modification n'est autorisée.`
+    if (editingDeclarationId && editingSourceMois && editingSourceAnnee && isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, userRole)) {
+      return `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, userRole)} Aucune modification n'est autorisée.`
     }
-    if (isFiscalPeriodLocked(mois, annee, user.role)) {
-      return `${getFiscalPeriodLockMessage(mois, annee, user.role)} Aucune création ou modification n'est autorisée.`
+    if (isFiscalPeriodLocked(mois, annee, userRole)) {
+      return `${getFiscalPeriodLockMessage(mois, annee, userRole)} Aucune création ou modification n'est autorisée.`
     }
     return ""
   })()
@@ -2668,10 +2732,12 @@ export default function NouvelleDeclarationPage() {
   return (
     <LayoutWrapper user={user}>
       {/* Block global (direction) role */}
-      {user.role === "direction" ? (
+      {user.role === "direction" || !hasFiscalTabAccess ? (
         <AccessDeniedDialog
           title="Accès refusé"
-          message="Votre rôle ne vous permet pas de créer des déclarations fiscales."
+          message={user.role === "direction"
+            ? "Votre rôle ne vous permet pas de créer des déclarations fiscales."
+            : "Votre rôle ne vous permet pas de gérer les tableaux fiscaux."}
           redirectTo="/fisca/dashboard"
         />
       ) : (
@@ -2730,7 +2796,9 @@ export default function NouvelleDeclarationPage() {
                 <select value={mois} onChange={(e) => setMois(e.target.value)}
                   disabled={activeTab === "acompte"}
                   className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {selectableMonths.length === 0
+                    ? <option value="">Aucun mois disponible</option>
+                    : selectableMonths.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
               {/* Année */}
@@ -2738,7 +2806,9 @@ export default function NouvelleDeclarationPage() {
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Année</label>
                 <select value={annee} onChange={(e) => setAnnee(e.target.value)}
                   className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300">
-                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  {selectableYears.length === 0
+                    ? <option value="">Aucune année disponible</option>
+                    : selectableYears.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               {/* Tableau */}
@@ -2747,7 +2817,7 @@ export default function NouvelleDeclarationPage() {
                 <select value={activeTab} onChange={(e) => setActiveTab(e.target.value)}
                   className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{ borderColor: TABS.find(t => t.key === activeTab)?.color ?? undefined }}>
-                  {TABS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  {availableTabs.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
               </div>
             </div>

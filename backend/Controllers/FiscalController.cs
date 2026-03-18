@@ -127,6 +127,69 @@ public class FiscalController : ControllerBase
         });
     }
 
+    private static readonly HashSet<string> RegionalManageableTabs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "encaissement",
+        "tva_immo",
+        "tva_biens",
+        "droits_timbre",
+        "ca_tap",
+        "etat_tap"
+    };
+
+    private static readonly HashSet<string> FinanceManageableTabs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ca_siege",
+        "irg",
+        "taxe2",
+        "taxe_masters",
+        "taxe_vehicule",
+        "taxe_formation",
+        "acompte",
+        "ibs",
+        "taxe_domicil",
+        "tva_autoliq"
+    };
+
+    private static string NormalizeTabKey(string? tabKey) => (tabKey ?? "").Trim().ToLowerInvariant();
+
+    private static bool CanManageTabForRole(string role, string? tabKey)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        var normalizedTabKey = NormalizeTabKey(tabKey);
+
+        if (string.IsNullOrWhiteSpace(normalizedTabKey)) return false;
+
+        if (normalizedRole == "admin")
+            return true;
+
+        if (normalizedRole == "regionale")
+            return RegionalManageableTabs.Contains(normalizedTabKey);
+
+        if (normalizedRole is "comptabilite" or "finance")
+            return FinanceManageableTabs.Contains(normalizedTabKey);
+
+        return false;
+    }
+
+    private IActionResult BuildTabAccessDeniedResponse(string role, string? tabKey)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        var roleLabel = normalizedRole switch
+        {
+            "admin" => "admin",
+            "regionale" => "régionale",
+            "comptabilite" => "finance",
+            "finance" => "finance",
+            _ => "inconnu"
+        };
+
+        return StatusCode(403, new
+        {
+            message = $"Le profil {roleLabel} n'est pas autorisé à gérer le tableau '{NormalizeTabKey(tabKey)}'."
+        });
+    }
+
     private static bool IsTvaTab(string tabKey) => tabKey is "tva_immo" or "tva_biens";
 
     private static string NormalizeInvoicePart(string? value) => (value ?? "").Trim().ToUpperInvariant();
@@ -315,6 +378,9 @@ public class FiscalController : ControllerBase
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
 
+        if (!CanManageTabForRole(currentUserRole, request.TabKey))
+            return BuildTabAccessDeniedResponse(currentUserRole, request.TabKey);
+
         if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(request.Mois, request.Annee, periodDeadline);
 
@@ -357,6 +423,12 @@ public class FiscalController : ControllerBase
 
         if (decl == null) return NotFound();
 
+        if (!CanManageTabForRole(currentUserRole, decl.TabKey))
+            return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
+
+        if (!CanManageTabForRole(currentUserRole, request.TabKey))
+            return BuildTabAccessDeniedResponse(currentUserRole, request.TabKey);
+
         if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var sourceDeadline))
             return BuildPeriodLockedResponse(decl.Mois, decl.Annee, sourceDeadline);
 
@@ -393,6 +465,9 @@ public class FiscalController : ControllerBase
             .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 
         if (decl == null) return NotFound();
+
+        if (!CanManageTabForRole(currentUserRole, decl.TabKey))
+            return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
 
         if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(decl.Mois, decl.Annee, periodDeadline);

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { FileText, CheckCircle, Clock, AlertTriangle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
+import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
 
 type EncRow = { designation: string; ttc: string }
 type TvaRate = "19" | "9"
@@ -759,6 +760,14 @@ export default function FiscaDashboardPage() {
 
   const isDeclarationLocked = (decl: SavedDeclaration) => isFiscalPeriodLocked(decl.mois, decl.annee, user.role)
 
+  const showTabAccessDeniedToast = (tabLabel: string, actionLabel: "modifier" | "supprimer") => {
+    toast({
+      title: "⛔ Accès refusé",
+      description: `Votre profil n'est pas autorisé à ${actionLabel} le tableau "${tabLabel}".`,
+      variant: "destructive",
+    })
+  }
+
   const showPeriodLockedToast = (decl: SavedDeclaration, actionLabel: "modifier" | "supprimer") => {
     toast({
       title: "⛔ Période clôturée",
@@ -768,6 +777,12 @@ export default function FiscaDashboardPage() {
   }
 
   const handleDelete = (decl: SavedDeclaration) => {
+    const declType = getDeclarationType(decl)
+    if (!canManageFiscalTab(user.role, declType.key)) {
+      showTabAccessDeniedToast(declType.label, "supprimer")
+      return
+    }
+
     if (isDeclarationLocked(decl)) {
       showPeriodLockedToast(decl, "supprimer")
       return
@@ -827,6 +842,12 @@ export default function FiscaDashboardPage() {
   }
 
   const handleEdit = (decl: SavedDeclaration, tabKey: string) => {
+    const declType = getDeclarationType(decl)
+    if (!canManageFiscalTab(user.role, declType.key)) {
+      showTabAccessDeniedToast(declType.label, "modifier")
+      return
+    }
+
     if (isDeclarationLocked(decl)) {
       showPeriodLockedToast(decl, "modifier")
       return
@@ -1101,6 +1122,7 @@ export default function FiscaDashboardPage() {
                     {recentDeclarations.map((decl) => {
                       const declType = getDeclarationType(decl)
                       const isLocked = isDeclarationLocked(decl)
+                      const canManage = canManageFiscalTab(user.role, declType.key)
                       return (
                         <TableRow
                           key={decl.id}
@@ -1133,12 +1155,12 @@ export default function FiscaDashboardPage() {
                                 size="sm"
                                 variant="outline"
                                 className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={isLocked}
+                                disabled={isLocked || !canManage}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   handleEdit(decl, declType.key)
                                 }}
-                                title={isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
+                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
                               >
                                 <Pencil size={16} />
                               </Button>
@@ -1158,12 +1180,12 @@ export default function FiscaDashboardPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={isLocked}
+                                disabled={isLocked || !canManage}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   handleDelete(decl)
                                 }}
-                                title={isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
+                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
                               >
                                 <Trash2 size={16} />
                               </Button>
