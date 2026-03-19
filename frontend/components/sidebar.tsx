@@ -24,14 +24,14 @@ import type { User } from "@/lib/db"
 import UserProfileMenu from "./user-profile-menu"
 
 const imprimeChecqueLinks = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/cheque_dashbord", icon: LayoutDashboard },
   { name: "Nouveau Chèque", href: "/cheque", icon: FileText },
   { name: "Paramètres", href: "/parametres", icon: Settings },
 ]
 
 const fiscaLinks = [
-  { name: "Dashboard", href: "/fisca/dashboard", icon: LayoutDashboard },
-  { name: "Nouvelle Déclaration", href: "/fisca/nouvelle-declaration", icon: FilePlus },
+  { name: "Dashboard", href: "/fisca_dashbord", icon: LayoutDashboard },
+  { name: "Nouvelle Déclaration", href: "/declaration", icon: FilePlus },
 ]
 
 interface SidebarProps {
@@ -42,7 +42,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isFiscaPath = pathname.startsWith("/fisca")
+  const isFiscaPath = pathname === "/fisca_dashbord" || pathname.startsWith("/declaration")
   const modules = (user.accessModules || "cheque,fisca").split(",").map((m: string) => m.trim())
   const hasChecque = modules.includes("cheque")
   const hasFisca = modules.includes("fisca")

@@ -38,7 +38,7 @@ export default function ChequePage() {
           <AccessDeniedDialog
             title="Accès refusé"
             message="Votre rôle ne vous permet pas de créer ou imprimer des chèques. Seuls les utilisateurs avec le rôle 'Finance', 'Régionale' ou 'Admin' peuvent effectuer cette action."
-            redirectTo="/dashboard"
+            redirectTo="/cheque_dashbord"
           />
         )}
       </div>

@@ -193,8 +193,8 @@ export default function DashboardPage() {
   
   // Chargement des données dès que l'utilisateur est authentifié ET à chaque changement de pathname
   useEffect(() => {
-    const wasOnDashboard = pathnameRef.current === "/dashboard"
-    const nowOnDashboard = pathname === "/dashboard"
+    const wasOnDashboard = pathnameRef.current === "/cheque_dashbord"
+    const nowOnDashboard = pathname === "/cheque_dashbord"
     pathnameRef.current = pathname
     
     if (!user || status !== "authenticated") {

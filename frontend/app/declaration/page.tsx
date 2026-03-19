@@ -2368,7 +2368,7 @@ export default function NouvelleDeclarationPage() {
           description: "Votre profil n'est pas autorisé à modifier ce tableau fiscal.",
           variant: "destructive",
         })
-        router.push("/fisca/dashboard")
+        router.push("/fisca_dashbord")
         return
       }
 
@@ -2713,7 +2713,7 @@ export default function NouvelleDeclarationPage() {
       description: `La déclaration "${tabLabel}" a été sauvegardée avec succès.`,
     })
     setIsSubmitting(false)
-    router.push("/fisca/dashboard")
+    router.push("/fisca_dashbord")
   }
 
 
@@ -2738,7 +2738,7 @@ export default function NouvelleDeclarationPage() {
           message={user.role === "direction"
             ? "Votre rôle ne vous permet pas de créer des déclarations fiscales."
             : "Votre rôle ne vous permet pas de gérer les tableaux fiscaux."}
-          redirectTo="/fisca/dashboard"
+          redirectTo="/fisca_dashbord"
         />
       ) : (
         <>

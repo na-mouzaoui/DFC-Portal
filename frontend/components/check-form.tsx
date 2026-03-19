@@ -593,7 +593,7 @@ export function CheckForm({ user }: CheckFormProps) {
         }
         setReference("")
         setIsPrinting(false)
-        router.push("/dashboard")
+        router.push("/cheque_dashbord")
       }, 1500)
 
     } catch (error) {

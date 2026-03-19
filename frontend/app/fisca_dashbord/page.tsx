@@ -908,7 +908,7 @@ export default function FiscaDashboardPage() {
       return
     }
 
-    router.push(`/fisca/nouvelle-declaration?editId=${encodeURIComponent(decl.id)}&tab=${encodeURIComponent(tabKey)}`)
+    router.push(`/declaration?editId=${encodeURIComponent(decl.id)}&tab=${encodeURIComponent(tabKey)}`)
   }
 
   const getDeclarationType = (decl: SavedDeclaration) => {
