@@ -127,7 +127,7 @@ public class FiscalController : ControllerBase
         });
     }
 
-    private static readonly HashSet<string> RegionalManageableTabs = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] RegionalManageableTabOrder =
     {
         "encaissement",
         "tva_immo",
@@ -137,7 +137,7 @@ public class FiscalController : ControllerBase
         "etat_tap"
     };
 
-    private static readonly HashSet<string> FinanceManageableTabs = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] FinanceManageableTabOrder =
     {
         "ca_siege",
         "irg",
@@ -151,7 +151,46 @@ public class FiscalController : ControllerBase
         "tva_autoliq"
     };
 
+    private static readonly HashSet<string> RegionalManageableTabs = new(RegionalManageableTabOrder, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> FinanceManageableTabs = new(FinanceManageableTabOrder, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] MonthLabels =
+    {
+        "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+        "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    };
+
     private static string NormalizeTabKey(string? tabKey) => (tabKey ?? "").Trim().ToLowerInvariant();
+
+    private static bool IsRegionalRole(string? role)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        return normalizedRole == "regionale";
+    }
+
+    private static bool IsFinanceRole(string? role)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+        return normalizedRole is "comptabilite" or "finance";
+    }
+
+    private static (string Mois, string Annee, string Label) BuildReminderPeriod(DateTime referenceDate)
+    {
+        var periodMonth = referenceDate.Month == 1 ? 12 : referenceDate.Month - 1;
+        var periodYear = referenceDate.Month == 1 ? referenceDate.Year - 1 : referenceDate.Year;
+
+        var mois = periodMonth.ToString("00");
+        var annee = periodYear.ToString();
+        var label = $"{MonthLabels[periodMonth - 1]} {annee}";
+
+        return (mois, annee, label);
+    }
+
+    private static bool IsReminderWindowOpen(DateTime now, DateTime deadline, out DateTime windowStart)
+    {
+        windowStart = deadline.Date.AddDays(-3);
+        return now >= windowStart && now <= deadline;
+    }
 
     private static bool CanManageTabForRole(string role, string? tabKey)
     {
@@ -366,6 +405,108 @@ public class FiscalController : ControllerBase
         {
             decl.Id, decl.TabKey, decl.Mois, decl.Annee, decl.Direction,
             decl.DataJson, decl.CreatedAt, decl.UpdatedAt
+        });
+    }
+
+    [HttpGet("reminder-status")]
+    public async Task<IActionResult> GetReminderStatus()
+    {
+        var userId = GetCurrentUserId();
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
+        var isRegionalRole = IsRegionalRole(currentUserRole);
+        var isFinanceRole = IsFinanceRole(currentUserRole);
+
+        if (!isRegionalRole && !isFinanceRole)
+        {
+            return Ok(new
+            {
+                shouldShow = false,
+                roleScope = "none",
+                scopeLabel = "",
+                reason = "unsupported-role"
+            });
+        }
+
+        var now = DateTime.Now;
+        var deadlineDay = GetDeadlineDayForRole(currentUserRole);
+        var deadline = new DateTime(now.Year, now.Month, deadlineDay, 23, 59, 59, DateTimeKind.Local);
+        var isInReminderWindow = IsReminderWindowOpen(now, deadline, out var windowStart);
+        var reminderPeriod = BuildReminderPeriod(now);
+
+        var requiredTabKeys = isRegionalRole ? RegionalManageableTabOrder : FinanceManageableTabOrder;
+        var requiredTabSet = isRegionalRole ? RegionalManageableTabs : FinanceManageableTabs;
+
+        var scopeLabel = isRegionalRole
+            ? (currentUserContext.Region ?? "").Trim()
+            : "Finance";
+
+        if (isRegionalRole && string.IsNullOrWhiteSpace(scopeLabel))
+        {
+            return Ok(new
+            {
+                shouldShow = false,
+                roleScope = "regionale",
+                scopeLabel = "",
+                mois = reminderPeriod.Mois,
+                annee = reminderPeriod.Annee,
+                periodLabel = reminderPeriod.Label,
+                deadlineDisplay = deadline.ToString("dd/MM/yyyy HH:mm"),
+                windowStartDisplay = windowStart.ToString("dd/MM/yyyy HH:mm"),
+                daysRemaining = Math.Max(0, (int)Math.Ceiling((deadline - now).TotalDays)),
+                requiredTabKeys,
+                completedTabKeys = Array.Empty<string>(),
+                missingTabKeys = requiredTabKeys,
+                isInReminderWindow,
+                reason = "missing-region"
+            });
+        }
+
+        var declarationsQuery = _context.FiscalDeclarations
+            .AsNoTracking()
+            .Where(d => d.Mois == reminderPeriod.Mois && d.Annee == reminderPeriod.Annee)
+            .Where(d => requiredTabSet.Contains(d.TabKey));
+
+        if (isRegionalRole)
+        {
+            var normalizedScopeRegion = scopeLabel.ToLowerInvariant();
+            declarationsQuery = declarationsQuery.Where(d =>
+                (d.User.Role ?? "").ToLower() == "regionale" &&
+                (d.User.Region ?? "").ToLower() == normalizedScopeRegion);
+        }
+        else
+        {
+            declarationsQuery = declarationsQuery.Where(d =>
+                (d.User.Role ?? "").ToLower() == "finance" ||
+                (d.User.Role ?? "").ToLower() == "comptabilite");
+        }
+
+        var completedRawTabKeys = await declarationsQuery
+            .Select(d => d.TabKey)
+            .Distinct()
+            .ToListAsync();
+
+        var completedSet = new HashSet<string>(completedRawTabKeys.Select(NormalizeTabKey), StringComparer.OrdinalIgnoreCase);
+        var completedTabKeys = requiredTabKeys.Where(tab => completedSet.Contains(tab)).ToArray();
+        var missingTabKeys = requiredTabKeys.Where(tab => !completedSet.Contains(tab)).ToArray();
+        var shouldShow = isInReminderWindow && missingTabKeys.Length > 0;
+
+        return Ok(new
+        {
+            shouldShow,
+            roleScope = isRegionalRole ? "regionale" : "finance",
+            scopeLabel,
+            mois = reminderPeriod.Mois,
+            annee = reminderPeriod.Annee,
+            periodLabel = reminderPeriod.Label,
+            deadlineDisplay = deadline.ToString("dd/MM/yyyy HH:mm"),
+            windowStartDisplay = windowStart.ToString("dd/MM/yyyy HH:mm"),
+            daysRemaining = Math.Max(0, (int)Math.Ceiling((deadline - now).TotalDays)),
+            requiredTabKeys,
+            completedTabKeys,
+            missingTabKeys,
+            isInReminderWindow,
+            reason = shouldShow ? "pending-tables" : (isInReminderWindow ? "all-complete" : "outside-window")
         });
     }
 

@@ -47,6 +47,7 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 - Consultation des déclarations récentes dans le dashboard fiscal.
 - Consultation détaillée au clic ligne, impression PDF, modification, suppression.
 - Filtres avancés (type, période, direction, date) et tri dans le dashboard.
+- Rappel automatique de saisie au dashboard fiscal (J-3 jusqu'au délai), avec contrôle global d'avancement par périmètre de compte.
 - Gestion des fournisseurs fiscaux :
   - CRUD,
   - export CSV,
@@ -56,7 +57,17 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 
 ### Règles métier importantes
 - Le rôle direction n'a pas accès à la création de déclarations fiscales.
+- Direction imposée selon le rôle :
+  - regionale -> direction fixée automatiquement sur la région du compte,
+  - finance/comptabilite -> direction fixée à "Siège",
+  - admin -> direction sélectionnable.
+- Attribution des tableaux fiscaux par type de compte :
+  - admin -> tableaux 1 à 16,
+  - regionale -> tableaux 1 à 6,
+  - finance/comptabilite -> tableaux 7 à 16.
+- Les contrôles d'accès par tableau sont appliqués côté frontend et côté backend.
 - Validation des champs obligatoires avant sauvegarde selon le tableau actif.
+- Le mois/année sélectionnés sont limités aux périodes encore ouvertes pour le profil connecté.
 - Unicité des factures pour les tableaux TVA (2 et 3) sur la clé :
   - fournisseur,
   - référence facture,
@@ -68,6 +79,11 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Exemple : période Mars 2026 -> limite au 10 Avril 2026 (régional) et au 15 Avril 2026 (admin/finance), à 23:59:59.
   - Au-delà du délai applicable au compte connecté : création, modification et suppression interdites.
   - Le blocage est appliqué côté frontend et côté backend.
+- Rappel de complétude des tableaux (dashboard fiscal) :
+  - Fenêtre d'affichage : de J-3 jusqu'à l'échéance incluse.
+  - Comptes regionale : le rappel reste affiché pour tous les comptes de la même région tant que les tableaux 1 à 6 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
+  - Comptes finance/comptabilite : le rappel reste affiché pour tous les comptes finance tant que les tableaux 7 à 16 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
+  - Le rappel s'éteint automatiquement quand tous les tableaux du périmètre sont couverts ou en dehors de la fenêtre J-3 -> délai.
 - Les données peuvent exister localement (cache local) et sont aussi persistées côté API.
 
 ## 3. Page Admin
