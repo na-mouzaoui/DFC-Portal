@@ -12,8 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Plus, Trash2, Edit, BookOpen } from "lucide-react"
 import type { Bank } from "@/lib/db"
 import { authFetch } from "@/lib/auth-fetch"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
+import { API_BASE } from "@/lib/config"
 
 interface Checkbook {
   id: number

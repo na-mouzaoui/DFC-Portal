@@ -8,8 +8,7 @@ import { mergeBankPositions, parseBankPositions } from "@/lib/bank-positions"
 import dynamic from "next/dynamic"
 import { CheckCanvas } from "./check-canvas"
 import { formatDateFR } from "@/lib/date-utils"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
+import { API_BASE } from "@/lib/config"
 
 // Import PDFViewer dynamically with ssr disabled
 const PDFViewer = dynamic(() => import("./pdf-viewer").then(mod => mod.PDFViewer), {

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
@@ -13,7 +13,8 @@ import { Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
-import { canManageFiscalTab, getManageableFiscalTabKeys, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
+import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
+import { API_BASE } from "@/lib/config"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
@@ -23,13 +24,79 @@ const PRIMARY_COLOR = "#2db34b"
 // ─────────────────────────────────────────────────────────────────────────────
 const fmt = (v: number | string) =>
   isNaN(Number(v)) || v === "" ? "" : Number(v).toLocaleString("fr-DZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const num = (v: string) => parseFloat(v) || 0
+
+const normalizeAmountInput = (value: string) => {
+  const raw = value.replace(/\u00A0/g, " ").trim()
+  if (!raw) return ""
+
+  const hasTrailingSeparator = /[.,]$/.test(raw)
+  const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+  const cleaned = standardized.replace(/[^0-9.]/g, "")
+  if (!cleaned) return ""
+
+  const parts = cleaned.split(".")
+  const integerPart = (parts[0] || "0").replace(/^0+(?=\d)/, "")
+  const decimalPart = parts.slice(1).join("").slice(0, 2)
+
+  if (hasTrailingSeparator && decimalPart.length === 0) {
+    return `${integerPart}.`
+  }
+
+  return decimalPart ? `${integerPart}.${decimalPart}` : integerPart
+}
+
+const formatAmountInput = (value: string) => {
+  const normalized = normalizeAmountInput(value)
+  if (!normalized) return ""
+
+  const hasTrailingDot = normalized.endsWith(".")
+  const [integerPart, decimalPart = ""] = normalized.split(".")
+  const groupedIntegerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+
+  if (hasTrailingDot) {
+    return `${groupedIntegerPart},`
+  }
+
+  return decimalPart ? `${groupedIntegerPart},${decimalPart}` : groupedIntegerPart
+}
+
+const num = (v: string) => {
+  const normalized = normalizeAmountInput(v)
+  const parseReady = normalized.endsWith(".") ? normalized.slice(0, -1) : normalized
+  return parseFloat(parseReady) || 0
+}
+
+type AmountInputProps = Omit<React.ComponentProps<typeof Input>, "type" | "value" | "onChange"> & {
+  value: string
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+}
+
+function AmountInput({ value, onChange, ...props }: AmountInputProps) {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const normalizedValue = normalizeAmountInput(event.target.value)
+    onChange({
+      ...event,
+      target: { ...event.target, value: normalizedValue },
+      currentTarget: { ...event.currentTarget, value: normalizedValue },
+    } as React.ChangeEvent<HTMLInputElement>)
+  }
+
+  return (
+    <Input
+      {...props}
+      type="text"
+      inputMode="decimal"
+      value={formatAmountInput(value)}
+      onChange={handleChange}
+    />
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 – ENCAISSEMENT  (controlled)
-// Encaissement HT = TTC / 1.19   |   TVA = TTC − HT
+// Encaissement TTC = HT × 1.19   |   TVA = TTC − HT
 // ─────────────────────────────────────────────────────────────────────────────
-type EncRow = { designation: string; ttc: string }
+type EncRow = { designation: string; ht: string }
 
 interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateAction<EncRow[]>>
   onSave: () => void;
@@ -37,15 +104,15 @@ interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateActi
 }
 
 function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
-  const addRow    = () => setRows((p) => [...p, { designation: "", ttc: "" }])
+  const addRow    = () => setRows((p) => [...p, { designation: "", ht: "" }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof EncRow, val: string) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
 
   const totals = useMemo(() => {
-    const ttc = rows.reduce((s, r) => s + num(r.ttc), 0)
-    const ht  = ttc / 1.19
-    return { ttc, ht, tva: ttc - ht }
+    const ht = rows.reduce((s, r) => s + num(r.ht), 0)
+    const tva = ht * 0.19
+    return { ht, tva, ttc: ht + tva }
   }, [rows])
 
   return (
@@ -56,16 +123,17 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
             <tr className="bg-gray-50">
               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement TTC</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TVA</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement HT</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TVA</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Encaissement TTC</th>
               <th className="px-2 py-2 border-b w-8" />
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => {
-              const ht = num(row.ttc) / 1.19
-              const tva = num(row.ttc) - ht
+              const ht = num(row.ht)
+              const tva = ht * 0.19
+              const ttc = ht + tva
               return (
                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
@@ -74,15 +142,15 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
                       className="h-7 px-2 text-xs" placeholder="Désignation" style={{ minWidth: 200 }} />
                   </td>
                   <td className="px-1 py-1 border-b">
-                    <Input type="number" min={0} step="0.01" value={row.ttc}
-                      onChange={(e) => update(i, "ttc", e.target.value)}
+                    <AmountInput value={row.ht}
+                      onChange={(e) => update(i, "ht", e.target.value)}
                       className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 130 }} />
                   </td>
                   <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
-                    {row.ttc ? fmt(tva) : "—"}
+                    {row.ht ? fmt(tva) : "—"}
                   </td>
                   <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
-                    {row.ttc ? fmt(ht) : "—"}
+                    {row.ht ? fmt(ttc) : "—"}
                   </td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
@@ -95,9 +163,9 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totals.ttc)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(totals.tva)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(totals.ht)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totals.ht)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(totals.tva)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(totals.ttc)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -310,7 +378,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                   <td className="px-1 py-1 border-b"><Input value={currentRow.authRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.numFacture ?? ""} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
                   <td className="px-1 py-1 border-b"><Input type="date" value={currentRow.dateFacture ?? ""} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
-                  <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
                   {withSelectableRate && (
                     <td className="px-1 py-1 border-b">
                       <select
@@ -331,7 +399,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                       {currentRow.montantHT && normalizeTvaRate(currentRow.tauxTVA) ? fmt(rowTva) : "—"}
                     </td>
                   ) : (
-                    <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={currentRow.tva ?? ""} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                    <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={currentRow.tva ?? ""} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
                   )}
                   <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{ttc > 0 ? fmt(ttc) : "—"}</td>
                   <td className="px-2 py-1 text-center border-b">
@@ -345,10 +413,10 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={9} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalHT)}</td>
               {withSelectableRate && <td className="px-3 py-2 text-xs text-center border-t text-gray-500">—</td>}
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalTVA)}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalTTC)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTVA)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTTC)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -405,8 +473,8 @@ function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                 <td className="px-1 py-1 border-b"><Input value={row.designation} onChange={(e) => update(i, "designation", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 220 }} placeholder="Désignation" /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.caTTCEsp} onChange={(e) => update(i, "caTTCEsp", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="0.00" /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.droitTimbre} onChange={(e) => update(i, "droitTimbre", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 140 }} placeholder="0.00" /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.caTTCEsp} onChange={(e) => update(i, "caTTCEsp", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="0.00" /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.droitTimbre} onChange={(e) => update(i, "droitTimbre", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 140 }} placeholder="0.00" /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                     className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
@@ -417,8 +485,8 @@ function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalCA)}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalDroit)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalCA)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalDroit)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -471,7 +539,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
             <tr className="bg-white">
               <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires soumis à 7%</td>
               <td className="px-1 py-1 border-b">
-                <Input type="number" min={0} step="0.01" value={b12} onChange={(e) => setB12(e.target.value)}
+                <AmountInput min={0} step="0.01" value={b12} onChange={(e) => setB12(e.target.value)}
                   className="h-7 px-2 text-xs" placeholder="Saisir le CA HT soumis à 7%" style={{ minWidth: 200 }} />
               </td>
               <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
@@ -481,7 +549,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
             <tr className="bg-gray-50">
               <td className="px-3 py-2 border-b text-xs font-medium text-gray-800">Chiffre d'affaires global soumis à 1%</td>
               <td className="px-1 py-1 border-b">
-                <Input type="number" min={0} step="0.01" value={b13} onChange={(e) => setB13(e.target.value)}
+                <AmountInput min={0} step="0.01" value={b13} onChange={(e) => setB13(e.target.value)}
                   className="h-7 px-2 text-xs" placeholder="Saisir le CA HT global soumis à 1%" style={{ minWidth: 200 }} />
               </td>
               <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
@@ -492,8 +560,8 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(num(b12) + num(b13))}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t">{fmt(c12 + c13)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(num(b12) + num(b13))}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(c12 + c13)}</td>
             </tr>
           </tfoot>
         </table>
@@ -612,7 +680,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
                   {/* TAP 2% */}
                   <td className="px-1 py-1 border-b">
-                    <Input type="number" min={0} step="0.01" value={row.tap2}
+                    <AmountInput min={0} step="0.01" value={row.tap2}
                       onChange={(e) => updateRow(i, "tap2", e.target.value)}
                       className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 130 }} />
                   </td>
@@ -628,7 +696,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">MONTANT TAP</td>
-              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t">{fmt(totalTAP)} DZD</td>
+              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t text-right [direction:rtl]">{fmt(totalTAP)} DZD</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -678,31 +746,31 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             {SIEGE_G1_LABELS.map((lbl, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ht} onChange={(e) => upd(i, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ht} onChange={(e) => upd(i, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
               </tr>
             ))}
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 1</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ttc)}</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ht)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t1ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t1ht)}</td>
             </tr>
             {SIEGE_G2_LABELS.map((lbl, i) => (
               <tr key={i + 2} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ht} onChange={(e) => upd(i + 2, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ht} onChange={(e) => upd(i + 2, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
               </tr>
             ))}
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 2</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ttc)}</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ht)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t2ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t2ht)}</td>
             </tr>
             <tr style={grandRow}>
               <td className="px-4 py-2 text-xs font-bold text-green-800">TOTAL GÉNÉRAL</td>
-              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ttc + t2ttc)}</td>
-              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ht + t2ht)}</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800 [direction:rtl]">{fmt(t1ttc + t2ttc)}</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800 [direction:rtl]">{fmt(t1ht + t2ht)}</td>
             </tr>
           </tbody>
         </table>
@@ -746,16 +814,16 @@ function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
             {IRG_LABELS.map((lbl, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 220 }}>{lbl}</td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].assietteImposable} onChange={(e) => upd(i, "assietteImposable", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].assietteImposable} onChange={(e) => upd(i, "assietteImposable", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalAssiet)}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(total)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalAssiet)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -796,16 +864,16 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
             {TAXE2_LABELS.map((lbl, i) => (
               <tr key={i} className="bg-white">
                 <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>{lbl}</td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalBase)}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalMont)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalBase)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalMont)}</td>
             </tr>
           </tfoot>
         </table>
@@ -859,7 +927,7 @@ function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
                 <td className="px-1 py-1 border-b"><Input value={row.nomMaster} onChange={(e) => upd(i, "nomMaster", e.target.value)} className="h-7 px-2 text-xs" placeholder="Nom du Master" style={{ minWidth: 160 }} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "—"}</td>
                 <td className="px-1 py-1 border-b">
                   <select value={row.mois} onChange={(e) => upd(i, "mois", e.target.value)}
@@ -880,8 +948,8 @@ function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={5} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalHT)}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(totalTaxe)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalHT)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTaxe)}</td>
               <td colSpan={3} className="border-t" />
             </tr>
           </tfoot>
@@ -919,13 +987,13 @@ function TabTaxeVehicule({ montant, setMontant, onSave, isSubmitting }: Tab11Pro
           <tbody>
             <tr className="bg-white">
               <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 280 }}>Taxe de véhicule</td>
-              <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
+              <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
             </tr>
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(num(montant))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(num(montant))}</td>
             </tr>
           </tfoot>
         </table>
@@ -964,14 +1032,14 @@ function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
             {TAXE12_LABELS.map((lbl, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 280 }}>{lbl}</td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={rows[i].montant} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={rows[i].montant} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 180 }} /></td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(total)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1014,10 +1082,10 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
               <td className="px-3 py-1 text-xs border-b font-medium text-gray-800">Montant</td>
               {months.map((v, i) => (
                 <td key={i} className="px-1 py-1 border-b">
-                  <Input type="number" min={0} step="0.01" value={v} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 80 }} />
+                  <AmountInput min={0} step="0.01" value={v} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 80 }} />
                 </td>
               ))}
-              <td className="px-3 py-1 text-xs border-b font-semibold text-green-700 bg-green-50">{fmt(total)}</td>
+              <td className="px-3 py-1 text-xs border-b font-semibold text-green-700 bg-green-50 text-right [direction:rtl]">{fmt(total)}</td>
             </tr>
           </tbody>
         </table>
@@ -1067,12 +1135,12 @@ function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantIBS} onChange={(e) => upd(i,"montantIBS",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDinars} onChange={(e) => upd(i,"montantNetDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantIBS} onChange={(e) => upd(i,"montantIBS",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDinars} onChange={(e) => upd(i,"montantNetDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                     className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
@@ -1083,12 +1151,12 @@ function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantBrutDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("tauxChange"))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantBrutDinars"))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantNetDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantIBS"))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(s("montantNetDinars"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantBrutDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("tauxChange"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantBrutDinars"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantNetDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantIBS"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantNetDinars"))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1146,12 +1214,12 @@ function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i,"dateFacture",e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.raisonSociale} onChange={(e) => upd(i,"raisonSociale",e.target.value)} className="h-7 px-2 text-xs" placeholder="Raison Sociale" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.monnaie} onChange={(e) => upd(i,"monnaie",e.target.value)} className="h-7 px-2 text-xs" placeholder="EUR / USD…" style={{ minWidth: 80 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantDinars} onChange={(e) => upd(i,"montantDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantDinars} onChange={(e) => upd(i,"montantDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.tauxTaxe} onChange={(e) => upd(i,"tauxTaxe",e.target.value)} className="h-7 px-2 text-xs" placeholder="Taux %" style={{ minWidth: 80 }} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantAPayer} onChange={(e) => upd(i,"montantAPayer",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantAPayer} onChange={(e) => upd(i,"montantAPayer",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                     className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
@@ -1162,12 +1230,12 @@ function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
               <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
               <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1219,10 +1287,10 @@ function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="number" min={0} step="0.01" value={row.tva19} onChange={(e) => upd(i,"tva19",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tva19} onChange={(e) => upd(i,"tva19",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                     className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
@@ -1233,10 +1301,10 @@ function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-              <td className="px-3 py-2 text-xs border-t">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1361,11 +1429,19 @@ const fillRows = <T,>(rows: T[], size: number, makeDefault: () => T) => {
 }
 
 const normalizeEncRows = (rows?: EncRow[]) => {
-  const normalized = (rows ?? []).map((row) => ({
-    designation: safeString((row as Partial<EncRow>).designation),
-    ttc: safeString((row as Partial<EncRow>).ttc),
-  }))
-  return normalized.length > 0 ? normalized : [{ designation: "", ttc: "" }]
+  const normalized = (rows ?? []).map((row) => {
+    const source = row as Partial<EncRow> & { ttc?: string }
+    const existingHt = safeString(source.ht)
+    const legacyTtc = safeString(source.ttc)
+    const migratedHt = legacyTtc.trim() ? (num(legacyTtc) / 1.19).toFixed(2) : ""
+
+    return {
+      designation: safeString(source.designation),
+      ht: existingHt || migratedHt,
+    }
+  })
+
+  return normalized.length > 0 ? normalized : [{ designation: "", ht: "" }]
 }
 
 const normalizeTvaRows = (rows?: TvaRow[]) => {
@@ -1780,27 +1856,29 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
           <thead><tr>
             <th style={thStyle}>#</th>
             <th style={thStyle}>Désignation</th>
-            <th style={thStyle}>Encaissement TTC</th>
-            <th style={thStyle}>TVA</th>
             <th style={thStyle}>Encaissement HT</th>
+            <th style={thStyle}>TVA</th>
+            <th style={thStyle}>Encaissement TTC</th>
           </tr></thead>
           <tbody>
             {encRows.map((r, i) => {
-              const ht = num(r.ttc) / 1.19; const tva = num(r.ttc) - ht
+              const ht = num(r.ht)
+              const tva = ht * 0.19
+              const ttc = ht + tva
               return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                 <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i + 1}</td>
                 <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.designation}</td>
-                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(num(r.ttc)) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(tva) : ""}</td>
-                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ttc ? fmt(ht) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ht ? fmt(ht) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ht ? fmt(tva) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.ht ? fmt(ttc) : ""}</td>
               </tr>
             })}
           </tbody>
           <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
             <td colSpan={2} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
-            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc),0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => { const t=num(r.ttc); return s+t-t/1.19 },0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s,r) => s+num(r.ttc)/1.19,0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht), 0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht) * 0.19, 0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht) * 1.19, 0))}</td>
           </tr></tfoot>
         </table>
       )}
@@ -2204,7 +2282,7 @@ export default function NouvelleDeclarationPage() {
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   useEffect(() => {
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"}/api/regions`, {
+    fetch(`${API_BASE}/api/regions`, {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -2215,7 +2293,7 @@ export default function NouvelleDeclarationPage() {
 
   useEffect(() => {
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"}/api/fiscal-fournisseurs`, {
+    fetch(`${API_BASE}/api/fiscal-fournisseurs`, {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -2252,7 +2330,7 @@ export default function NouvelleDeclarationPage() {
   const [editingSourceAnnee, setEditingSourceAnnee] = useState("")
 
   // ── Tab data (lifted) ──
-  const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ttc: "" }])
+  const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ht: "" }])
   const [tvaImmoRows,   setTvaImmoRows]   = useState<TvaRow[]>([{ ...EMPTY_TVA }])
   const [tvaBiensRows,  setTvaBiensRows]  = useState<TvaRow[]>([{ ...EMPTY_TVA }])
   const [timbreRows,    setTimbreRows]    = useState<TimbreRow[]>([{ designation: "", caTTCEsp: "", droitTimbre: "" }])
@@ -2274,7 +2352,11 @@ export default function NouvelleDeclarationPage() {
   const isAdminRole = isAdminFiscalRole(userRole)
   const isRegionalRole = isRegionalFiscalRole(userRole)
   const isFinanceRole = isFinanceFiscalRole(userRole)
-  const manageableTabKeys = useMemo(() => new Set(getManageableFiscalTabKeys(userRole)), [userRole])
+  const adminSelectedDirection = safeString(direction).trim()
+  const manageableTabKeys = useMemo(
+    () => new Set(getManageableFiscalTabKeysForDirection(userRole, isAdminRole ? adminSelectedDirection : undefined)),
+    [adminSelectedDirection, isAdminRole, userRole],
+  )
   const availableTabs = useMemo(() => TABS.filter((tab) => manageableTabKeys.has(tab.key)), [manageableTabKeys])
   const selectableYears = useMemo(
     () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
@@ -2306,6 +2388,13 @@ export default function NouvelleDeclarationPage() {
 
   const isDirectionLocked = isRegionalRole || isFinanceRole
   const effectiveDirection = isAdminRole ? safeString(direction).trim() : resolveDirectionForRole(direction)
+
+  const canManageTabForDirection = useCallback(
+    (tabKey: string, directionValue: string) => {
+      return getManageableFiscalTabKeysForDirection(userRole, isAdminRole ? directionValue : undefined).includes(tabKey)
+    },
+    [isAdminRole, userRole],
+  )
 
   useEffect(() => {
     if (availableTabs.length === 0) return
@@ -2361,8 +2450,10 @@ export default function NouvelleDeclarationPage() {
       }
 
       const requestedTab = isFiscalTabKey(editQuery.tab) ? editQuery.tab : resolveDeclarationTabKey(declaration)
+      const loadedDirection = safeString(declaration.direction).trim()
+      const scopedDirection = isAdminRole ? loadedDirection : resolveDirectionForRole(loadedDirection)
 
-      if (!canManageFiscalTab(userRole, requestedTab)) {
+      if (!canManageTabForDirection(requestedTab, scopedDirection)) {
         toast({
           title: "⛔ Accès refusé",
           description: "Votre profil n'est pas autorisé à modifier ce tableau fiscal.",
@@ -2375,8 +2466,7 @@ export default function NouvelleDeclarationPage() {
       setEditingDeclarationId(safeString(declaration.id) || editQuery.editId)
       setEditingCreatedAt(safeString(declaration.createdAt) || new Date().toISOString())
       setActiveTab(requestedTab)
-      const loadedDirection = safeString(declaration.direction).trim()
-      setDirection(isAdminRole ? loadedDirection : resolveDirectionForRole(loadedDirection))
+      setDirection(scopedDirection)
       const loadedMois = normalizeMonthValue(safeString(declaration.mois))
       const loadedAnnee = normalizeYearValue(safeString(declaration.annee))
       setMois(loadedMois)
@@ -2408,7 +2498,7 @@ export default function NouvelleDeclarationPage() {
         variant: "destructive",
       })
     }
-  }, [editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole, router, userRole])
+  }, [canManageTabForDirection, editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole, router])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -2421,7 +2511,7 @@ export default function NouvelleDeclarationPage() {
   const handleSave = async () => {
     const saveDirection = effectiveDirection
 
-    if (!canManageFiscalTab(userRole, activeTab)) {
+    if (!canManageTabForDirection(activeTab, saveDirection)) {
       toast({
         title: "⛔ Accès refusé",
         description: "Votre profil n'est pas autorisé à créer ou modifier ce tableau fiscal.",
@@ -2481,7 +2571,7 @@ export default function NouvelleDeclarationPage() {
     let validationError = false
     switch (activeTab) {
       case "encaissement":
-        if (encRows.some(r => !r.designation.trim() || !r.ttc)) {
+        if (encRows.some(r => !r.designation.trim() || !r.ht)) {
           toast({ title: "⚠ Champs incomplets", description: "Tous les champs du tableau doivent être remplis.", variant: "destructive" })
           validationError = true
         }
@@ -2669,7 +2759,7 @@ export default function NouvelleDeclarationPage() {
 
     // Persist to database (non-blocking)
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001"
+      const apiBase = API_BASE
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
       let tabData: unknown = {}
       switch (activeTab) {
@@ -3000,3 +3090,8 @@ export default function NouvelleDeclarationPage() {
     </LayoutWrapper>
   )
 }
+
+
+
+
+

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Plus, Upload, Trash2, Edit } from "lucide-react"
 import type { Bank } from "@/lib/db"
 import { useToast } from "@/hooks/use-toast"
+import { API_BASE } from "@/lib/config"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,8 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
 
 type BankManagementProps = {
   onChange?: () => void

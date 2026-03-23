@@ -20,12 +20,11 @@ import { mergeBankPositions, parseBankPositions } from "@/lib/bank-positions"
 import { generateCheckPDF, printCheckPDF } from "@/lib/pdf-generator"
 import { useToast } from "@/hooks/use-toast"
 import { formatDateFR, getTodayISODate } from "@/lib/date-utils"
+import { API_BASE } from "@/lib/config"
 
 const PDFViewer = dynamic(() => import("./pdf-viewer").then(mod => mod.PDFViewer), {
   ssr: false,
 })
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
 
 const requestWithAuth = async (input: string, init: RequestInit = {}) => {
   const token = localStorage.getItem("jwt")

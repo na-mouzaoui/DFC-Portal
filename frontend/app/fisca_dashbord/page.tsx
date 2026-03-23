@@ -15,7 +15,7 @@ import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-p
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
 import { API_BASE } from "@/lib/config"
 
-type EncRow = { designation: string; ttc: string }
+type EncRow = { designation: string; ht?: string; ttc?: string }
 type TvaRate = "19" | "9"
 type TvaRow = { nomRaisonSociale: string; adresse: string; nif: string; authNif: string; numRC: string; authRC: string; numFacture: string; dateFacture: string; montantHT: string; tva: string; tauxTVA?: TvaRate | "" }
 type TimbreRow = { designation: string; caTTCEsp: string; droitTimbre: string }
@@ -112,7 +112,31 @@ const DASH_TABS = [
 // ─── Shared styles & helpers ──────────────────────────────────────────────────
 const fmt = (v: number | string) =>
   isNaN(Number(v)) || v === "" ? "–" : Number(v).toLocaleString("fr-DZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const num = (v: string) => parseFloat(v) || 0
+const num = (v: string | number | null | undefined) => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0
+
+  const raw = String(v ?? "").replace(/\u00A0/g, " ").trim()
+  if (!raw) return 0
+
+  const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+  const normalizedDots = standardized.replace(/\.(?=.*\.)/g, "")
+  const parsed = parseFloat(normalizedDots)
+
+  return Number.isFinite(parsed) ? parsed : 0
+}
+const resolveEncaissementAmounts = (row: EncRow) => {
+  const htRaw = (row.ht ?? "").trim()
+  if (htRaw !== "") {
+    const ht = num(htRaw)
+    const tva = ht * 0.19
+    return { ht, tva, ttc: ht + tva }
+  }
+
+  // Backward compatibility for declarations saved with TTC as input.
+  const ttc = num(row.ttc ?? "")
+  const ht = ttc / 1.19
+  return { ht, tva: ttc - ht, ttc }
+}
 const normalizeTvaRate = (value?: string): TvaRate | "" => {
   if (value === "19" || value === "9") return value
   return ""
@@ -136,26 +160,32 @@ const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px
 const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
 
 function EncTable({ rows }: { rows: EncRow[] }) {
-  const total = rows.reduce((s, r) => s + num(r.ttc), 0)
+  const computedRows = rows.map((row) => ({
+    designation: row.designation,
+    ...resolveEncaissementAmounts(row),
+  }))
+  const totals = computedRows.reduce(
+    (acc, row) => ({ ht: acc.ht + row.ht, tva: acc.tva + row.tva, ttc: acc.ttc + row.ttc }),
+    { ht: 0, tva: 0, ttc: 0 },
+  )
+
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Désignation", "TTC", "HT (÷1.19)", "TVA (TTC−HT)"].map((h) => (
+          {["Désignation", "HT", "TVA (19%)", "TTC (HT×1.19)"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => {
-          const ht = num(r.ttc) / 1.19
-          const tva = num(r.ttc) - ht
+        {computedRows.map((r, i) => {
           return (
             <tr key={i} style={{ background: "#fff", color: "#000" }}>
               <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "—"}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ht)}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tva)}</td>
               <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ttc)}</td>
-              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(ht)}</td>
-              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(tva)}</td>
             </tr>
           )
         })}
@@ -163,9 +193,9 @@ function EncTable({ rows }: { rows: EncRow[] }) {
       <tfoot>
         <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
           <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total / 1.19)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total - total / 1.19)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.ht)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.tva)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.ttc)}</td>
         </tr>
       </tfoot>
     </table>

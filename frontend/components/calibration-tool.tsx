@@ -13,8 +13,7 @@ import { DEFAULT_BANK_POSITIONS, mergeBankPositions, parseBankPositions } from "
 import dynamic from "next/dynamic"
 import { CheckCanvas } from "./check-canvas"
 import { useToast } from "@/hooks/use-toast"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
+import { API_BASE } from "@/lib/config"
 
 type CalibrationToolProps = {
   refreshKey?: number

@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { formatDateFR, parseFlexibleDate } from "@/lib/date-utils"
+import { API_BASE } from "@/lib/config"
 
 interface CheckHistoryProps {
   checks: Check[]
@@ -203,7 +204,6 @@ export function CheckHistory({ checks: initialChecks, users, banks }: CheckHisto
 
     setIsUpdating(true)
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
       const token = localStorage.getItem("jwt")
       const response = await fetch(`${API_BASE}/api/checks/${encodeURIComponent(selectedCheck.reference)}/status`, {
         method: "PATCH",
@@ -553,7 +553,6 @@ export function CheckHistory({ checks: initialChecks, users, banks }: CheckHisto
                             // Pour rejeté, changer directement sans motif
                             setIsUpdating(true)
                             try {
-                              const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001"
                               const token = localStorage.getItem("jwt")
                             const response = await fetch(`${API_BASE}/api/checks/${encodeURIComponent(check.reference)}/status`, {
                                 method: "PATCH",

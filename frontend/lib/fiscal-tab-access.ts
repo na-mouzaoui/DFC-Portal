@@ -21,6 +21,7 @@ export const FINANCE_FISCAL_TAB_KEYS = [
 ] as const
 
 const normalizeRole = (role?: string | null) => (role ?? "").trim().toLowerCase()
+const normalizeDirection = (direction?: string | null) => (direction ?? "").trim().toLowerCase()
 const normalizeTabKey = (tabKey?: string | null) => (tabKey ?? "").trim().toLowerCase()
 
 export const isAdminFiscalRole = (role?: string | null) => normalizeRole(role) === "admin"
@@ -28,6 +29,11 @@ export const isRegionalFiscalRole = (role?: string | null) => normalizeRole(role
 export const isFinanceFiscalRole = (role?: string | null) => {
   const normalizedRole = normalizeRole(role)
   return normalizedRole === "comptabilite" || normalizedRole === "finance"
+}
+
+export const isHeadOfficeDirection = (direction?: string | null) => {
+  const normalizedDirection = normalizeDirection(direction)
+  return normalizedDirection === "siege" || normalizedDirection === "siège"
 }
 
 export const getManageableFiscalTabKeys = (role?: string | null): string[] => {
@@ -44,6 +50,24 @@ export const getManageableFiscalTabKeys = (role?: string | null): string[] => {
   }
 
   return []
+}
+
+export const getManageableFiscalTabKeysForDirection = (role?: string | null, direction?: string | null): string[] => {
+  const roleBasedKeys = getManageableFiscalTabKeys(role)
+
+  if (!isAdminFiscalRole(role)) {
+    return roleBasedKeys
+  }
+
+  const normalizedDirection = normalizeDirection(direction)
+  if (!normalizedDirection) {
+    return roleBasedKeys
+  }
+
+  const directionScopedKeys: readonly string[] = isHeadOfficeDirection(direction)
+    ? FINANCE_FISCAL_TAB_KEYS
+    : REGIONAL_FISCAL_TAB_KEYS
+  return roleBasedKeys.filter((tabKey) => directionScopedKeys.includes(tabKey))
 }
 
 export const canManageFiscalTab = (role: string | null | undefined, tabKey: string | null | undefined): boolean => {

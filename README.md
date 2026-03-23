@@ -43,10 +43,14 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 ### Fonctionnalités principales
 - Saisie des déclarations par onglet/tableau fiscal.
 - Gestion de la période (mois/année) et de la direction.
+- Filtrage automatique des tableaux fiscaux selon le profil et la direction sélectionnée.
 - Sauvegarde d'une déclaration (création et modification).
 - Consultation des déclarations récentes dans le dashboard fiscal.
 - Consultation détaillée au clic ligne, impression PDF, modification, suppression.
 - Filtres avancés (type, période, direction, date) et tri dans le dashboard.
+- Tableau 1 (Encaissement) en saisie HT avec calcul automatique de la TVA et du TTC.
+- Formatage des montants en temps réel (séparateurs de milliers) lors de la saisie.
+- Affichage des montants de total en sens droite-vers-gauche pour homogénéité visuelle.
 - Rappel automatique de saisie au dashboard fiscal (J-3 jusqu'au délai), avec contrôle global d'avancement par périmètre de compte.
 - Gestion des fournisseurs fiscaux :
   - CRUD,
@@ -62,10 +66,14 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - finance/comptabilite -> direction fixée à "Siège",
   - admin -> direction sélectionnable.
 - Attribution des tableaux fiscaux par type de compte :
-  - admin -> tableaux 1 à 16,
   - regionale -> tableaux 1 à 6,
   - finance/comptabilite -> tableaux 7 à 16.
+- Attribution des tableaux fiscaux pour admin selon la direction choisie :
+  - direction "Siège" -> tableaux 7 à 16,
+  - autre direction -> tableaux 1 à 6,
+  - si aucune direction n'est encore sélectionnée -> tableaux 1 à 16.
 - Les contrôles d'accès par tableau sont appliqués côté frontend et côté backend.
+- Compatibilité historique Tableau 1 : les anciennes déclarations sauvegardées avec Encaissement TTC sont automatiquement converties en HT au chargement.
 - Validation des champs obligatoires avant sauvegarde selon le tableau actif.
 - Le mois/année sélectionnés sont limités aux périodes encore ouvertes pour le profil connecté.
 - Unicité des factures pour les tableaux TVA (2 et 3) sur la clé :
