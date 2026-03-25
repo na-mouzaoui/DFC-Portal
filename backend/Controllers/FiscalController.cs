@@ -431,22 +431,9 @@ public class FiscalController : ControllerBase
         }
         else if (currentUserRole == "direction")
         {
-            // Global/Direction voit uniquement les déclarations du niveau Siège.
-            query = query.Where(d =>
-                ((d.Direction ?? "").Trim().ToLower() == "siège")
-                || ((d.Direction ?? "").Trim().ToLower() == "siege")
-                || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
-                || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
-                || (
-                    string.IsNullOrWhiteSpace(d.Direction)
-                    && (
-                        (d.User.Role ?? "").Trim().ToLower() == "finance"
-                        || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
-                        || (d.User.Role ?? "").Trim().ToLower() == "admin"
-                        || (d.User.Role ?? "").Trim().ToLower() == "direction"
-                    )
-                )
-            );
+            // Global/Direction voit toutes les déclarations, toutes directions confondues,
+            // mais uniquement celles approuvées.
+            query = query.Where(d => d.IsApproved);
         }
         else
         {
