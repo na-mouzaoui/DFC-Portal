@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { FileText, CheckCircle, Clock, AlertTriangle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
+import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
@@ -72,20 +72,6 @@ interface SavedDeclaration {
   ibs14Rows?: Ibs14Row[]
   taxe15Rows?: Taxe15Row[]
   tva16Rows?: Tva16Row[]
-}
-
-interface FiscalReminderStatus {
-  shouldShow: boolean
-  roleScope?: "regionale" | "finance" | "none"
-  scopeLabel?: string
-  periodLabel?: string
-  deadlineDisplay?: string
-  windowStartDisplay?: string
-  daysRemaining?: number
-  missingTabKeys?: string[]
-  completedTabKeys?: string[]
-  requiredTabKeys?: string[]
-  reason?: string
 }
 
 interface ApiFiscalDeclaration {
@@ -864,7 +850,6 @@ export default function FiscaDashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [declarations, setDeclarations] = useState<SavedDeclaration[]>([])
-  const [reminderStatus, setReminderStatus] = useState<FiscalReminderStatus | null>(null)
   const [viewDecl, setViewDecl] = useState<SavedDeclaration | null>(null)
   const [printDecl, setPrintDecl] = useState<SavedDeclaration | null>(null)
   const [showDialog, setShowDialog] = useState(false)
@@ -926,45 +911,6 @@ export default function FiscaDashboardPage() {
     }
 
     loadDeclarations()
-
-    return () => {
-      cancelled = true
-    }
-  }, [status, user])
-
-  useEffect(() => {
-    if (!user || status !== "authenticated") {
-      setReminderStatus(null)
-      return
-    }
-
-    let cancelled = false
-
-    const loadReminderStatus = async () => {
-      try {
-        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-        const response = await fetch(`${API_BASE}/api/fiscal/reminder-status`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        })
-
-        if (!response.ok) {
-          if (!cancelled) setReminderStatus(null)
-          return
-        }
-
-        const payload = await response.json().catch(() => null)
-        if (!cancelled && payload && typeof payload === "object") {
-          setReminderStatus(payload as FiscalReminderStatus)
-        }
-      } catch {
-        if (!cancelled) setReminderStatus(null)
-      }
-    }
-
-    loadReminderStatus()
 
     return () => {
       cancelled = true
@@ -1226,48 +1172,6 @@ export default function FiscaDashboardPage() {
       ? sortDir === "asc" ? <ChevronUp size={13} className="inline ml-0.5" /> : <ChevronDown size={13} className="inline ml-0.5" />
       : <span className="inline-block w-3" />
 
-  const reminderMissingLabels = (reminderStatus?.missingTabKeys ?? []).map((tabKey) =>
-    DASH_TABS.find((tab) => tab.key === tabKey)?.label ?? tabKey,
-  )
-
-  const reminderScopeText = reminderStatus?.roleScope === "regionale"
-    ? `Région ${reminderStatus.scopeLabel || "non renseignée"}`
-    : reminderStatus?.roleScope === "finance"
-      ? "Comptes finance"
-      : ""
-
-  const now = new Date()
-  const currentMonth = String(now.getMonth() + 1).padStart(2, "0")
-  const currentYear = String(now.getFullYear())
-  const declarationsThisMonth = declarations.filter((decl) => decl.mois === currentMonth && decl.annee === currentYear).length
-
-  const statCards = [
-    {
-      label: "Déclarations ce mois",
-      value: String(declarationsThisMonth),
-      icon: FileText,
-      color: "#2db34b",
-    },
-    {
-      label: "Déclarations validées",
-      value: String(declarations.length),
-      icon: CheckCircle,
-      color: "#2563eb",
-    },
-    {
-      label: "En attente",
-      value: "0",
-      icon: Clock,
-      color: "#f59e0b",
-    },
-    {
-      label: "Rejetées",
-      value: "0",
-      icon: AlertTriangle,
-      color: "#e82c2a",
-    },
-  ]
-
   return (
     <LayoutWrapper user={user}>
       {/* Off-screen zone for PDF generation */}
@@ -1339,59 +1243,8 @@ export default function FiscaDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard Fiscal</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Vue d'ensemble de vos déclarations fiscales
+            Déclarations fiscales récentes
           </p>
-        </div>
-
-        {reminderStatus?.shouldShow && (
-          <Card className="border-amber-300 bg-amber-50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base text-amber-900 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Rappel de saisie fiscale - {reminderStatus.periodLabel}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm text-amber-950">
-                Échéance: <strong>{reminderStatus.deadlineDisplay}</strong> (J-3 depuis {reminderStatus.windowStartDisplay}).
-              </p>
-              <p className="text-sm text-amber-900">
-                Périmètre: <strong>{reminderScopeText}</strong>. Tant que tous les tableaux attribués ne sont pas remplis pour cette période, ce rappel reste visible pour les comptes du même périmètre.
-              </p>
-              <p className="text-sm text-amber-950">
-                Tableaux restants ({reminderMissingLabels.length}/{reminderStatus.requiredTabKeys?.length ?? 0}):
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {reminderMissingLabels.map((label) => (
-                  <Badge key={label} variant="outline" className="border-amber-400 text-amber-900 bg-amber-100">
-                    {label}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {statCards.map((card) => {
-            const Icon = card.icon
-            return (
-              <Card key={card.label}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {card.label}
-                  </CardTitle>
-                  <Icon className="h-5 w-5" style={{ color: card.color }} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold" style={{ color: card.color }}>
-                    {card.value}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
         </div>
 
         {/* Recent declarations */}
@@ -1576,31 +1429,6 @@ export default function FiscaDashboardPage() {
                               )}
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={isLocked || !canManage}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleEdit(decl, declType.key)
-                                }}
-                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
-                              >
-                                <Pencil size={16} />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 w-8 p-0 border-gray-300 text-gray-600 hover:bg-gray-50"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handlePrint(decl, declType.key)
-                                }}
-                                title="Imprimer"
-                              >
-                                <Printer size={16} />
-                              </Button>
-                              <Button
-                                size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={isLocked || !canManage}
@@ -1639,6 +1467,27 @@ export default function FiscaDashboardPage() {
                   <span>{viewDecl.direction}</span>
                   <span>·</span>
                   <span>{MONTHS[viewDecl.mois] ?? viewDecl.mois} {viewDecl.annee}</span>
+                  {(() => {
+                    const currentDeclType = getDeclarationType(viewDecl)
+                    const isLocked = isDeclarationLocked(viewDecl)
+                    const canManage = canManageFiscalTab(user.role, currentDeclType.key)
+
+                    return (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs h-8 ml-2 border-amber-300 text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isLocked || !canManage}
+                        title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
+                        onClick={() => {
+                          setShowDialog(false)
+                          handleEdit(viewDecl, viewTabKey)
+                        }}
+                      >
+                        <Pencil size={13} /> Modifier
+                      </Button>
+                    )
+                  })()}
                   <Button
                     size="sm"
                     variant="outline"
