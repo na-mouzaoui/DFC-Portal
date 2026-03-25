@@ -16,6 +16,7 @@ export function PDFViewer({ fileUrl, width, onLoadSuccess, className, forceScale
   const [documentKey, setDocumentKey] = useState(0)
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null)
   const loadingTaskRef = useRef<any>(null)
 
   useEffect(() => {
@@ -56,14 +57,61 @@ export function PDFViewer({ fileUrl, width, onLoadSuccess, className, forceScale
     }
   }, [fileUrl, PDFComponents])
 
+  // Load PDF as binary data to avoid URL parsing issues in some runtimes.
+  useEffect(() => {
+    let isCancelled = false
+
+    const loadPdfData = async () => {
+      if (!fileUrl || fileUrl === 'undefined' || fileUrl.includes('undefined')) {
+        setPdfData(null)
+        return
+      }
+
+      try {
+        setError(null)
+        const response = await fetch(fileUrl, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/pdf',
+          },
+          credentials: 'omit',
+          cache: 'no-store',
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const buffer = await response.arrayBuffer()
+        if (!isCancelled) {
+          setPdfData(new Uint8Array(buffer))
+          setDocumentKey(prev => prev + 1)
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          setPdfData(null)
+          setError(err?.message || 'Erreur de chargement du PDF')
+        }
+      }
+    }
+
+    loadPdfData()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [fileUrl])
+
   // Memoize file object to prevent unnecessary reloads - MUST BE BEFORE ANY RETURN
-  const fileConfig = useMemo(() => ({
-    url: fileUrl,
-    httpHeaders: {
-      'Accept': 'application/pdf',
-    },
-    withCredentials: false,
-  }), [fileUrl])
+  const fileConfig = useMemo(() => {
+    if (!pdfData) {
+      return null
+    }
+
+    return {
+      data: pdfData,
+    }
+  }, [pdfData])
 
   // Memoize options to prevent unnecessary reloads - MUST BE BEFORE ANY RETURN
   const pdfOptions = useMemo(() => ({
@@ -114,6 +162,14 @@ export function PDFViewer({ fileUrl, width, onLoadSuccess, className, forceScale
     return (
       <div className="flex items-center justify-center p-4 text-gray-400">
         Aucun PDF disponible
+      </div>
+    )
+  }
+
+  if (!fileConfig) {
+    return (
+      <div className="flex items-center justify-center p-4 text-gray-400">
+        {error ? 'PDF non disponible' : 'Chargement du PDF...'}
       </div>
     )
   }
