@@ -53,7 +53,6 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 - Tableau 1 (Encaissement) en saisie HT avec calcul automatique de la TVA et du TTC.
 - Formatage des montants en temps réel (séparateurs de milliers) lors de la saisie.
 - Affichage des montants de total en sens droite-vers-gauche pour homogénéité visuelle.
-- Rappel automatique de saisie au dashboard fiscal (J-3 jusqu'au délai), avec contrôle global d'avancement par périmètre de compte.
 - Gestion des fournisseurs fiscaux :
   - CRUD,
   - export CSV,
@@ -89,11 +88,6 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Exemple : période Mars 2026 -> limite au 10 Avril 2026 (régional) et au 15 Avril 2026 (admin/finance), à 23:59:59.
   - Au-delà du délai applicable au compte connecté : création, modification et suppression interdites.
   - Le blocage est appliqué côté frontend et côté backend.
-- Rappel de complétude des tableaux (dashboard fiscal) :
-  - Fenêtre d'affichage : de J-3 jusqu'à l'échéance incluse.
-  - Comptes regionale : le rappel reste affiché pour tous les comptes de la même région tant que les tableaux 1 à 6 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
-  - Comptes finance/comptabilite : le rappel reste affiché pour tous les comptes finance tant que les tableaux 7 à 16 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
-  - Le rappel s'éteint automatiquement quand tous les tableaux du périmètre sont couverts ou en dehors de la fenêtre J-3 -> délai.
 - Workflow d'approbation des déclarations :
   - Un compte regionale peut être marqué comme approbateur régional.
   - Un approbateur régional peut approuver uniquement les déclarations d'autres utilisateurs de la même région.
