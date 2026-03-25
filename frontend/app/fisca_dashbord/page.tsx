@@ -84,6 +84,113 @@ interface FiscalReminderStatus {
   reason?: string
 }
 
+interface ApiFiscalDeclaration {
+  id: number
+  tabKey: string
+  mois: string
+  annee: string
+  direction: string
+  dataJson: string
+  createdAt: string
+}
+
+const toArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map((item) => String(item ?? "")) : []
+
+const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration => {
+  const parsedData = (() => {
+    try {
+      const payload = JSON.parse(item.dataJson ?? "{}")
+      return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
+    } catch {
+      return {}
+    }
+  })()
+
+  const declaration: SavedDeclaration = {
+    id: String(item.id),
+    createdAt: item.createdAt,
+    direction: item.direction ?? "",
+    mois: item.mois,
+    annee: item.annee,
+    encRows: [],
+    tvaImmoRows: [],
+    tvaBiensRows: [],
+    timbreRows: [],
+    b12: "",
+    b13: "",
+    tapRows: [],
+    caSiegeRows: [],
+    irgRows: [],
+    taxe2Rows: [],
+    masterRows: [],
+    taxe11Montant: "",
+    taxe12Rows: [],
+    acompteMonths: [],
+    ibs14Rows: [],
+    taxe15Rows: [],
+    tva16Rows: [],
+  }
+
+  switch ((item.tabKey ?? "").trim().toLowerCase()) {
+    case "encaissement":
+      declaration.encRows = toArray<EncRow>(parsedData.encRows)
+      break
+    case "tva_immo":
+      declaration.tvaImmoRows = toArray<TvaRow>(parsedData.tvaImmoRows)
+      break
+    case "tva_biens":
+      declaration.tvaBiensRows = toArray<TvaRow>(parsedData.tvaBiensRows)
+      break
+    case "droits_timbre":
+      declaration.timbreRows = toArray<TimbreRow>(parsedData.timbreRows)
+      break
+    case "ca_tap":
+      declaration.b12 = String(parsedData.b12 ?? "")
+      declaration.b13 = String(parsedData.b13 ?? "")
+      break
+    case "etat_tap":
+      declaration.tapRows = toArray<TAPRow>(parsedData.tapRows)
+      break
+    case "ca_siege":
+      declaration.caSiegeRows = toArray<SiegeEncRow>(parsedData.caSiegeRows)
+      break
+    case "irg":
+      declaration.irgRows = toArray<IrgRow>(parsedData.irgRows)
+      break
+    case "taxe2":
+      declaration.taxe2Rows = toArray<Taxe2Row>(parsedData.taxe2Rows)
+      break
+    case "taxe_masters":
+      declaration.masterRows = toArray<MasterRow>(parsedData.masterRows)
+      break
+    case "taxe_vehicule":
+      declaration.taxe11Montant = String(parsedData.taxe11Montant ?? "")
+      break
+    case "taxe_formation":
+      declaration.taxe12Rows = toArray<Taxe12Row>(parsedData.taxe12Rows)
+      break
+    case "acompte":
+      declaration.acompteMonths = toStringArray(parsedData.acompteMonths)
+      break
+    case "ibs":
+      declaration.ibs14Rows = toArray<Ibs14Row>(parsedData.ibs14Rows)
+      break
+    case "taxe_domicil":
+      declaration.taxe15Rows = toArray<Taxe15Row>(parsedData.taxe15Rows)
+      break
+    case "tva_autoliq":
+      declaration.tva16Rows = toArray<Tva16Row>(parsedData.tva16Rows)
+      break
+    default:
+      break
+  }
+
+  return declaration
+}
+
 const MONTHS: Record<string, string> = {
   "01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril",
   "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août",
@@ -740,33 +847,6 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
   )
 }
 
-const statCards = [
-  {
-    label: "Déclarations ce mois",
-    value: "0",
-    icon: FileText,
-    color: "#2db34b",
-  },
-  {
-    label: "Déclarations validées",
-    value: "0",
-    icon: CheckCircle,
-    color: "#2563eb",
-  },
-  {
-    label: "En attente",
-    value: "0",
-    icon: Clock,
-    color: "#f59e0b",
-  },
-  {
-    label: "Rejetées",
-    value: "0",
-    icon: AlertTriangle,
-    color: "#e82c2a",
-  },
-]
-
 export default function FiscaDashboardPage() {
   const { user, isLoading, status } = useAuth({ requireAuth: true, redirectTo: "/login" })
   const router = useRouter()
@@ -788,13 +868,52 @@ export default function FiscaDashboardPage() {
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("fiscal_declarations")
-      setDeclarations(raw ? JSON.parse(raw) : [])
-    } catch {
+    if (!user || status !== "authenticated") {
       setDeclarations([])
+      return
     }
-  }, [])
+
+    let cancelled = false
+
+    const loadDeclarations = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setDeclarations([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const nextDeclarations = Array.isArray(payload)
+          ? (payload as ApiFiscalDeclaration[]).map(mapApiDeclarationToSaved)
+          : []
+
+        if (!cancelled) {
+          setDeclarations(nextDeclarations)
+          try {
+            localStorage.setItem("fiscal_declarations", JSON.stringify(nextDeclarations))
+          } catch {
+            // Ignore storage errors.
+          }
+        }
+      } catch {
+        if (!cancelled) setDeclarations([])
+      }
+    }
+
+    loadDeclarations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
 
   useEffect(() => {
     if (!user || status !== "authenticated") {
@@ -861,7 +980,7 @@ export default function FiscaDashboardPage() {
     })
   }
 
-  const handleDelete = (decl: SavedDeclaration) => {
+  const handleDelete = async (decl: SavedDeclaration) => {
     const declType = getDeclarationType(decl)
     if (!canManageFiscalTab(user.role, declType.key)) {
       showTabAccessDeniedToast(declType.label, "supprimer")
@@ -873,12 +992,43 @@ export default function FiscaDashboardPage() {
       return
     }
 
-    const updated = declarations.filter((d) => d.id !== decl.id)
-    setDeclarations(updated)
     try {
-      localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
-    } catch { }
-    toast({ title: "Déclaration supprimée" })
+      const declarationId = Number(decl.id)
+      if (!Number.isFinite(declarationId)) {
+        throw new Error("ID de déclaration invalide")
+      }
+
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      const response = await fetch(`${API_BASE}/api/fiscal/${declarationId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        const message = payload && typeof payload === "object" && "message" in payload
+          ? String((payload as { message?: unknown }).message ?? "")
+          : ""
+        throw new Error(message || "Suppression impossible")
+      }
+
+      const updated = declarations.filter((d) => d.id !== decl.id)
+      setDeclarations(updated)
+      try {
+        localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
+      } catch {
+        // Ignore storage errors.
+      }
+
+      toast({ title: "Déclaration supprimée" })
+    } catch (error) {
+      toast({
+        title: "Erreur de suppression",
+        description: error instanceof Error ? error.message : "Impossible de supprimer la déclaration.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleView = (decl: SavedDeclaration, tabKey: string) => {
@@ -1007,6 +1157,38 @@ export default function FiscaDashboardPage() {
     : reminderStatus?.roleScope === "finance"
       ? "Comptes finance"
       : ""
+
+  const now = new Date()
+  const currentMonth = String(now.getMonth() + 1).padStart(2, "0")
+  const currentYear = String(now.getFullYear())
+  const declarationsThisMonth = declarations.filter((decl) => decl.mois === currentMonth && decl.annee === currentYear).length
+
+  const statCards = [
+    {
+      label: "Déclarations ce mois",
+      value: String(declarationsThisMonth),
+      icon: FileText,
+      color: "#2db34b",
+    },
+    {
+      label: "Déclarations validées",
+      value: String(declarations.length),
+      icon: CheckCircle,
+      color: "#2563eb",
+    },
+    {
+      label: "En attente",
+      value: "0",
+      icon: Clock,
+      color: "#f59e0b",
+    },
+    {
+      label: "Rejetées",
+      value: "0",
+      icon: AlertTriangle,
+      color: "#e82c2a",
+    },
+  ]
 
   return (
     <LayoutWrapper user={user}>

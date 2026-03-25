@@ -49,11 +49,14 @@ public class ChecksController : ControllerBase
         
         var checks = await checksQuery.ToListAsync();
         
-        // Filter by region if user is regionale: show only checks from regionale users of the same region
-        if (user.Role == "regionale" && !string.IsNullOrEmpty(user.Region))
+        var normalizedRole = (user.Role ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedRegion = (user.Region ?? string.Empty).Trim().ToLowerInvariant();
+
+        // Filter by region if user is regionale: show checks from all users of the same region.
+        if (normalizedRole == "regionale" && !string.IsNullOrEmpty(normalizedRegion))
         {
             var regionUserIds = await _context.Users
-                .Where(u => u.Role == "regionale" && u.Region == user.Region)
+                .Where(u => (u.Region ?? string.Empty).Trim().ToLower() == normalizedRegion)
                 .Select(u => u.Id)
                 .ToListAsync();
             checks = checks.Where(c => regionUserIds.Contains(c.UserId)).ToList();
@@ -307,11 +310,14 @@ public class ChecksController : ControllerBase
         if (user == null)
             return Unauthorized();
 
-        // If regionale, calculate stats only for checks from users of the same region
-        if (user.Role == "regionale" && !string.IsNullOrEmpty(user.Region))
+        var normalizedRole = (user.Role ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedRegion = (user.Region ?? string.Empty).Trim().ToLowerInvariant();
+
+        // If regionale, calculate stats only for checks from users of the same region.
+        if (normalizedRole == "regionale" && !string.IsNullOrEmpty(normalizedRegion))
         {
             var regionUserIds = await _context.Users
-                .Where(u => u.Role == "regionale" && u.Region == user.Region)
+                .Where(u => (u.Region ?? string.Empty).Trim().ToLower() == normalizedRegion)
                 .Select(u => u.Id)
                 .ToListAsync();
             var filteredChecks = await _context.Checks

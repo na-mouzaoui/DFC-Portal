@@ -36,6 +36,7 @@ const INITIAL_DATA: DashboardData = {
 }
 
 const REFRESH_INTERVAL_MS = 30_000
+const DASHBOARD_PATH = "/cheque_dashbord"
 
 const getStoredToken = () => {
   try {
@@ -66,23 +67,17 @@ export default function DashboardPage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const isMountedRef = useRef(true)
   const latestUserRef = useRef<User | null>(null)
-  const loadDataTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const retryCountRef = useRef(0)
   const pathnameRef = useRef(pathname)
   const hasLoadedRef = useRef(false)
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false
-      if (loadDataTimerRef.current) {
-        clearTimeout(loadDataTimerRef.current)
-      }
     }
   }, [])
 
   useEffect(() => {
     latestUserRef.current = user
-    retryCountRef.current = 0
   }, [user])
   
   // loadData ne change jamais, utilise latestUserRef
@@ -91,29 +86,6 @@ export default function DashboardPage() {
     if (!currentUser || !isMountedRef.current) {
       return
     }
-
-    // Vérifier que le token est disponible
-    const token = getStoredToken()
-    if (!token) {
-      if (retryCountRef.current < 20) {
-        retryCountRef.current++
-        console.warn(`Dashboard: No token available, retry ${retryCountRef.current}/20 in 100ms...`)
-        if (loadDataTimerRef.current) {
-          clearTimeout(loadDataTimerRef.current)
-        }
-        loadDataTimerRef.current = setTimeout(() => {
-          if (isMountedRef.current && latestUserRef.current) {
-            loadData(options)
-          }
-        }, 100)
-      } else {
-        console.error("Dashboard: Token not available after 20 retries")
-      }
-      return
-    }
-
-    // Reset retry count quand on a un token
-    retryCountRef.current = 0
 
     const showLoader = !options?.silent
 
@@ -162,9 +134,7 @@ export default function DashboardPage() {
         Array.isArray(payload) ? (payload as User[]) : ([] as User[]),
       )
       const regions = await parseResponse<Region[]>(regionsRes, [] as Region[], (payload) =>
-        Array.isArray(payload)
-          ? (payload as any[]).map(r => ({ id: r.id, name: r.name, wilayas: r.villes ?? r.wilayas ?? [] }))
-          : ([] as Region[]),
+        Array.isArray(payload) ? (payload as Region[]) : ([] as Region[]),
       )
       const banks = await parseResponse<Bank[]>(banksRes, [] as Bank[], (payload) => {
         if (payload && typeof payload === "object" && Array.isArray((payload as { banks?: Bank[] }).banks)) {
@@ -193,8 +163,11 @@ export default function DashboardPage() {
   
   // Chargement des données dès que l'utilisateur est authentifié ET à chaque changement de pathname
   useEffect(() => {
-    const wasOnDashboard = pathnameRef.current === "/cheque_dashbord"
-    const nowOnDashboard = pathname === "/cheque_dashbord"
+    // Normaliser les paths pour ignorer les trailing slashes
+    const normalizePathname = (p: string) => p.replace(/\/$/, "") || "/"
+    const normalizedPathname = normalizePathname(pathname)
+    const wasOnDashboard = normalizePathname(pathnameRef.current) === DASHBOARD_PATH
+    const nowOnDashboard = normalizedPathname === DASHBOARD_PATH
     pathnameRef.current = pathname
     
     if (!user || status !== "authenticated") {
@@ -203,7 +176,6 @@ export default function DashboardPage() {
     
     // Si on revient sur le dashboard ou c'est la première fois
     if (nowOnDashboard && (!wasOnDashboard || !hasLoadedRef.current)) {
-      console.log("[Dashboard] Loading data", { wasOnDashboard, nowOnDashboard, hasLoaded: hasLoadedRef.current })
       hasLoadedRef.current = true
       loadData()
     }
@@ -222,17 +194,10 @@ export default function DashboardPage() {
       return
     }
 
-    // Vérifier que le token existe avant de démarrer SignalR
-    const token = getStoredToken()
-    if (!token) {
-      console.warn("SignalR: No token found, skipping connection")
-      return
-    }
-
     const connection = new HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/check-updates`, { 
         withCredentials: true,
-        accessTokenFactory: () => token
+        accessTokenFactory: () => getStoredToken() ?? ""
       })
       .withAutomaticReconnect([0, 2000, 5000, 10000])
       .build()
