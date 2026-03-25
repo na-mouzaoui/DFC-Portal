@@ -27,6 +27,8 @@ public class UsersController : ControllerBase
                 email = u.Email,
                 role = u.Role,
                 region = u.Region,
+                isRegionalApprover = u.IsRegionalApprover,
+                isFinanceApprover = u.IsFinanceApprover,
                 createdAt = u.CreatedAt
             })
             .ToListAsync();

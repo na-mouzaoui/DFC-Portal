@@ -31,6 +31,8 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.Email).IsUnique();
             entity.Property(e => e.Email).IsRequired();
             entity.Property(e => e.PasswordHash).IsRequired();
+            entity.Property(e => e.IsRegionalApprover).HasDefaultValue(false);
+            entity.Property(e => e.IsFinanceApprover).HasDefaultValue(false);
         });
 
         // Check configuration
@@ -142,13 +144,19 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ApprovedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.ApprovedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => new { e.UserId, e.TabKey, e.Mois, e.Annee });
+            entity.HasIndex(e => e.IsApproved);
             entity.Property(e => e.DataJson).IsRequired();
             entity.Property(e => e.TabKey).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Direction).HasMaxLength(200);
             entity.Property(e => e.Mois).HasMaxLength(10);
             entity.Property(e => e.Annee).HasMaxLength(10);
+            entity.Property(e => e.IsApproved).HasDefaultValue(false);
         });
 
         // Seed data

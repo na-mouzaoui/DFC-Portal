@@ -55,6 +55,8 @@ public class AdminController : ControllerBase
                 u.PhoneNumber,
                 u.Role,
                 u.Region,
+                u.IsRegionalApprover,
+                u.IsFinanceApprover,
                 u.AccessModules,
                 u.CreatedAt
             })
@@ -88,6 +90,8 @@ public class AdminController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Region,
+            user.IsRegionalApprover,
+            user.IsFinanceApprover,
             user.AccessModules,
             user.CreatedAt
         });
@@ -107,6 +111,8 @@ public class AdminController : ControllerBase
         var direction = (request.Direction ?? string.Empty).Trim();
         var role = string.IsNullOrWhiteSpace(request.Role) ? "comptabilite" : request.Role.Trim();
         var region = string.IsNullOrWhiteSpace(request.Region) ? null : request.Region.Trim();
+        var isRegionalApprover = role == "regionale" && request.IsRegionalApprover;
+        var isFinanceApprover = (role == "finance" || role == "comptabilite") && request.IsFinanceApprover;
         var accessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules.Trim();
         var normalizedPhoneNumber = (request.PhoneNumber ?? string.Empty).Trim();
 
@@ -135,6 +141,8 @@ public class AdminController : ControllerBase
             PhoneNumber = normalizedPhoneNumber,
             Role = role,
             Region = role == "regionale" ? region : null,
+            IsRegionalApprover = isRegionalApprover,
+            IsFinanceApprover = isFinanceApprover,
             AccessModules = accessModules,
             CreatedAt = DateTime.UtcNow
         };
@@ -161,6 +169,8 @@ public class AdminController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Region,
+            user.IsRegionalApprover,
+            user.IsFinanceApprover,
             user.AccessModules,
             user.CreatedAt
         });
@@ -203,6 +213,25 @@ public class AdminController : ControllerBase
             user.Region = request.Role == "regionale" ? request.Region : null;
         }
 
+        var effectiveRole = (user.Role ?? string.Empty).Trim().ToLowerInvariant();
+        if (effectiveRole == "regionale")
+        {
+            user.IsRegionalApprover = request.IsRegionalApprover ?? user.IsRegionalApprover;
+        }
+        else
+        {
+            user.IsRegionalApprover = false;
+        }
+
+        if (effectiveRole is "finance" or "comptabilite")
+        {
+            user.IsFinanceApprover = request.IsFinanceApprover ?? user.IsFinanceApprover;
+        }
+        else
+        {
+            user.IsFinanceApprover = false;
+        }
+
         if (request.AccessModules != null)
             user.AccessModules = string.IsNullOrWhiteSpace(request.AccessModules) ? "cheque,fisca" : request.AccessModules;
 
@@ -219,7 +248,7 @@ public class AdminController : ControllerBase
             "UPDATE_USER",
             "User",
             user.Id,
-            new { OldValues = oldValues, NewValues = new { user.FirstName, user.LastName, user.Direction, user.PhoneNumber, user.Role, user.Region } }
+            new { OldValues = oldValues, NewValues = new { user.FirstName, user.LastName, user.Direction, user.PhoneNumber, user.Role, user.Region, user.IsRegionalApprover, user.IsFinanceApprover } }
         );
 
         return Ok(new
@@ -232,6 +261,8 @@ public class AdminController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Region,
+            user.IsRegionalApprover,
+            user.IsFinanceApprover,
             user.AccessModules
         });
     }
@@ -339,6 +370,8 @@ public class CreateUserRequest
     public string PhoneNumber { get; set; } = string.Empty;
     public string Role { get; set; } = "comptabilite";
     public string? Region { get; set; }
+    public bool IsRegionalApprover { get; set; } = false;
+    public bool IsFinanceApprover { get; set; } = false;
     public string? AccessModules { get; set; }
 }
 
@@ -350,6 +383,8 @@ public class UpdateUserRequest
     public string? PhoneNumber { get; set; }
     public string? Role { get; set; }
     public string? Region { get; set; }
+    public bool? IsRegionalApprover { get; set; }
+    public bool? IsFinanceApprover { get; set; }
     public string? Password { get; set; }
     public string? AccessModules { get; set; }
 }

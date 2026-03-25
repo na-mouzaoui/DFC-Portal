@@ -11,6 +11,8 @@ public class User
     public string PhoneNumber { get; set; } = string.Empty;
     public string Role { get; set; } = "comptabilite"; // direction, comptabilite, regionale, admin
     public string? Region { get; set; } // nord, sud, est, ouest (pour role regionale uniquement)
+    public bool IsRegionalApprover { get; set; } = false; // Peut approuver les déclarations régionales de la même région
+    public bool IsFinanceApprover { get; set; } = false; // Peut approuver les déclarations du niveau Siège
     public string AccessModules { get; set; } = "cheque,fisca"; // modules accessibles : cheque, fisca
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     
@@ -145,10 +147,14 @@ public class FiscalDeclaration
     public string Annee { get; set; } = "";         // "2025"
     public string Direction { get; set; } = "";     // Direction de l'utilisateur
     public string DataJson { get; set; } = "{}";   // Données du tableau en JSON
+    public bool IsApproved { get; set; } = false;
+    public int? ApprovedByUserId { get; set; }
+    public DateTime? ApprovedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public User User { get; set; } = null!;
+    public User? ApprovedByUser { get; set; }
 }
 
 public class FiscalFournisseur

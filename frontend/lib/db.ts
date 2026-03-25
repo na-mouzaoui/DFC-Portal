@@ -8,6 +8,8 @@ export interface User {
   role: string
   direction: string
   region?: string
+  isRegionalApprover?: boolean
+  isFinanceApprover?: boolean
   accessModules?: string
   createdAt: string
 }

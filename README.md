@@ -24,6 +24,7 @@ Permettre la création, la prévisualisation, l'impression et le suivi des chèq
 
 ### Règles métier importantes
 - Le rôle direction n'a pas le droit de créer/imprimer des chèques.
+- Un fournisseur peut être recréé avec le même nom tant que cela n’est pas fait par le même type d’utilisateur.Cas particulier : Pour les utilisateurs régionaux, l’unicité est basée sur la région.
 - Les utilisateurs régionale sont limités à leur périmètre régional (accès et données filtrées).
 - Référence de chèque vérifiée côté API.
 - Si un chéquier est plein, aucun nouveau chèque ne peut être émis dessus.
@@ -47,6 +48,7 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 - Sauvegarde d'une déclaration (création et modification).
 - Consultation des déclarations récentes dans le dashboard fiscal.
 - Consultation détaillée au clic ligne, impression PDF, modification, suppression.
+- Validation (approbation) des déclarations via bouton dédié dans le dashboard fiscal pour les comptes approbateurs (régional et finance).
 - Filtres avancés (type, période, direction, date) et tri dans le dashboard.
 - Tableau 1 (Encaissement) en saisie HT avec calcul automatique de la TVA et du TTC.
 - Formatage des montants en temps réel (séparateurs de milliers) lors de la saisie.
@@ -92,6 +94,17 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Comptes regionale : le rappel reste affiché pour tous les comptes de la même région tant que les tableaux 1 à 6 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
   - Comptes finance/comptabilite : le rappel reste affiché pour tous les comptes finance tant que les tableaux 7 à 16 ne sont pas tous saisis (au moins une saisie par tableau sur la période cible).
   - Le rappel s'éteint automatiquement quand tous les tableaux du périmètre sont couverts ou en dehors de la fenêtre J-3 -> délai.
+- Workflow d'approbation des déclarations :
+  - Un compte regionale peut être marqué comme approbateur régional.
+  - Un approbateur régional peut approuver uniquement les déclarations d'autres utilisateurs de la même région.
+  - Un compte finance/comptabilite peut être marqué comme approbateur finance.
+  - Un approbateur finance peut approuver uniquement les déclarations du niveau Siège.
+  - Un approbateur (régional ou finance) ne peut pas approuver ses propres déclarations.
+  - Une déclaration modifiée repasse automatiquement en état "En attente" (nouvelle approbation requise).
+  - Règles de consultation dashboard fiscal :
+    - admin : voit toutes les déclarations (approuvées et en attente), y compris celles émises par les comptes admin et finance/comptabilite.
+    - finance/comptabilite : voit toutes les déclarations du niveau Siège (approuvées et en attente) + les déclarations régionales approuvées.
+    - direction (global) : voit uniquement les déclarations du niveau Siège.
 - Les données peuvent exister localement (cache local) et sont aussi persistées côté API.
 
 ## 3. Page Admin
@@ -110,6 +123,8 @@ Centraliser l'administration des utilisateurs, des référentiels et de l'audit.
   - suppression,
   - attribution du rôle,
   - attribution de région,
+  - activation de l'option "compte approbateur régional" (checkbox) pour les comptes regionale,
+  - activation de l'option "compte approbateur finance" (checkbox) pour les comptes finance/comptabilite,
   - attribution des modules d'accès.
 - Journal d'audit :
   - consultation des actions système,
@@ -130,6 +145,8 @@ Centraliser l'administration des utilisateurs, des référentiels et de l'audit.
 - Redirection automatique des non-admin vers les pages autorisées.
 - Validation numéro de téléphone utilisateur : doit commencer par 0 et contenir exactement 10 chiffres.
 - Si le rôle est regionale, la région est obligatoire.
+- Si le rôle est regionale, l'option approbateur peut être activée pour autoriser la validation des déclarations de la même région.
+- Si le rôle est finance/comptabilite, l'option approbateur finance peut être activée pour autoriser la validation des déclarations du niveau Siège.
 - Les actions sensibles sont tracées dans le journal d'audit.
 
 ---

@@ -122,6 +122,8 @@ interface User {
   phoneNumber: string;
   role: string;
   region: string | null;
+  isRegionalApprover?: boolean;
+  isFinanceApprover?: boolean;
   accessModules: string;
   createdAt: string;
 }
@@ -152,6 +154,8 @@ export default function AdminUserManagement() {
     phoneNumber: "",
     role: "comptabilite",
     region: "",
+    isRegionalApprover: false,
+    isFinanceApprover: false,
     accessModules: ["cheque", "fisca"] as string[],
   });
 
@@ -238,6 +242,8 @@ export default function AdminUserManagement() {
         credentials: "include",
         body: JSON.stringify({
           ...formData,
+          isRegionalApprover: formData.role === "regionale" ? formData.isRegionalApprover : false,
+          isFinanceApprover: (formData.role === "finance" || formData.role === "comptabilite") ? formData.isFinanceApprover : false,
           accessModules: formData.accessModules.join(","),
         }),
       });
@@ -278,6 +284,8 @@ export default function AdminUserManagement() {
         credentials: "include",
         body: JSON.stringify({
           ...formData,
+          isRegionalApprover: formData.role === "regionale" ? formData.isRegionalApprover : false,
+          isFinanceApprover: (formData.role === "finance" || formData.role === "comptabilite") ? formData.isFinanceApprover : false,
           accessModules: formData.accessModules.join(","),
         }),
       });
@@ -376,6 +384,8 @@ export default function AdminUserManagement() {
       phoneNumber: user.phoneNumber,
       role: user.role,
       region: user.region || "",
+      isRegionalApprover: !!user.isRegionalApprover,
+      isFinanceApprover: !!user.isFinanceApprover,
       accessModules: user.accessModules ? user.accessModules.split(",").map(s => s.trim()).filter(Boolean) : ["cheque", "fisca"],
     });
     setIsEditOpen(true);
@@ -391,6 +401,8 @@ export default function AdminUserManagement() {
       phoneNumber: "",
       role: "comptabilite",
       region: "",
+      isRegionalApprover: false,
+      isFinanceApprover: false,
       accessModules: ["cheque", "fisca"],
     });
     setShowPassword(false);
@@ -541,21 +553,43 @@ export default function AdminUserManagement() {
                 </div>
               </div>
               {formData.role === "regionale" && (
-                <div className="space-y-2">
-                  <Label htmlFor="region">Région *</Label>
-                  <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez une région" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regions.map((region) => (
-                        <SelectItem key={region.id} value={region.name}>
-                          {region.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="region">Région *</Label>
+                    <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionnez une région" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {regions.map((region) => (
+                          <SelectItem key={region.id} value={region.name}>
+                            {region.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <label className="flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isRegionalApprover}
+                      onChange={(e) => setFormData({ ...formData, isRegionalApprover: e.target.checked })}
+                    />
+                    Compte approbateur régional (peut approuver les déclarations de la même région)
+                  </label>
                 </div>
+              )}
+
+              {(formData.role === "finance" || formData.role === "comptabilite") && (
+                <label className="flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isFinanceApprover}
+                    onChange={(e) => setFormData({ ...formData, isFinanceApprover: e.target.checked })}
+                  />
+                  Compte approbateur finance (peut approuver les déclarations du niveau Siège)
+                </label>
               )}
             </div>
             <DialogFooter>
@@ -578,6 +612,7 @@ export default function AdminUserManagement() {
               <TableHead>Téléphone</TableHead>
               <TableHead>Rôle</TableHead>
               <TableHead>Région</TableHead>
+              <TableHead>Approbateur</TableHead>
               <TableHead>Modules</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -595,6 +630,23 @@ export default function AdminUserManagement() {
                   <Badge className="bg-green-100 text-green-800">{getRoleLabel(user.role)}</Badge>
                 </TableCell>
                 <TableCell>{user.region || "-"}</TableCell>
+                <TableCell>
+                  {user.role === "regionale" ? (
+                    user.isRegionalApprover ? (
+                      <Badge className="bg-emerald-100 text-emerald-800">Oui</Badge>
+                    ) : (
+                      <Badge variant="outline">Non</Badge>
+                    )
+                  ) : (user.role === "finance" || user.role === "comptabilite") ? (
+                    user.isFinanceApprover ? (
+                      <Badge className="bg-blue-100 text-blue-800">Oui</Badge>
+                    ) : (
+                      <Badge variant="outline">Non</Badge>
+                    )
+                  ) : (
+                    "-"
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1 flex-wrap">
                     {(user.accessModules || "cheque,fisca").split(",").map((m) => (
@@ -733,21 +785,43 @@ export default function AdminUserManagement() {
               </div>
             </div>
             {formData.role === "regionale" && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-region">Région</Label>
-                <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez une région" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {regions.map((region) => (
-                      <SelectItem key={region.id} value={region.name}>
-                        {region.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-region">Région</Label>
+                  <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez une région" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {regions.map((region) => (
+                        <SelectItem key={region.id} value={region.name}>
+                          {region.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <label className="flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isRegionalApprover}
+                    onChange={(e) => setFormData({ ...formData, isRegionalApprover: e.target.checked })}
+                  />
+                  Compte approbateur régional
+                </label>
               </div>
+            )}
+
+            {(formData.role === "finance" || formData.role === "comptabilite") && (
+              <label className="flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.isFinanceApprover}
+                  onChange={(e) => setFormData({ ...formData, isFinanceApprover: e.target.checked })}
+                />
+                Compte approbateur finance
+              </label>
             )}
           </div>
           <DialogFooter>

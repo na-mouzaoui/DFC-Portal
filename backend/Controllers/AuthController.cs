@@ -50,6 +50,8 @@ public class AuthController : ControllerBase
                 phoneNumber = user.PhoneNumber,
                 role = user.Role,
                 region = user.Region,
+                isRegionalApprover = user.IsRegionalApprover,
+                isFinanceApprover = user.IsFinanceApprover,
                 accessModules = user.AccessModules,
                 createdAt = user.CreatedAt
             }
@@ -118,6 +120,8 @@ public class AuthController : ControllerBase
                 phoneNumber = user.PhoneNumber,
                 role = user.Role,
                 region = user.Region,
+                isRegionalApprover = user.IsRegionalApprover,
+                isFinanceApprover = user.IsFinanceApprover,
                 accessModules = user.AccessModules,
                 createdAt = user.CreatedAt
             }

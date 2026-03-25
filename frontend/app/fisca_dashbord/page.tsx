@@ -47,10 +47,14 @@ const MONTH_LABELS_SHORT = ["Janv","Fév","Mars","Avr","Mai","Juin","Juil","Aoû
 
 interface SavedDeclaration {
   id: string
+  userId?: number
   createdAt: string
   direction: string
   mois: string
   annee: string
+  isApproved?: boolean
+  approvedByUserId?: number | null
+  approvedAt?: string | null
   encRows?: EncRow[]
   tvaImmoRows?: TvaRow[]
   tvaBiensRows?: TvaRow[]
@@ -86,11 +90,15 @@ interface FiscalReminderStatus {
 
 interface ApiFiscalDeclaration {
   id: number
+  userId: number
   tabKey: string
   mois: string
   annee: string
   direction: string
   dataJson: string
+  isApproved?: boolean
+  approvedByUserId?: number | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -111,10 +119,14 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
 
   const declaration: SavedDeclaration = {
     id: String(item.id),
+    userId: item.userId,
     createdAt: item.createdAt,
     direction: item.direction ?? "",
     mois: item.mois,
     annee: item.annee,
+    isApproved: !!item.isApproved,
+    approvedByUserId: item.approvedByUserId ?? null,
+    approvedAt: item.approvedAt ?? null,
     encRows: [],
     tvaImmoRows: [],
     tvaBiensRows: [],
@@ -866,6 +878,11 @@ export default function FiscaDashboardPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
+  const normalizedRole = (user?.role ?? "").trim().toLowerCase()
+  const normalizedRegion = (user?.region ?? "").trim().toLowerCase()
+  const isFinanceRole = normalizedRole === "finance" || normalizedRole === "comptabilite"
+  const canApproveRegionalDeclarations = normalizedRole === "regionale" && !!user?.isRegionalApprover
+  const canApproveFinanceDeclarations = isFinanceRole && !!user?.isFinanceApprover
 
   useEffect(() => {
     if (!user || status !== "authenticated") {
@@ -1089,6 +1106,67 @@ export default function FiscaDashboardPage() {
     }
 
     router.push(`/declaration?editId=${encodeURIComponent(decl.id)}&tab=${encodeURIComponent(tabKey)}`)
+  }
+
+  const handleApprove = async (decl: SavedDeclaration) => {
+    if (!canApproveRegionalDeclarations && !canApproveFinanceDeclarations) {
+      toast({
+        title: "Accès refusé",
+        description: "Seuls les comptes approbateurs (régional ou finance) peuvent valider les déclarations.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const declarationId = Number(decl.id)
+    if (!Number.isFinite(declarationId)) {
+      toast({ title: "Erreur", description: "ID de déclaration invalide", variant: "destructive" })
+      return
+    }
+
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      const response = await fetch(`${API_BASE}/api/fiscal/${declarationId}/approve`, {
+        method: "POST",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        const message = payload && typeof payload === "object" && "message" in payload
+          ? String((payload as { message?: unknown }).message ?? "")
+          : "Approbation impossible"
+        throw new Error(message)
+      }
+
+      const nowIso = new Date().toISOString()
+      const updated = declarations.map((item) =>
+        item.id === decl.id
+          ? {
+              ...item,
+              isApproved: true,
+              approvedAt: typeof payload?.approvedAt === "string" ? payload.approvedAt : nowIso,
+              approvedByUserId: typeof payload?.approvedByUserId === "number" ? payload.approvedByUserId : Number(user.id),
+            }
+          : item,
+      )
+
+      setDeclarations(updated)
+      try {
+        localStorage.setItem("fiscal_declarations", JSON.stringify(updated))
+      } catch {
+        // Ignore storage errors.
+      }
+
+      toast({ title: "Déclaration approuvée" })
+    } catch (error) {
+      toast({
+        title: "Erreur d'approbation",
+        description: error instanceof Error ? error.message : "Impossible d'approuver la déclaration.",
+        variant: "destructive",
+      })
+    }
   }
 
   const getDeclarationType = (decl: SavedDeclaration) => {
@@ -1421,6 +1499,7 @@ export default function FiscaDashboardPage() {
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("date")}>
                         Date d&apos;enregistrement <SortIcon col="date" />
                       </TableHead>
+                      <TableHead>Statut</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1429,6 +1508,22 @@ export default function FiscaDashboardPage() {
                       const declType = getDeclarationType(decl)
                       const isLocked = isDeclarationLocked(decl)
                       const canManage = canManageFiscalTab(user.role, declType.key)
+                      const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
+                      const isSiegeDeclaration = declarationDirection === "siège"
+                        || declarationDirection === "siege"
+                        || declarationDirection.includes("siège")
+                        || declarationDirection.includes("siege")
+                      const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
+                      const canApproveAsRegional = canApproveRegionalDeclarations
+                        && !decl.isApproved
+                        && !isOwnDeclaration
+                        && !!normalizedRegion
+                        && declarationDirection === normalizedRegion
+                      const canApproveAsFinance = canApproveFinanceDeclarations
+                        && !decl.isApproved
+                        && !isOwnDeclaration
+                        && isSiegeDeclaration
+                      const canApproveThisDeclaration = canApproveAsRegional || canApproveAsFinance
                       return (
                         <TableRow
                           key={decl.id}
@@ -1456,7 +1551,29 @@ export default function FiscaDashboardPage() {
                             {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
                           </TableCell>
                           <TableCell>
+                            {decl.isApproved ? (
+                              <Badge className="bg-emerald-100 text-emerald-800">Approuvée</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-amber-700 border-amber-400">En attente</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             <div className="flex items-center justify-center gap-2">
+                              {(canApproveRegionalDeclarations || canApproveFinanceDeclarations) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 w-8 p-0 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                  disabled={!canApproveThisDeclaration}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleApprove(decl)
+                                  }}
+                                  title={decl.isApproved ? "Déclaration déjà approuvée" : !canApproveThisDeclaration ? "Action non autorisée pour cette déclaration" : "Approuver"}
+                                >
+                                  <CheckCircle size={16} />
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"

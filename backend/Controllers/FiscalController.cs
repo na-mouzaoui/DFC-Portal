@@ -380,7 +380,8 @@ public class FiscalController : ControllerBase
         // pas uniquement par l'auteur de la déclaration.
         if (currentUserRole == "admin")
         {
-            // Aucun filtre supplémentaire.
+            // Admin voit toutes les déclarations, y compris celles émises par
+            // les comptes admin, finance/comptabilite, direction et regionale.
         }
         else if (currentUserRole == "regionale")
         {
@@ -401,14 +402,48 @@ public class FiscalController : ControllerBase
         }
         else if (currentUserRole is "finance" or "comptabilite")
         {
+            // Finance voit:
+            // 1) toutes les déclarations de la direction Siège (approuvées ou en attente)
+            // 2) les déclarations régionales approuvées
+            query = query.Where(d =>
+                // Déclarations Siège
+                (
+                    ((d.Direction ?? "").Trim().ToLower() == "siège")
+                    || ((d.Direction ?? "").Trim().ToLower() == "siege")
+                    || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
+                    || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
+                    || (
+                        string.IsNullOrWhiteSpace(d.Direction)
+                        && (
+                            (d.User.Role ?? "").Trim().ToLower() == "finance"
+                            || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
+                            || (d.User.Role ?? "").Trim().ToLower() == "admin"
+                            || (d.User.Role ?? "").Trim().ToLower() == "direction"
+                        )
+                    )
+                )
+                // Déclarations régionales approuvées
+                || (
+                    (d.User.Role ?? "").Trim().ToLower() == "regionale"
+                    && d.IsApproved
+                )
+            );
+        }
+        else if (currentUserRole == "direction")
+        {
+            // Global/Direction voit uniquement les déclarations du niveau Siège.
             query = query.Where(d =>
                 ((d.Direction ?? "").Trim().ToLower() == "siège")
                 || ((d.Direction ?? "").Trim().ToLower() == "siege")
+                || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
+                || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
                 || (
                     string.IsNullOrWhiteSpace(d.Direction)
                     && (
                         (d.User.Role ?? "").Trim().ToLower() == "finance"
                         || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
+                        || (d.User.Role ?? "").Trim().ToLower() == "admin"
+                        || (d.User.Role ?? "").Trim().ToLower() == "direction"
                     )
                 )
             );
@@ -430,7 +465,11 @@ public class FiscalController : ControllerBase
             .Select(d => new
             {
                 d.Id, d.TabKey, d.Mois, d.Annee, d.Direction,
-                d.DataJson, d.CreatedAt, d.UpdatedAt
+                d.DataJson, d.CreatedAt, d.UpdatedAt,
+                d.UserId,
+                d.IsApproved,
+                d.ApprovedByUserId,
+                d.ApprovedAt
             })
             .ToListAsync();
 
@@ -450,7 +489,11 @@ public class FiscalController : ControllerBase
         return Ok(new
         {
             decl.Id, decl.TabKey, decl.Mois, decl.Annee, decl.Direction,
-            decl.DataJson, decl.CreatedAt, decl.UpdatedAt
+            decl.DataJson, decl.CreatedAt, decl.UpdatedAt,
+            decl.UserId,
+            decl.IsApproved,
+            decl.ApprovedByUserId,
+            decl.ApprovedAt
         });
     }
 
@@ -583,6 +626,9 @@ public class FiscalController : ControllerBase
             Annee     = request.Annee,
             Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region),
             DataJson  = request.DataJson ?? "{}",
+            IsApproved = false,
+            ApprovedByUserId = null,
+            ApprovedAt = null,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -631,6 +677,10 @@ public class FiscalController : ControllerBase
         decl.Annee     = request.Annee;
         decl.Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region, decl.Direction);
         decl.DataJson  = request.DataJson ?? decl.DataJson;
+        // Toute modification remet la déclaration en attente d'approbation.
+        decl.IsApproved = false;
+        decl.ApprovedByUserId = null;
+        decl.ApprovedAt = null;
         decl.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -639,6 +689,102 @@ public class FiscalController : ControllerBase
             new { decl.TabKey, decl.Mois, decl.Annee, action = "update" });
 
         return NoContent();
+    }
+
+    // ─── POST api/fiscal/{id}/approve ───────────────────────────────────────
+    [HttpPost("{id}/approve")]
+    public async Task<IActionResult> Approve(int id)
+    {
+        var userId = GetCurrentUserId();
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
+
+        var approver = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (approver == null)
+            return Unauthorized();
+
+        var canApproveAsRegional = currentUserRole == "regionale" && approver.IsRegionalApprover;
+        var canApproveAsFinance = (currentUserRole == "finance" || currentUserRole == "comptabilite") && approver.IsFinanceApprover;
+
+        if (!canApproveAsRegional && !canApproveAsFinance)
+            return StatusCode(403, new { message = "Ce compte n'a pas le droit d'approbation." });
+
+        var approverRegion = (approver.Region ?? "").Trim().ToLowerInvariant();
+        if (canApproveAsRegional && string.IsNullOrWhiteSpace(approverRegion))
+            return BadRequest(new { message = "Le compte approbateur doit être rattaché à une région." });
+
+        var decl = await _context.FiscalDeclarations
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id);
+
+        if (decl == null)
+            return NotFound();
+
+        if (decl.UserId == userId)
+            return BadRequest(new { message = "Vous ne pouvez pas approuver votre propre déclaration." });
+
+        var declarationOwnerRole = (decl.User.Role ?? "").Trim().ToLowerInvariant();
+        var declarationOwnerRegion = (decl.User.Region ?? "").Trim().ToLowerInvariant();
+        var declarationDirection = (decl.Direction ?? "").Trim().ToLowerInvariant();
+        var isSiegeDeclaration = declarationDirection == "siège"
+            || declarationDirection == "siege"
+            || declarationDirection.Contains("siège")
+            || declarationDirection.Contains("siege")
+            || (string.IsNullOrWhiteSpace(decl.Direction)
+                && (declarationOwnerRole == "finance"
+                    || declarationOwnerRole == "comptabilite"
+                    || declarationOwnerRole == "direction"
+                    || declarationOwnerRole == "admin"));
+
+        if (canApproveAsRegional && (declarationOwnerRole != "regionale" || declarationOwnerRegion != approverRegion))
+        {
+            return StatusCode(403, new
+            {
+                message = "Vous ne pouvez approuver que les déclarations d'autres utilisateurs de votre région."
+            });
+        }
+
+        if (canApproveAsFinance && !isSiegeDeclaration)
+        {
+            return StatusCode(403, new
+            {
+                message = "Vous ne pouvez approuver que les déclarations du niveau Siège."
+            });
+        }
+
+        if (decl.IsApproved)
+        {
+            return Ok(new
+            {
+                message = "Déclaration déjà approuvée.",
+                decl.Id,
+                decl.IsApproved,
+                decl.ApprovedByUserId,
+                decl.ApprovedAt
+            });
+        }
+
+        decl.IsApproved = true;
+        decl.ApprovedByUserId = userId;
+        decl.ApprovedAt = DateTime.UtcNow;
+        decl.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await _auditService.LogAction(userId, "FISCAL_APPROVE", "FiscalDeclaration", decl.Id,
+            new { decl.TabKey, decl.Mois, decl.Annee, decl.UserId, approverRegion, approverRole = currentUserRole });
+
+        return Ok(new
+        {
+            message = "Déclaration approuvée avec succès.",
+            decl.Id,
+            decl.IsApproved,
+            decl.ApprovedByUserId,
+            decl.ApprovedAt
+        });
     }
 
     // ─── DELETE api/fiscal/{id} ──────────────────────────────────────────────
