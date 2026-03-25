@@ -370,7 +370,53 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] string? tabKey, [FromQuery] string? mois, [FromQuery] string? annee)
     {
         var userId = GetCurrentUserId();
-        var query = _context.FiscalDeclarations.Where(d => d.UserId == userId);
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
+        var currentUserRegion = (currentUserContext.Region ?? "").Trim().ToLowerInvariant();
+
+        IQueryable<FiscalDeclaration> query = _context.FiscalDeclarations.AsNoTracking();
+
+        // Le dashboard fiscal est piloté par une portée métier (profil + direction),
+        // pas uniquement par l'auteur de la déclaration.
+        if (currentUserRole == "admin")
+        {
+            // Aucun filtre supplémentaire.
+        }
+        else if (currentUserRole == "regionale")
+        {
+            if (string.IsNullOrWhiteSpace(currentUserRegion))
+            {
+                query = query.Where(d => d.UserId == userId);
+            }
+            else
+            {
+                query = query.Where(d =>
+                    ((d.Direction ?? "").Trim().ToLower() == currentUserRegion)
+                    || (
+                        string.IsNullOrWhiteSpace(d.Direction)
+                        && (d.User.Region ?? "").Trim().ToLower() == currentUserRegion
+                    )
+                );
+            }
+        }
+        else if (currentUserRole is "finance" or "comptabilite")
+        {
+            query = query.Where(d =>
+                ((d.Direction ?? "").Trim().ToLower() == "siège")
+                || ((d.Direction ?? "").Trim().ToLower() == "siege")
+                || (
+                    string.IsNullOrWhiteSpace(d.Direction)
+                    && (
+                        (d.User.Role ?? "").Trim().ToLower() == "finance"
+                        || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
+                    )
+                )
+            );
+        }
+        else
+        {
+            query = query.Where(d => d.UserId == userId);
+        }
 
         if (!string.IsNullOrEmpty(tabKey))
             query = query.Where(d => d.TabKey == tabKey);
