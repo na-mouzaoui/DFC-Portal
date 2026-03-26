@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
 import { API_BASE } from "@/lib/config"
+import WILAYAS_COMMUNES from "@/lib/wilayas-communes"
 
 type EncRow = { designation: string; ht?: string; ttc?: string }
 type TvaRate = "19" | "9"
@@ -38,12 +39,12 @@ const SIEGE_G2_LABELS = [
 ]
 
 const IRG_LABELS = [
-  "IRG sur Salaire Barème", "Autre IRG 10%", "Autre IRG 15%",
-  "Jetons de présence 15%", "Tantième 15%",
+  "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15%",
+  "Jetons de prAsence 15%", "Tantieme 15%",
 ]
 const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
 const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
-const MONTH_LABELS_SHORT = ["Janv","Fév","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"]
+const MONTH_LABELS_SHORT = ["Janv","FAv","Mars","Avr","Mai","Juin","Juil","AoAt","Sept","Oct","Nov","DAc"]
 
 interface SavedDeclaration {
   id: string
@@ -190,33 +191,46 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
 }
 
 const MONTHS: Record<string, string> = {
-  "01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril",
-  "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août",
-  "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Décembre",
+  "01": "Janvier", "02": "FAvrier", "03": "Mars", "04": "Avril",
+  "05": "Mai", "06": "Juin", "07": "Juillet", "08": "AoAt",
+  "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "DAcembre",
 }
 
 const DASH_TABS = [
-  { key: "encaissement",  label: "1 – Encaissement",       color: "#2db34b", title: "ENCAISSEMENT" },
-  { key: "tva_immo",      label: "2 – TVA / IMMO",         color: "#1d6fb8", title: "ÉTAT TVA / IMMOBILISATIONS" },
-  { key: "tva_biens",     label: "3 – TVA / Biens & Serv", color: "#7c3aed", title: "ÉTAT TVA / BIENS & SERVICES" },
-  { key: "droits_timbre", label: "4 – Droits Timbre",      color: "#0891b2", title: "ÉTAT DROITS DE TIMBRE" },
-  { key: "ca_tap",        label: "5 – CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
-  { key: "etat_tap",      label: "6 – ETAT TAP",           color: "#be123c", title: "ÉTAT TAP" },
-  { key: "ca_siege",      label: "7 – CA Siège",           color: "#854d0e", title: "CHIFFRE D'AFFAIRE ENCAISSÉ SIÈGE" },
-  { key: "irg",           label: "8 – Situation IRG",      color: "#0f766e", title: "SITUATION IRG" },
-  { key: "taxe2",         label: "9 – Taxe 2%",            color: "#6d28d9", title: "SITUATION DE LA TAXE 2%" },
-  { key: "taxe_masters",  label: "10 – Taxe Maîtres 1,5%", color: "#0369a1", title: "ÉTAT DE LA TAXE 1,5% DES MASTERS" },
-  { key: "taxe_vehicule", label: "11 – Taxe Véhicule",      color: "#92400e", title: "TAXE DE VÉHICULE" },
-  { key: "taxe_formation",label: "12 – Taxe Formation",     color: "#065f46", title: "TAXE DE FORMATION" },
-  { key: "acompte",       label: "13 – Acompte Provisionnel", color: "#1e40af", title: "SITUATION DE L'ACOMPTE PROVISIONNEL" },
-  { key: "ibs",           label: "14 – IBS Fournisseurs Étrangers", color: "#7c2d12", title: "IBS SUR FOURNISSEURS ÉTRANGERS" },
-  { key: "taxe_domicil",  label: "15 – Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
-  { key: "tva_autoliq",   label: "16 – TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
+  { key: "encaissement",  label: "1 - Encaissement",       color: "#2db34b", title: "ETAT DES ENCAISSEMENTS" },
+  { key: "tva_immo",      label: "2 - TVA / IMMO",         color: "#1d6fb8", title: "ETAT TVA / IMMOBILISATIONS" },
+  { key: "tva_biens",     label: "3 - TVA / Biens & Serv", color: "#7c3aed", title: "ETAT TVA / BIENS & SERVICES" },
+  { key: "droits_timbre", label: "4 - Droits Timbre",      color: "#0891b2", title: "ETAT DROITS DE TIMBRE" },
+  { key: "ca_tap",        label: "5 - CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
+  { key: "etat_tap",      label: "6 - ETAT TAP",           color: "#be123c", title: "ETAT TAP" },
+  { key: "ca_siege",      label: "7 a CA SiAge",           color: "#854d0e", title: "CHIFFRE D'AFFAIRE ENCAISSA SIAGE" },
+  { key: "irg",           label: "8 a Situation IRG",      color: "#0f766e", title: "SITUATION IRG" },
+  { key: "taxe2",         label: "9 a Taxe 2%",            color: "#6d28d9", title: "SITUATION DE LA TAXE 2%" },
+  { key: "taxe_masters",  label: "10 a Taxe des Master 1,5%", color: "#0369a1", title: "ATAT DE LA TAXE 1,5% DES MASTERS" },
+  { key: "taxe_vehicule", label: "11 a Taxe Vehicule",      color: "#92400e", title: "TAXE DE VEHICULE" },
+  { key: "taxe_formation",label: "12 a Taxe Formation",     color: "#065f46", title: "TAXE DE FORMATION" },
+  { key: "acompte",       label: "13 a Acompte Provisionnel", color: "#1e40af", title: "SITUATION DE L'ACOMPTE PROVISIONNEL" },
+  { key: "ibs",           label: "14 a IBS Fournisseurs Etrangers", color: "#7c2d12", title: "IBS SUR FOURNISSEURS ETRANGERS" },
+  { key: "taxe_domicil",  label: "15 a Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
+  { key: "tva_autoliq",   label: "16 a TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
 ]
 
-// ─── Shared styles & helpers ──────────────────────────────────────────────────
-const fmt = (v: number | string) =>
-  isNaN(Number(v)) || v === "" ? "–" : Number(v).toLocaleString("fr-DZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+const fmt = (v: number | string) => {
+  const cleaned = String(v).replace(/\//g, " ").replace(/\u00A0/g, " ").trim()
+  const parsed = Number(cleaned)
+  if (isNaN(parsed) || v === "") return "a"
+  
+  // Manual formatting: integer part with space separators, decimal part
+  const parts = parsed.toFixed(2).split(".")
+  const intPart = parts[0]
+  const decPart = parts[1]
+  
+  // Add space separators to integer part (from right to left)
+  const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  
+  return `${intFormatted},${decPart}`
+}
 const num = (v: string | number | null | undefined) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0
 
@@ -255,14 +269,14 @@ const getTvaAmount = (row: TvaRow, showRateColumn: boolean) => {
 }
 const getTvaRateLabel = (value?: string) => {
   const rate = normalizeTvaRate(value)
-  return rate ? `${rate}%` : "—"
+  return rate ? `${rate}%` : "a"
 }
 const textForPdf = (value?: string) => {
   const normalized = (value ?? "").trim()
   return normalized === "0" ? "" : normalized
 }
-const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "5px 8px", textAlign: "left", fontWeight: 600 }
-const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "4px 8px" }
+const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "1px 4px", textAlign: "left", fontWeight: 600, lineHeight: "1.1" }
+const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "1px 4px", lineHeight: "1.1" }
 
 function EncTable({ rows }: { rows: EncRow[] }) {
   const computedRows = rows.map((row) => ({
@@ -278,7 +292,7 @@ function EncTable({ rows }: { rows: EncRow[] }) {
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Désignation", "HT", "TVA (19%)", "TTC (HT×1.19)"].map((h) => (
+          {["DESIGNATIONS", "ENCAISSEMENTS HT", "TVA", "ENCAISSEMENTS TTC"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
@@ -287,7 +301,7 @@ function EncTable({ rows }: { rows: EncRow[] }) {
         {computedRows.map((r, i) => {
           return (
             <tr key={i} style={{ background: "#fff", color: "#000" }}>
-              <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "—"}</td>
+              <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "a"}</td>
               <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ht)}</td>
               <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tva)}</td>
               <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ttc)}</td>
@@ -315,7 +329,7 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Nom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
+          {["Nom Prenom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
@@ -330,8 +344,8 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authNif)}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.numRC)}</td>
             <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authRC)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFacture || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFacture || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFacture || "a"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFacture || "a"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantHT)}</td>
             {showRateColumn && <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "center" }}>{getTvaRateLabel(r.tauxTVA)}</td>}
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : fmt(r.tva)}</td>
@@ -343,7 +357,7 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
         <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
           <td colSpan={8} style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tHT)}</td>
-          {showRateColumn && <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "center" }}>—</td>}
+          {showRateColumn && <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "center" }}></td>}
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTVA)}</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTTC)}</td>
         </tr>
@@ -353,11 +367,14 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
 }
 
 function TimbreTable({ rows }: { rows: TimbreRow[] }) {
+  const totalCA = rows.reduce((s, r) => s + num(r.caTTCEsp), 0)
+  const totalDroit = rows.reduce((s, r) => s + num(r.droitTimbre), 0)
+
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Désignation", "CA TTC Espèces", "Droit de Timbre"].map((h) => (
+          {["DESIGNATIONS", "CHIFFRE D'AFFAIRES TTC ENCAISSE EN ESPECE", "DROITS DE TIMBRE"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
@@ -365,51 +382,69 @@ function TimbreTable({ rows }: { rows: TimbreRow[] }) {
       <tbody>
         {rows.map((r, i) => (
           <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "a"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.caTTCEsp)}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.droitTimbre)}</td>
           </tr>
         ))}
       </tbody>
+      <tfoot>
+        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
+          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalCA)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalDroit)}</td>
+        </tr>
+      </tfoot>
     </table>
   )
 }
 
 function CATable({ b12, b13 }: { b12: string; b13: string }) {
+  const totalBase = num(b12) + num(b13)
+  const totalTaxe = num(b12) * 0.07 + num(b13) * 0.01
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Ligne", "Base (B)", "Taux", "Montant"].map((h) => (
+          {["DESIGNATIONS", "MONTANT DU CHIFFRE D'AFFAIRES HT SOUMIS", "MONTANT DE LA TAXE A VERSER"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         <tr style={{ background: "#fff", color: "#000" }}>
-          <td style={{ ...TD, background: "#fff", color: "#000" }}>B12 – CA 7%</td>
+          <td style={{ ...TD, background: "#fff", color: "#000" }}>CHIFFRE D'AFFAIRES RECHARGEMENT SOUMIS A 7%</td>
           <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(b12)}</td>
-          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>7%</td>
           <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(b12) * 0.07)}</td>
         </tr>
         <tr style={{ background: "#eee", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>B13 – CA Global 1%</td>
+          <td style={{ ...TD, background: "#eee", color: "#000" }}>CHIFFRE D'AFFAIRES GLOBAL SOUMIS A 1%</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(b13)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>1%</td>
           <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(num(b13) * 0.01)}</td>
         </tr>
       </tbody>
+      <tfoot>
+        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
+          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalBase)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalTaxe)}</td>
+        </tr>
+      </tfoot>
     </table>
   )
 }
 
 function TAPTable({ rows }: { rows: TAPRow[] }) {
-  const total = rows.reduce((s, r) => s + num(r.tap2), 0)
+  const getWilayaName = (code: string) =>
+    WILAYAS_COMMUNES.find((entry) => entry.code === code)?.wilaya ?? "a"
+
+  const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
+  const totalTap = totalImposable * 0.015
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
       <thead>
         <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Wilaya", "Commune", "TAP 2%"].map((h) => (
+          {["Code", "Wilaya", "Commune", "Montant Imposable", "TAP 1,5%"].map((h) => (
             <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
           ))}
         </tr>
@@ -417,16 +452,19 @@ function TAPTable({ rows }: { rows: TAPRow[] }) {
       <tbody>
         {rows.map((r, i) => (
           <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.wilayaCode || "—"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.commune || "—"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.wilayaCode || "a"}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{getWilayaName(r.wilayaCode)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.commune || "a"}</td>
             <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tap2)}</td>
+            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(r.tap2) * 0.015)}</td>
           </tr>
         ))}
       </tbody>
       <tfoot>
         <tr style={{ background: "#eee", fontWeight: "bold", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }} colSpan={2}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000" }} colSpan={3}>TOTAL</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalImposable)}</td>
+          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalTap)}</td>
         </tr>
       </tfoot>
     </table>
@@ -434,7 +472,7 @@ function TAPTable({ rows }: { rows: TAPRow[] }) {
 }
 
 function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
-  if (!rows || rows.length < 12) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length < 12) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const g1 = rows.slice(0, 2)
   const g2 = rows.slice(2, 12)
   const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
@@ -470,7 +508,7 @@ function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
 }
 
 function IrgTable({ rows }: { rows: IrgRow[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const total = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
@@ -499,7 +537,7 @@ function IrgTable({ rows }: { rows: IrgRow[] }) {
 }
 
 function Taxe2Table({ rows }: { rows: Taxe2Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
   const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
@@ -530,13 +568,13 @@ function Taxe2Table({ rows }: { rows: Taxe2Row[] }) {
 }
 
 function MastersTable({ rows }: { rows: MasterRow[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const totalHT   = rows.reduce((s,r)=>s+num(r.montantHT),0)
   const totalTaxe = rows.reduce((s,r)=>s+num(r.montantHT)*0.015,0)
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
       <thead><tr style={{ background:"#ddd", color:"#000" }}>
-        {["#","Date","Nom du Master","N° Facture","Date Facture","Montant HT","Taxe 1,5%","Mois","Observation"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
+        {["#","Date","Nom du Master","N° Facture","Date Facture","Montant de la Facture HT","Taxe 1,5%","Mois","Observation"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
       </tr></thead>
       <tbody>
         {rows.map((r,i)=>(
@@ -570,19 +608,15 @@ function Taxe11Table({ montant }: { montant: string }) {
         {["Désignation","Montant"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
       </tr></thead>
       <tbody><tr style={{background:"#fff",color:"#000"}}>
-        <td style={{...TD,background:"#fff",color:"#000"}}>Taxe de véhicule</td>
+        <td style={{...TD,background:"#fff",color:"#000"}}>Taxe de vehicule</td>
         <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(montant)}</td>
       </tr></tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(montant)}</td>
-      </tr></tfoot>
     </table>
   )
 }
 
 function Taxe12Table({ rows }: { rows: Taxe12Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const total = rows.reduce((s,r)=>s+num(r.montant),0)
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
@@ -606,7 +640,7 @@ function Taxe12Table({ rows }: { rows: Taxe12Row[] }) {
 }
 
 function AcompteTable({ months, annee }: { months: string[]; annee: string }) {
-  if (!months || months.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!months || months.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   const yy = annee.slice(-2)
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
@@ -623,7 +657,7 @@ function AcompteTable({ months, annee }: { months: string[]; annee: string }) {
 }
 
 function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
       <thead><tr style={{background:"#ddd",color:"#000"}}>
@@ -657,11 +691,11 @@ function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
 }
 
 function Taxe15Table({ rows }: { rows: Taxe15Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
       <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. à Payer"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
+        {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. A Payer"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
       </tr></thead>
       <tbody>
         {rows.map((r,i)=>(
@@ -692,7 +726,7 @@ function Taxe15Table({ rows }: { rows: Taxe15Row[] }) {
 }
 
 function Tva16Table({ rows }: { rows: Tva16Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnée</p>
+  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
   return (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
       <thead><tr style={{background:"#ddd",color:"#000"}}>
@@ -743,7 +777,7 @@ function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDecla
   }
 }
 
-// ─── Print Zone ───────────────────────────────────────────────────────────────
+// aaa Print Zone aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 function DashPrintZone({ decl, tabKey, tabTitle }: {
   decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string
 }) {
@@ -751,7 +785,7 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
   const moisLabel = MONTHS[decl.mois] ?? decl.mois
   return (
     <div id="dash-print-zone" style={{ fontFamily: "Arial, sans-serif", color: "#000" }}>
-      {/* ── Header ── */}
+      {/* aa Header aa */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 100 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -789,7 +823,7 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
                 color: "#000",
               }}
             >
-              DR : {decl.direction || "—"}
+              DR : {decl.direction || "a"}
             </div>
           </div>
         </div>
@@ -815,7 +849,7 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
               color: "#000",
             }}
           >
-            Déclaration Mois : {moisLabel}
+            DAclaration Mois : {moisLabel}
           </div>
           <div
             style={{
@@ -835,11 +869,11 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
           </div>
         </div>
       </div>
-      {/* ── Centered title ── */}
+      {/* aa Centered title aa */}
       <div style={{ textAlign: "center", fontSize: 20, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: "#222", marginBottom: 160 }}>
         {tabTitle}
       </div>
-      {/* ── Table ── */}
+      {/* aa Table aa */}
       <TabDataView tabKey={tabKey} decl={decl} color="#555" />
     </div>
   )
@@ -929,16 +963,16 @@ export default function FiscaDashboardPage() {
 
   const showTabAccessDeniedToast = (tabLabel: string, actionLabel: "modifier" | "supprimer") => {
     toast({
-      title: "⛔ Accès refusé",
-      description: `Votre profil n'est pas autorisé à ${actionLabel} le tableau "${tabLabel}".`,
+      title: "a AccAs refusA",
+      description: `Votre profil n'est pas autorisA A ${actionLabel} le tableau "${tabLabel}".`,
       variant: "destructive",
     })
   }
 
   const showPeriodLockedToast = (decl: SavedDeclaration, actionLabel: "modifier" | "supprimer") => {
     toast({
-      title: "⛔ Période clôturée",
-      description: `${getFiscalPeriodLockMessage(decl.mois, decl.annee, user.role)} Impossible de ${actionLabel} cette déclaration.`,
+      title: "a PAriode clAturAe",
+      description: `${getFiscalPeriodLockMessage(decl.mois, decl.annee, user.role)} Impossible de ${actionLabel} cette dAclaration.`,
       variant: "destructive",
     })
   }
@@ -958,7 +992,7 @@ export default function FiscaDashboardPage() {
     try {
       const declarationId = Number(decl.id)
       if (!Number.isFinite(declarationId)) {
-        throw new Error("ID de déclaration invalide")
+        throw new Error("ID de dAclaration invalide")
       }
 
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
@@ -984,11 +1018,11 @@ export default function FiscaDashboardPage() {
         // Ignore storage errors.
       }
 
-      toast({ title: "Déclaration supprimée" })
+      toast({ title: "DAclaration supprimAe" })
     } catch (error) {
       toast({
         title: "Erreur de suppression",
-        description: error instanceof Error ? error.message : "Impossible de supprimer la déclaration.",
+        description: error instanceof Error ? error.message : "Impossible de supprimer la dAclaration.",
         variant: "destructive",
       })
     }
@@ -1005,32 +1039,204 @@ export default function FiscaDashboardPage() {
     setViewTabKey(tabKey)
     setTimeout(async () => {
       const printZone = document.getElementById("dash-print-zone")
-      if (!printZone) return
+      const tableElement = printZone?.querySelector("table") as HTMLTableElement | null
+      if (!printZone || !tableElement) return
+
       try {
-        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-          import("html2canvas"),
+        const [{ jsPDF }, { default: autoTable }] = await Promise.all([
           import("jspdf"),
+          import("jspdf-autotable"),
         ])
-        const canvas = await html2canvas(printZone, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-        })
+
         const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
         const pageW = pdf.internal.pageSize.getWidth()
-        const pageH = pdf.internal.pageSize.getHeight()
-        const margin = 10
-        const availW = pageW - margin * 2
-        const availH = pageH - margin * 2
-        let finalW = availW
-        let finalH = (canvas.height * finalW) / canvas.width
-        if (finalH > availH) {
-          finalH = availH
-          finalW = (canvas.width * finalH) / canvas.height
+        const periodText = `${MONTHS[decl.mois] ?? decl.mois} ${decl.annee}`
+        const tableTitle = DASH_TABS.find((t) => t.key === tabKey)?.title ?? "TABLEAU FISCAL"
+        const pdfTableTitle =
+          tabKey === "ca_tap"
+            ? "ETAT DU CHIFFRE D'AFFAIRES RECHARGEMENT HT (7%) et CHIFFRE D'AFFAIRES GLOBAL HT (1%)"
+            : tableTitle
+        const tableLabel = DASH_TABS.find((t) => t.key === tabKey)?.label ?? ""
+        const tableNumberMatch = tableLabel.match(/^(\d+)/)
+        const tableNumber = tableNumberMatch ? tableNumberMatch[1] : ""
+        const tableNumberValue = tableNumber ? Number(tableNumber) : NaN
+        const isTable7To16 = Number.isFinite(tableNumberValue) && tableNumberValue >= 7 && tableNumberValue <= 16
+        const headerTitle = isTable7To16
+          ? `${pdfTableTitle} Mois de ${periodText}`.trim()
+          : `${pdfTableTitle} ${decl.direction || "Direction"} ${periodText}`.trim()
+        const hasCustomEncHeader =
+          tabKey === "encaissement" ||
+          tabKey === "droits_timbre" ||
+          tabKey === "ca_tap" ||
+          tabKey === "etat_tap"
+        const hasCustomTvaHeader = tabKey === "tva_immo" || tabKey === "tva_biens"
+        const customHeaderTableLine = tableNumber
+          ? `TABLEAU N° ${tableNumber} : ${pdfTableTitle}`
+          : pdfTableTitle
+
+        const drawUnderlinedText = (text: string, x: number, y: number, align: "left" | "center" | "right" = "left") => {
+          pdf.text(text, x, y, { align })
+          const width = pdf.getTextWidth(text)
+          const startX = align === "center" ? x - width / 2 : align === "right" ? x - width : x
+          pdf.setLineWidth(0.2)
+          pdf.line(startX, y + 0.6, startX + width, y + 0.6)
         }
-        const offsetX = margin + (availW - finalW) / 2
-        pdf.addImage(canvas.toDataURL("image/png"), "PNG", offsetX, margin, finalW, finalH)
+
+        const logo = await new Promise<HTMLImageElement | null>((resolve) => {
+          const img = new Image()
+          img.onload = () => resolve(img)
+          img.onerror = () => resolve(null)
+          img.src = "/logo_doc.png"
+        })
+
+        let tableStartY = 85
+
+        if (hasCustomEncHeader) {
+          pdf.setFont("times", "bold")
+          pdf.setTextColor(0, 0, 0)
+
+          if (logo) {
+            pdf.addImage(logo, "PNG", 10, 6, 34, 16)
+          }
+
+          const headerTopY = 24
+
+          // Left box: ATM MOBILIS / DR
+          pdf.rect(10, headerTopY, 62, 14)
+          pdf.line(10, headerTopY + 7, 72, headerTopY + 7)
+          pdf.setFontSize(12)
+          pdf.text("ATM MOBILIS", 12, headerTopY + 5)
+          pdf.text(`DR : ${String(decl.direction || "")}`, 12, headerTopY + 12)
+
+          // Right box: month/year declaration
+          const rightBoxX = pageW - 72
+          pdf.rect(rightBoxX, headerTopY, 62, 14)
+          pdf.line(rightBoxX, headerTopY + 7, rightBoxX + 62, headerTopY + 7)
+          pdf.text(`Declaration Mois : ${String(MONTHS[decl.mois] ?? decl.mois ?? "")}`, rightBoxX + 2, headerTopY + 5)
+          pdf.text(`Annee : ${String(decl.annee || "")}`, rightBoxX + 2, headerTopY + 12)
+
+          // Center title box with 2 lines.
+          const baseCenterBoxW = 160
+          const dynamicCenterBoxW = (() => {
+            if (tabKey !== "ca_tap") return baseCenterBoxW
+
+            const topLineWidth = pdf.getTextWidth("ETAT MENSUEL DE DECLATION G50")
+            const bottomLineWidth = pdf.getTextWidth(customHeaderTableLine)
+            const requiredWidth = Math.max(topLineWidth, bottomLineWidth) + 10
+
+            // Keep margins on both sides of the page.
+            return Math.min(pageW - 20, Math.max(baseCenterBoxW, requiredWidth))
+          })()
+          const centerBoxW = dynamicCenterBoxW
+          const centerBoxX = (pageW - centerBoxW) / 2
+          pdf.rect(centerBoxX, 44, centerBoxW, 14)
+          pdf.line(centerBoxX, 51, centerBoxX + centerBoxW, 51)
+          pdf.setFontSize(11)
+          pdf.text("ETAT MENSUEL DE DECLATION G50", pageW / 2, 49, { align: "center" })
+          pdf.text(customHeaderTableLine, pageW / 2, 56, { align: "center" })
+
+          tableStartY = 66
+        } else if (hasCustomTvaHeader) {
+          const staticAddress = "QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR"
+          const staticNifNis = "316096228742"
+          const staticTin = "67547"
+
+          // jsPDF does not embed Georgia by default; Times is used as the closest built-in serif fallback.
+          pdf.setFont("times", "bold")
+          pdf.setTextColor(0, 0, 0)
+
+          // Left info box: year/month/direction.
+          pdf.rect(10, 8, 62, 18)
+          pdf.setFontSize(9)
+          pdf.text("Annee:", 14, 13)
+          pdf.text("Mois de:", 14, 18)
+          pdf.text("Direction:", 14, 23)
+          pdf.text(String(decl.annee || ""), 50, 13)
+          pdf.text(String(MONTHS[decl.mois] ?? decl.mois ?? ""), 50, 18)
+          pdf.text(String(decl.direction || ""), 50, 23)
+
+          // Main company identity box (wider to fully contain address).
+          pdf.rect(80, 10, 140, 26)
+          pdf.setFontSize(8)
+          pdf.text("M:", 86, 15)
+          pdf.text("Activite:", 86, 19)
+          pdf.text("Adresse:", 86, 23)
+          pdf.text("NIF / NIS:", 86, 27)
+          pdf.text("TIN:", 86, 31)
+          pdf.text("AIN:", 86, 35)
+
+          pdf.setFontSize(7.5)
+          pdf.text("ATM MOBILIS", 118, 15)
+          pdf.text("TELEPHONIE MOBILE", 118, 19)
+          pdf.text(staticAddress, 118, 23, { maxWidth: 140 })
+          pdf.text(staticNifNis, 118, 27)
+          pdf.text(staticTin, 118, 31)
+          pdf.text("", 118, 35)
+
+          // Title box for TVA declaration.
+          pdf.rect(10, 44, pageW - 20, 12)
+          pdf.setFontSize(13)
+          pdf.text("Etat de declaration de la TVA", pageW / 2, 49, { align: "center" })
+          pdf.setFont("times", "italic")
+          pdf.setFontSize(8)
+          pdf.text("(Conformement a l'article 92 de la loi de Finances pour 2021)", pageW / 2, 53, { align: "center" })
+          pdf.setFont("times", "bold")
+
+          tableStartY = 64
+        } else {
+          if (logo) {
+            pdf.addImage(logo, "PNG", 10, 8, 38, 20)
+          }
+
+          pdf.setFont("times", "bold")
+          pdf.setFontSize(11)
+          // One visual line break after the logo, then the requested identity lines.
+          drawUnderlinedText("ATM MOBILIS SPA", 10, 36)
+          drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 41)
+          drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 46)
+          // Add a line break before the table title, then place it on the left.
+          pdf.setFontSize(14)
+          drawUnderlinedText(headerTitle, 10, 56, "left")
+        }
+
+        autoTable(pdf, {
+          html: tableElement,
+          startY: tableStartY,
+          theme: "grid",
+          useCss: true,
+          margin: { left: 10, right: 10, top: tableStartY, bottom: 10 },
+          styles: {
+            font: "times",
+            fontSize: 10,
+            cellPadding: 0.8,
+            lineColor: [210, 210, 210],
+            lineWidth: 0.1,
+            textColor: [0, 0, 0],
+          },
+          headStyles: {
+            fillColor: [221, 221, 221],
+            textColor: [0, 0, 0],
+            font: "times",
+            fontStyle: "bold",
+            fontSize: 10,
+          },
+          bodyStyles: {
+            textColor: [0, 0, 0],
+            font: "times",
+            fontSize: 10,
+          },
+          didParseCell: (data) => {
+            // Normalize thousand separators for PDF output: use spaces instead of slashes
+            data.cell.text = data.cell.text.map((line) =>
+              line
+                .replace(/\//g, " ")
+                .replace(/\u00A0/g, " ")
+            )
+          },
+          horizontalPageBreak: true,
+          horizontalPageBreakRepeat: [0],
+        })
+
         const blobUrl = URL.createObjectURL(pdf.output("blob"))
         window.open(blobUrl, "_blank")
       } catch (err) {
@@ -1057,8 +1263,8 @@ export default function FiscaDashboardPage() {
   const handleApprove = async (decl: SavedDeclaration) => {
     if (!canApproveRegionalDeclarations && !canApproveFinanceDeclarations) {
       toast({
-        title: "Accès refusé",
-        description: "Seuls les comptes approbateurs (régional ou finance) peuvent valider les déclarations.",
+        title: "AccAs refusA",
+        description: "Seuls les comptes approbateurs (rAgional ou finance) peuvent valider les dAclarations.",
         variant: "destructive",
       })
       return
@@ -1066,7 +1272,7 @@ export default function FiscaDashboardPage() {
 
     const declarationId = Number(decl.id)
     if (!Number.isFinite(declarationId)) {
-      toast({ title: "Erreur", description: "ID de déclaration invalide", variant: "destructive" })
+      toast({ title: "Erreur", description: "ID de dAclaration invalide", variant: "destructive" })
       return
     }
 
@@ -1105,11 +1311,11 @@ export default function FiscaDashboardPage() {
         // Ignore storage errors.
       }
 
-      toast({ title: "Déclaration approuvée" })
+      toast({ title: "DAclaration approuvAe" })
     } catch (error) {
       toast({
         title: "Erreur d'approbation",
-        description: error instanceof Error ? error.message : "Impossible d'approuver la déclaration.",
+        description: error instanceof Error ? error.message : "Impossible d'approuver la dAclaration.",
         variant: "destructive",
       })
     }
@@ -1125,14 +1331,14 @@ export default function FiscaDashboardPage() {
     if ((decl.caSiegeRows?.length ?? 0) > 0) return { key: "ca_siege", label: "CA Si\u00e8ge", color: "#854d0e" }
     if ((decl.irgRows?.length ?? 0) > 0) return { key: "irg", label: "Situation IRG", color: "#0f766e" }
     if ((decl.taxe2Rows?.length ?? 0) > 0) return { key: "taxe2", label: "Taxe 2%", color: "#6d28d9" }
-    if ((decl.masterRows?.length ?? 0) > 0) return { key: "taxe_masters", label: "Taxe Maîtres 1,5%", color: "#0369a1" }
-    if (decl.taxe11Montant) return { key: "taxe_vehicule", label: "Taxe Véhicule", color: "#92400e" }
+    if ((decl.masterRows?.length ?? 0) > 0) return { key: "taxe_masters", label: "Taxe des Master 1,5%", color: "#0369a1" }
+    if (decl.taxe11Montant) return { key: "taxe_vehicule", label: "Taxe Vehicule", color: "#92400e" }
     if ((decl.taxe12Rows?.length ?? 0) > 0) return { key: "taxe_formation", label: "Taxe Formation", color: "#065f46" }
     if ((decl.acompteMonths?.length ?? 0) > 0) return { key: "acompte", label: "Acompte Provisionnel", color: "#1e40af" }
-    if ((decl.ibs14Rows?.length ?? 0) > 0) return { key: "ibs", label: "IBS Fournisseurs Étrangers", color: "#7c2d12" }
+    if ((decl.ibs14Rows?.length ?? 0) > 0) return { key: "ibs", label: "IBS Fournisseurs Etrangers", color: "#7c2d12" }
     if ((decl.taxe15Rows?.length ?? 0) > 0) return { key: "taxe_domicil", label: "Taxe Domiciliation", color: "#134e4a" }
     if ((decl.tva16Rows?.length ?? 0) > 0) return { key: "tva_autoliq", label: "TVA Auto Liquidation", color: "#312e81" }
-    return { key: "encaissement", label: "Non défini", color: "#6b7280" }
+    return { key: "encaissement", label: "Non dAfini", color: "#6b7280" }
   }
 
   const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterDateFrom || filterDateTo)
@@ -1193,29 +1399,29 @@ export default function FiscaDashboardPage() {
         #dash-print-zone table {
           width: 100% !important;
           border-collapse: collapse !important;
-          margin-top: 100px !important;
+          margin-top: 50px !important;
           font-size: 14px !important;
         }
         #dash-print-zone th, #dash-print-zone td {
           border: 1.5px solid #333 !important;
-          padding: 13px 18px !important;
+          padding: 1px 4px !important;
           font-size: 14px !important;
           vertical-align: middle !important;
-          line-height: 1.5 !important;
+          line-height: 1.3 !important;
           color: #000 !important;
-          text-align: center !important;
           direction: ltr !important;
         }
         #dash-print-zone th {
           font-weight: 700 !important;
           background: #2db34b !important;
-          color: #000 !important;
+          color: #fff !important;
           text-align: center !important;
           white-space: nowrap !important;
           font-size: 13px !important;
         }
-        #dash-print-zone td { white-space: nowrap !important; }
-        #dash-print-zone tbody td { background: #fff !important; }
+        #dash-print-zone td { white-space: nowrap !important; text-align: left !important; }
+        #dash-print-zone tbody td { background: #fff !important; text-align: left !important; }
+        #dash-print-zone tbody td:not(:first-child) { text-align: center !important; }
         #dash-print-zone tbody tr[style*="font-weight:700"] td,
         #dash-print-zone tbody tr[style*="font-weight: 700"] td,
         #dash-print-zone tbody tr[style*="font-weight:bold"] td,
@@ -1223,15 +1429,17 @@ export default function FiscaDashboardPage() {
           background: #2db34b !important;
           color: #000 !important;
           font-weight: 800 !important;
+          text-align: center !important;
         }
         #dash-print-zone tfoot td {
           font-weight: 700 !important;
           background: #2db34b !important;
           color: #000 !important;
           font-size: 14px !important;
+          text-align: center !important;
         }
       `}</style>
-      {/* Hidden print zone – content read by handlePrint via innerHTML */}
+      {/* Hidden print zone a content read by handlePrint via innerHTML */}
       <DashPrintZone
         decl={printDecl}
         tabKey={viewTabKey}
@@ -1243,7 +1451,7 @@ export default function FiscaDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard Fiscal</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Déclarations fiscales récentes
+            DAclarations fiscales rAcentes
           </p>
         </div>
 
@@ -1252,7 +1460,7 @@ export default function FiscaDashboardPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-base">
-                Déclarations récentes
+                DAclarations rAcentes
                 {declarations.length > 0 && (
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
                     ({filteredDeclarations.length}{hasActiveFilters ? ` / ${declarations.length}` : ""})
@@ -1292,14 +1500,14 @@ export default function FiscaDashboardPage() {
                     <option value="droits_timbre">Droits Timbre</option>
                     <option value="ca_tap">CA 7% &amp; CA Glob 1%</option>
                     <option value="etat_tap">ETAT TAP</option>
-                    <option value="ca_siege">CA Siège</option>
+                    <option value="ca_siege">CA SiAge</option>
                     <option value="irg">Situation IRG</option>
                     <option value="taxe2">Taxe 2%</option>
-                    <option value="taxe_masters">Taxe Maîtres 1,5%</option>
-                    <option value="taxe_vehicule">Taxe Véhicule</option>
+                    <option value="taxe_masters">Taxe des Master 1,5%</option>
+                    <option value="taxe_vehicule">Taxe Vehicule</option>
                     <option value="taxe_formation">Taxe Formation</option>
                     <option value="acompte">Acompte Provisionnel</option>
-                    <option value="ibs">IBS Étrangers</option>
+                    <option value="ibs">IBS Etrangers</option>
                     <option value="taxe_domicil">Taxe Domiciliation</option>
                     <option value="tva_autoliq">TVA Auto Liquidation</option>
                   </select>
@@ -1312,7 +1520,7 @@ export default function FiscaDashboardPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Année</label>
+                  <label className="text-xs text-muted-foreground block mb-1">AnnAe</label>
                   <input type="number" placeholder="ex: 2025" value={filterAnnee} onChange={e => setFilterAnnee(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
                 </div>
                 <div>
@@ -1333,7 +1541,7 @@ export default function FiscaDashboardPage() {
           <CardContent>
             {recentDeclarations.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucune déclaration fiscale enregistrée pour le moment.
+                Aucune dAclaration fiscale enregistrAe pour le moment.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1341,13 +1549,13 @@ export default function FiscaDashboardPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")}>
-                        Type de déclaration <SortIcon col="type" />
+                        Type de dAclaration <SortIcon col="type" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("direction")}>
                         Direction <SortIcon col="direction" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("periode")}>
-                        Période <SortIcon col="periode" />
+                        PAriode <SortIcon col="periode" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("date")}>
                         Date d&apos;enregistrement <SortIcon col="date" />
@@ -1362,9 +1570,9 @@ export default function FiscaDashboardPage() {
                       const isLocked = isDeclarationLocked(decl)
                       const canManage = canManageFiscalTab(user.role, declType.key)
                       const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
-                      const isSiegeDeclaration = declarationDirection === "siège"
+                      const isSiegeDeclaration = declarationDirection === "siAge"
                         || declarationDirection === "siege"
-                        || declarationDirection.includes("siège")
+                        || declarationDirection.includes("siAge")
                         || declarationDirection.includes("siege")
                       const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
                       const canApproveAsRegional = canApproveRegionalDeclarations
@@ -1389,14 +1597,14 @@ export default function FiscaDashboardPage() {
                               {declType.label}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">—</span>}</TableCell>
+                          <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">a</span>}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
                               {MONTHS[decl.mois] || decl.mois} {decl.annee}
                             </Badge>
                             {isLocked && (
                               <Badge variant="secondary" className="ml-2 text-[10px] text-red-600">
-                                Clôturée
+                                ClAturAe
                               </Badge>
                             )}
                           </TableCell>
@@ -1405,7 +1613,7 @@ export default function FiscaDashboardPage() {
                           </TableCell>
                           <TableCell>
                             {decl.isApproved ? (
-                              <Badge className="bg-emerald-100 text-emerald-800">Approuvée</Badge>
+                              <Badge className="bg-emerald-100 text-emerald-800">ApprouvAe</Badge>
                             ) : (
                               <Badge variant="outline" className="text-amber-700 border-amber-400">En attente</Badge>
                             )}
@@ -1422,7 +1630,7 @@ export default function FiscaDashboardPage() {
                                     event.stopPropagation()
                                     handleApprove(decl)
                                   }}
-                                  title={decl.isApproved ? "Déclaration déjà approuvée" : !canApproveThisDeclaration ? "Action non autorisée pour cette déclaration" : "Approuver"}
+                                  title={decl.isApproved ? "DAclaration dAjA approuvAe" : !canApproveThisDeclaration ? "Action non autorisAe pour cette dAclaration" : "Approuver"}
                                 >
                                   <CheckCircle size={16} />
                                 </Button>
@@ -1436,7 +1644,7 @@ export default function FiscaDashboardPage() {
                                   event.stopPropagation()
                                   handleDelete(decl)
                                 }}
-                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
+                                title={!canManage ? "Profil non autorisA pour ce tableau" : isLocked ? "PAriode clAturAe (suppression impossible)" : "Supprimer"}
                               >
                                 <Trash2 size={16} />
                               </Button>
@@ -1454,7 +1662,7 @@ export default function FiscaDashboardPage() {
         </Card>
       </div>
 
-      {/* ── Consult Dialog ── */}
+      {/* aa Consult Dialog aa */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="!w-[69vw] !max-w-[69vw] h-[66vh] max-h-[66vh] overflow-y-auto">
           <DialogHeader>
@@ -1465,7 +1673,7 @@ export default function FiscaDashboardPage() {
               {viewDecl && (
                 <div className="flex items-center gap-3 text-sm font-normal text-muted-foreground">
                   <span>{viewDecl.direction}</span>
-                  <span>·</span>
+                  <span>A</span>
                   <span>{MONTHS[viewDecl.mois] ?? viewDecl.mois} {viewDecl.annee}</span>
                   {(() => {
                     const currentDeclType = getDeclarationType(viewDecl)
@@ -1478,7 +1686,7 @@ export default function FiscaDashboardPage() {
                         variant="outline"
                         className="gap-1.5 text-xs h-8 ml-2 border-amber-300 text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
                         disabled={isLocked || !canManage}
-                        title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
+                        title={!canManage ? "Profil non autorisA pour ce tableau" : isLocked ? "PAriode clAturAe (modification impossible)" : "Modifier"}
                         onClick={() => {
                           setShowDialog(false)
                           handleEdit(viewDecl, viewTabKey)
@@ -1510,3 +1718,4 @@ export default function FiscaDashboardPage() {
     </LayoutWrapper>
   )
 }
+

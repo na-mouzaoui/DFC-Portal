@@ -125,6 +125,31 @@ const toSupplierPayload = (data: FormData) => ({
   nif: data.nif.trim(),
 })
 
+const toFrDateTime = (value?: string) => {
+  if (!value) return "-"
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return "-"
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+const fileToBase64Data = (file: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const content = String(reader.result ?? "")
+      const base64 = content.split(",")[1] ?? ""
+      resolve(base64)
+    }
+    reader.onerror = () => reject(new Error("Impossible de lire l'image logo."))
+    reader.readAsDataURL(file)
+  })
+
 const hasDifferentSupplierDetails = (existing: FiscalFournisseur, incoming: FormData) => {
   return (
     normalizeField(existing.adresse) !== normalizeField(incoming.adresse) ||
@@ -337,21 +362,160 @@ export function FiscalFournisseursManagement() {
     )
   }
 
-  const handleExport = () => {
-    const rows = filtered.map((f) => [
-      `"${f.raisonSociale.replace(/"/g, '""')}"`,
-      `"${f.adresse.replace(/"/g, '""')}"`,
-      `"${f.nif.replace(/"/g, '""')}"`,
-      `"${f.authNif.replace(/"/g, '""')}"`,
-      `"${f.rc.replace(/"/g, '""')}"`,
-      `"${f.authRc.replace(/"/g, '""')}"`,
-    ])
-    const csv = [["Nom / Raison Sociale", "Adresse", "NIF", "Auth. NIF", "N° RC", "Auth. N° RC"].join(";"), ...rows.map((r) => r.join(";"))].join("\r\n")
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url; a.download = "fournisseurs-fiscaux.csv"; a.click()
-    URL.revokeObjectURL(url)
+  const handleExport = async () => {
+    try {
+      const ExcelJS = (await import("exceljs")).default
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = "DFC Portal"
+      workbook.created = new Date()
+
+      const worksheet = workbook.addWorksheet("Fournisseurs fiscaux", {
+        pageSetup: {
+          orientation: "landscape",
+          paperSize: 9,
+          fitToPage: true,
+          fitToWidth: 1,
+          fitToHeight: 0,
+          margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+        },
+      })
+
+      const lastModified = filtered.reduce<string | undefined>((latest, item) => {
+        if (!item.updatedAt) return latest
+        if (!latest) return item.updatedAt
+        return new Date(item.updatedAt).getTime() > new Date(latest).getTime() ? item.updatedAt : latest
+      }, undefined)
+      const lastModifiedText = toFrDateTime(lastModified)
+
+      // Keep only keys/widths here to avoid auto-generated header cells in row 1.
+      worksheet.columns = [
+        { key: "raisonSociale", width: 38 },
+        { key: "adresse", width: 32 },
+        { key: "nif", width: 22 },
+        { key: "authNif", width: 22 },
+        { key: "rc", width: 18 },
+        { key: "authRc", width: 22 },
+      ]
+
+      worksheet.mergeCells("A1:B3")
+      try {
+        const logoRes = await fetch("/logo_doc.png")
+        if (logoRes.ok) {
+          const logoBlob = await logoRes.blob()
+          const logoBase64 = await fileToBase64Data(logoBlob)
+          const imageId = workbook.addImage({ base64: logoBase64, extension: "png" })
+          worksheet.addImage(imageId, {
+            tl: { col: 0, row: 0 },
+            ext: { width: 170, height: 56 },
+          })
+        }
+      } catch {
+        // Keep export functional even if logo loading fails.
+      }
+
+      worksheet.mergeCells("D1:F3")
+      const metaCell = worksheet.getCell("D1")
+      metaCell.value = `Derniere modification: ${lastModifiedText}`
+      metaCell.alignment = { vertical: "middle", horizontal: "right", wrapText: true }
+      metaCell.font = { size: 11, bold: true, name: "Calibri" }
+
+      // Row layout:
+      // 1-3: top header (logo + meta)
+      // 4-6: 3 blank rows
+      // 7: title
+      // 8: 1 blank row
+      // 9: table header
+      const titleRowIndex = 7
+      worksheet.mergeCells(`A${titleRowIndex}:F${titleRowIndex}`)
+      const titleCell = worksheet.getCell(`A${titleRowIndex}`)
+      titleCell.value = "LISTE DES FOURNISSEURS FISCAUX"
+      titleCell.font = { bold: true, size: 14, color: { argb: "FF000000" }, name: "Calibri" }
+      titleCell.alignment = { horizontal: "center", vertical: "middle" }
+
+      worksheet.getRow(titleRowIndex).height = 26
+      for (let row = 4; row <= 6; row += 1) {
+        worksheet.getRow(row).height = 16
+      }
+      worksheet.getRow(8).height = 16
+
+      const headerRowIndex = 9
+      const headerRow = worksheet.getRow(headerRowIndex)
+      headerRow.values = [
+        "Nom / Raison Sociale",
+        "Adresse",
+        "NIF",
+        "Auth. NIF",
+        "N° RC",
+        "Auth. N° RC",
+      ]
+      headerRow.height = 22
+
+      for (let col = 1; col <= 6; col += 1) {
+        const cell = headerRow.getCell(col)
+        cell.font = { bold: true, color: { argb: "FF000000" }, name: "Calibri", size: 11 }
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }
+        cell.border = {
+          top: { style: "medium", color: { argb: "FF000000" } },
+          left: { style: "medium", color: { argb: "FF000000" } },
+          bottom: { style: "medium", color: { argb: "FF000000" } },
+          right: { style: "medium", color: { argb: "FF000000" } },
+        }
+      }
+
+      filtered.forEach((f) => {
+        worksheet.addRow([
+          f.raisonSociale || "",
+          f.adresse || "",
+          f.nif || "",
+          f.authNif || "",
+          f.rc || "",
+          f.authRc || "",
+        ])
+      })
+
+      const dataStart = headerRowIndex + 1
+      const dataEnd = worksheet.rowCount
+      for (let row = dataStart; row <= dataEnd; row += 1) {
+        const current = worksheet.getRow(row)
+        current.height = 20
+        for (let col = 1; col <= 6; col += 1) {
+          const cell = current.getCell(col)
+          cell.alignment = { vertical: "middle", horizontal: col <= 2 ? "left" : "center" }
+          cell.font = { name: "Calibri", size: 10 }
+          cell.border = {
+            top: { style: "thin", color: { argb: "FF000000" } },
+            left: { style: "thin", color: { argb: "FF000000" } },
+            bottom: { style: "thin", color: { argb: "FF000000" } },
+            right: { style: "thin", color: { argb: "FF000000" } },
+          }
+        }
+      }
+
+      worksheet.autoFilter = {
+        from: { row: headerRowIndex, column: 1 },
+        to: { row: headerRowIndex, column: 6 },
+      }
+
+      worksheet.headerFooter.oddHeader = `&RDerniere modification: ${lastModifiedText}\nPage &P / &N`
+      worksheet.pageSetup.printArea = `A1:F${Math.max(worksheet.rowCount, headerRowIndex)}`
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "fournisseurs-fiscaux.xlsx"
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de generer le fichier Excel.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -505,7 +669,7 @@ export function FiscalFournisseursManagement() {
             <Upload className="mr-2 h-4 w-4" /> Importer CSV
           </Button>
           <Button variant="outline" size="sm" onClick={handleExport} disabled={filtered.length === 0}>
-            <Download className="mr-2 h-4 w-4" /> Exporter CSV
+            <Download className="mr-2 h-4 w-4" /> Exporter Excel
           </Button>
           <Button size="sm" onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> Nouveau Fournisseur
