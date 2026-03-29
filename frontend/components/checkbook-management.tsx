@@ -404,7 +404,7 @@ export function CheckbookManagement() {
                   <TableCell>{checkbook.capacity}</TableCell>
                   <TableCell>{checkbook.usedCount}</TableCell>
                   <TableCell>
-                    <span className={isEmpty ? "text-red-500 font-bold" : ""}>
+                    <span className={isEmpty ? "text-emerald-500 font-bold" : ""}>
                       {checkbook.remaining}
                     </span>
                   </TableCell>
@@ -426,7 +426,7 @@ export function CheckbookManagement() {
                           onClick={() => handleDelete(checkbook.id)}
                           title="Supprimer"
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Trash2 className="h-4 w-4 text-emerald-500" />
                         </Button>
                       )}
                     </div>

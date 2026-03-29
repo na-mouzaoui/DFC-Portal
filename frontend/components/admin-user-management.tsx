@@ -345,7 +345,7 @@ export default function AdminUserManagement() {
   };
 
   const handleResetPassword = async (userId: number, userEmail: string) => {
-    if (!confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${userEmail} Ã  "123456789" ?`)) return;
+    if (!confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${userEmail} à "123456789" ?`)) return;
 
     try {
       const token = localStorage.getItem("jwt");
@@ -362,7 +362,7 @@ export default function AdminUserManagement() {
 
       toast({
         title: "Succès",
-        description: "Mot de passe réinitialisé Ã  123456789",
+        description: "Mot de passe réinitialisé à 123456789",
       });
     } catch (error) {
       toast({

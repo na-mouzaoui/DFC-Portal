@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
@@ -154,7 +154,7 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
                   </td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                      className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               )
@@ -404,7 +404,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                   <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{ttc > 0 ? fmt(ttc) : "-"}</td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                      className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               )
@@ -477,7 +477,7 @@ function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.droitTimbre} onChange={(e) => update(i, "droitTimbre", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 140 }} placeholder="0.00" /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -651,7 +651,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
                   {/* Code - automatique depuis wilaya */}
                   <td className="px-3 py-1 border-b">
-                    <span className="font-mono text-xs font-bold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded">
+                    <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
                       {row.wilayaCode || "-"}
                     </span>
                   </td>
@@ -697,7 +697,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                      className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               )
@@ -951,7 +951,7 @@ function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
                 <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 140 }} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -1148,7 +1148,7 @@ function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDinars} onChange={(e) => upd(i,"montantNetDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -1227,7 +1227,7 @@ function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantAPayer} onChange={(e) => upd(i,"montantAPayer",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -1298,7 +1298,7 @@ function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tva19} onChange={(e) => upd(i,"tva19",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -2916,7 +2916,7 @@ export default function NouvelleDeclarationPage() {
               </div>
             </div>
             {currentPeriodLockMessage && (
-              <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
                  {currentPeriodLockMessage}
               </p>
             )}

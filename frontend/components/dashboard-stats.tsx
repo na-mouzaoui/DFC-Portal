@@ -240,10 +240,10 @@ export function DashboardStats({ stats, checks, users, currentUser, regions = []
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Chèques Annulés</CardTitle>
-            <XCircle className="h-4 w-4 text-red-500" />
+            <XCircle className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{(filteredStats.canceledChecks || 0).toLocaleString('fr-FR')}</div>
+            <div className="text-2xl font-bold text-emerald-600">{(filteredStats.canceledChecks || 0).toLocaleString('fr-FR')}</div>
             <p className="text-xs text-muted-foreground">Annulés</p>
           </CardContent>
         </Card>

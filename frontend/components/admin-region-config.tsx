@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { API_BASE } from "@/lib/config";
@@ -76,7 +76,7 @@ export default function AdminRegionConfig() {
     }
   };
 
-  // Obtenir toutes les villes déjÃ  assignées
+  // Obtenir toutes les villes déjà assignées
   const getAssignedVilles = () => {
     const assigned = new Set<string>();
     regions.forEach(region => {
@@ -129,7 +129,7 @@ export default function AdminRegionConfig() {
 
       toast({
         title: "Succès",
-        description: "Région mise Ã  jour avec succès",
+        description: "Région mise à jour avec succès",
       });
 
       setEditingRegion(null);
@@ -308,7 +308,7 @@ export default function AdminRegionConfig() {
                     size="icon" 
                     variant="ghost" 
                     onClick={() => setRegionToDelete(region)}
-                    className="text-red-500 hover:text-red-700"
+                    className="text-emerald-500 hover:text-emerald-700"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -365,7 +365,7 @@ export default function AdminRegionConfig() {
           <DialogHeader>
             <DialogTitle>Créer une nouvelle région</DialogTitle>
             <DialogDescription>
-              Entrez le nom de la région et sélectionnez les villes Ã  assigner
+              Entrez le nom de la région et sélectionnez les villes à assigner
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -400,7 +400,7 @@ export default function AdminRegionConfig() {
                         }`}
                       >
                         {ville.name}
-                        {isAssigned && " (déjÃ  assignée)"}
+                        {isAssigned && " (déjà assignée)"}
                       </Label>
                     </div>
                   );
@@ -433,7 +433,7 @@ export default function AdminRegionConfig() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteRegion} className="bg-red-500 hover:bg-red-600">
+            <AlertDialogAction onClick={handleDeleteRegion} className="bg-emerald-500 hover:bg-emerald-600">
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>

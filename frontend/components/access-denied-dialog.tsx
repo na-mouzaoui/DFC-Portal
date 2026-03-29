@@ -39,7 +39,7 @@ export function AccessDeniedDialog({ title, message, redirectTo }: AccessDeniedD
       <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-center gap-3">
-            <ShieldAlert className="h-6 w-6 text-red-600" />
+            <ShieldAlert className="h-6 w-6 text-emerald-600" />
             <AlertDialogTitle className="text-xl">{title}</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="text-base pt-2">

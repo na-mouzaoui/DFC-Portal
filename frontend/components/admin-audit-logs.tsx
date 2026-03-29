@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,46 +43,46 @@ interface User {
 
 const actionLabels: Record<string, string> = {
   // Banques
-  CREATE_BANK: "Banque - Création",
+  CREATE_BANK: "Banque - CrÃ©ation",
   UPDATE_BANK: "Banque - Modification",
   DELETE_BANK: "Banque - Suppression",
   
-  // Chéquiers
-  CREATE_CHECKBOOK: "Chéquier - Création",
-  UPDATE_CHECKBOOK: "Chéquier - Modification",
-  DELETE_CHECKBOOK: "Chéquier - Suppression",
+  // ChÃ©quiers
+  CREATE_CHECKBOOK: "ChÃ©quier - CrÃ©ation",
+  UPDATE_CHECKBOOK: "ChÃ©quier - Modification",
+  DELETE_CHECKBOOK: "ChÃ©quier - Suppression",
   
   // Fournisseurs
-  CREATE_SUPPLIER: "Fournisseur - Création",
+  CREATE_SUPPLIER: "Fournisseur - CrÃ©ation",
   UPDATE_SUPPLIER: "Fournisseur - Modification",
   DELETE_SUPPLIER: "Fournisseur - Suppression",
   
-  // Régions
-  CREATE_REGION: "Région - Création",
-  UPDATE_REGION: "Région - Modification",
-  DELETE_REGION: "Région - Suppression",
+  // RÃ©gions
+  CREATE_REGION: "RÃ©gion - CrÃ©ation",
+  UPDATE_REGION: "RÃ©gion - Modification",
+  DELETE_REGION: "RÃ©gion - Suppression",
   
-  // Chèques
-  UPDATE_CHECK_STATUS: "Chèque - Changement de statut",
-  PRINT_CHECK: "Chèque - Impression",
+  // ChÃ¨ques
+  UPDATE_CHECK_STATUS: "ChÃ¨que - Changement de statut",
+  PRINT_CHECK: "ChÃ¨que - Impression",
   
   // Utilisateurs
-  CREATE_USER: "Utilisateur - Création",
+  CREATE_USER: "Utilisateur - CrÃ©ation",
   UPDATE_USER: "Utilisateur - Modification",
   DELETE_USER: "Utilisateur - Suppression",
   
-  // Génériques (fallback)
-  CREATE: "Création",
+  // GÃ©nÃ©riques (fallback)
+  CREATE: "CrÃ©ation",
   UPDATE: "Modification",
   DELETE: "Suppression"
 };
 
 const actionGroups: Record<string, string[]> = {
   "Banques": ["CREATE_BANK", "UPDATE_BANK", "DELETE_BANK"],
-  "Chéquiers": ["CREATE_CHECKBOOK", "UPDATE_CHECKBOOK", "DELETE_CHECKBOOK"],
+  "ChÃ©quiers": ["CREATE_CHECKBOOK", "UPDATE_CHECKBOOK", "DELETE_CHECKBOOK"],
   "Fournisseurs": ["CREATE_SUPPLIER", "UPDATE_SUPPLIER", "DELETE_SUPPLIER"],
-  "Régions": ["CREATE_REGION", "UPDATE_REGION", "DELETE_REGION"],
-  "Chèques": ["UPDATE_CHECK_STATUS", "PRINT_CHECK"],
+  "RÃ©gions": ["CREATE_REGION", "UPDATE_REGION", "DELETE_REGION"],
+  "ChÃ¨ques": ["UPDATE_CHECK_STATUS", "PRINT_CHECK"],
   "Utilisateurs": ["CREATE_USER", "UPDATE_USER", "DELETE_USER"]
 };
 
@@ -91,18 +91,18 @@ const fieldLabels: Record<string, string> = {
   id: "ID",
   name: "Nom",
   code: "Code",
-  createdAt: "Créé le",
-  updatedAt: "Modifié le",
+  createdAt: "CrÃ©Ã© le",
+  updatedAt: "ModifiÃ© le",
   
   // Banques
   bankId: "Banque",
   bankName: "Nom de la banque",
   bankCode: "Code de la banque",
   
-  // Régions
-  regionId: "Région",
-  regionName: "Nom de la région",
-  regionCode: "Code de la région",
+  // RÃ©gions
+  regionId: "RÃ©gion",
+  regionName: "Nom de la rÃ©gion",
+  regionCode: "Code de la rÃ©gion",
   wilayaId: "Wilaya",
   wilayaName: "Wilaya",
   wilayaCode: "Code Wilaya",
@@ -112,38 +112,38 @@ const fieldLabels: Record<string, string> = {
   supplierId: "Fournisseur",
   supplierName: "Nom du fournisseur",
   address: "Adresse",
-  phone: "Téléphone",
+  phone: "TÃ©lÃ©phone",
   email: "Email",
   nif: "NIF",
   nis: "NIS",
   rc: "RC",
   article: "Article",
   
-  // Carnets de chèques / Chéquiers
-  checkbookId: "Chéquier",
+  // Carnets de chÃ¨ques / ChÃ©quiers
+  checkbookId: "ChÃ©quier",
   agencyName: "Nom de l'agence",
   agencyCode: "Code de l'agence",
-  serie: "Série",
-  startNumber: "Numéro de début",
-  endNumber: "Numéro de fin",
-  capacity: "Capacité",
-  accountNumber: "Numéro de compte",
+  serie: "SÃ©rie",
+  startNumber: "NumÃ©ro de dÃ©but",
+  endNumber: "NumÃ©ro de fin",
+  capacity: "CapacitÃ©",
+  accountNumber: "NumÃ©ro de compte",
   rib: "RIB",
   
-  // Chèques
-  checkId: "Chèque",
-  checkNumber: "Numéro de chèque",
-  reference: "Référence du chèque",
+  // ChÃ¨ques
+  checkId: "ChÃ¨que",
+  checkNumber: "NumÃ©ro de chÃ¨que",
+  reference: "RÃ©fÃ©rence du chÃ¨que",
   amount: "Montant",
   amountInWords: "Montant en lettres",
   status: "Statut",
   oldStatus: "Ancien statut",
   newStatus: "Nouveau statut",
   motif: "Motif",
-  payee: "Bénéficiaire",
+  payee: "BÃ©nÃ©ficiaire",
   city: "Ville",
   date: "Date",
-  issuedDate: "Date d'émission",
+  issuedDate: "Date d'Ã©mission",
   printedDate: "Date d'impression",
   
   // Calibrage
@@ -156,7 +156,7 @@ const fieldLabels: Record<string, string> = {
   userId: "Utilisateur",
   username: "Nom d'utilisateur",
   fullName: "Nom complet",
-  role: "Rôle",
+  role: "RÃ´le",
   password: "Mot de passe",
   oldValues: "Anciennes valeurs",
   newValues: "Nouvelles valeurs",
@@ -349,7 +349,7 @@ export default function AdminAuditLogs() {
 
       {showFilters && (
         <div className="rounded-lg border bg-muted/50 p-4">
-          <h3 className="mb-4 text-sm font-semibold">Filtres Avancés</h3>
+          <h3 className="mb-4 text-sm font-semibold">Filtres AvancÃ©s</h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <Label>Utilisateur</Label>
@@ -393,7 +393,7 @@ export default function AdminAuditLogs() {
             </div>
 
             <div>
-              <Label>Date début</Label>
+              <Label>Date dÃ©but</Label>
               <Input
                 type="date"
                 value={dateFrom}
@@ -413,7 +413,7 @@ export default function AdminAuditLogs() {
 
           <div className="mt-4 flex justify-end">
             <Button onClick={handleReset} variant="outline" size="sm">
-              Réinitialiser
+              RÃ©initialiser
             </Button>
           </div>
         </div>
@@ -422,7 +422,7 @@ export default function AdminAuditLogs() {
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4" style={{ color: '#e82c2a' }} />
         <Input
-          placeholder="Rechercher par utilisateur, action ou détails..."
+          placeholder="Rechercher par utilisateur, action ou dÃ©tails..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -434,7 +434,7 @@ export default function AdminAuditLogs() {
         <div className="text-center py-8">Chargement...</div>
       ) : filteredLogs.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          Aucun log trouvé
+          Aucun log trouvÃ©
         </div>
       ) : (
         <div className="border rounded-lg overflow-x-auto">
@@ -458,7 +458,7 @@ export default function AdminAuditLogs() {
                 </TableHead>
                 <TableHead>
                   <Button variant="ghost" size="sm" onClick={() => handleSort('details')} className="h-8 p-0 font-semibold hover:underline">
-                    Détails
+                    DÃ©tails
                   </Button>
                 </TableHead>
               </TableRow>
@@ -479,7 +479,7 @@ export default function AdminAuditLogs() {
                     <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
                       log.action.includes('CREATE') ? "bg-green-100 text-green-800" :
                       log.action.includes('UPDATE') ? "bg-slate-100 text-slate-800" :
-                      log.action.includes('DELETE') ? "bg-red-100 text-red-800" :
+                      log.action.includes('DELETE') ? "bg-emerald-100 text-emerald-800" :
                       log.action.includes('EXPORT') ? "bg-purple-100 text-purple-800" :
                       "bg-gray-100 text-gray-800"
                     }`}>
@@ -520,16 +520,16 @@ export default function AdminAuditLogs() {
 
       {/* Statistiques */}
       <div className="text-sm text-muted-foreground">
-        Total: {filteredLogs.length} entrée{filteredLogs.length > 1 ? "s" : ""}
+        Total: {filteredLogs.length} entrÃ©e{filteredLogs.length > 1 ? "s" : ""}
       </div>
 
-      {/* Dialog détails */}
+      {/* Dialog dÃ©tails */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Détails de l'action</DialogTitle>
+            <DialogTitle>DÃ©tails de l'action</DialogTitle>
             <DialogDescription>
-              Informations complètes sur cette action d'audit
+              Informations complÃ¨tes sur cette action d'audit
             </DialogDescription>
           </DialogHeader>
           {selectedLog && (
@@ -541,7 +541,7 @@ export default function AdminAuditLogs() {
                     <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
                       selectedLog.action.includes('CREATE') ? "bg-green-100 text-green-800" :
                       selectedLog.action.includes('UPDATE') ? "bg-slate-100 text-slate-800" :
-                      selectedLog.action.includes('DELETE') ? "bg-red-100 text-red-800" :
+                      selectedLog.action.includes('DELETE') ? "bg-emerald-100 text-emerald-800" :
                       selectedLog.action.includes('EXPORT') ? "bg-purple-100 text-purple-800" :
                       "bg-gray-100 text-gray-800"
                     }`}>
@@ -559,23 +559,23 @@ export default function AdminAuditLogs() {
                     {(() => {
                       const timestamp = new Date(selectedLog.createdAt);
                       const isValidDate = !isNaN(timestamp.getTime());
-                      return isValidDate ? format(timestamp, "dd MMMM yyyy 'à' HH:mm:ss", { locale: fr }) : selectedLog.createdAt;
+                      return isValidDate ? format(timestamp, "dd MMMM yyyy 'Ã ' HH:mm:ss", { locale: fr }) : selectedLog.createdAt;
                     })()}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Type d'entité</Label>
+                  <Label className="text-sm font-semibold text-muted-foreground">Type d'entitÃ©</Label>
                   <p className="mt-1">{selectedLog.entityType || "-"}</p>
                 </div>
               </div>
               <div>
-                <Label className="text-sm font-semibold text-muted-foreground">Détails complets</Label>
+                <Label className="text-sm font-semibold text-muted-foreground">DÃ©tails complets</Label>
                 <div className="mt-1 p-3 bg-muted rounded-md max-h-96 overflow-y-auto">
                   {(() => {
                     const parsedDetails = parseDetails(selectedLog.details);
                     
                     if (!parsedDetails) {
-                      return <p className="text-sm text-muted-foreground">Aucun détail disponible</p>;
+                      return <p className="text-sm text-muted-foreground">Aucun dÃ©tail disponible</p>;
                     }
                     
                     if (typeof parsedDetails === 'object' && parsedDetails !== null) {

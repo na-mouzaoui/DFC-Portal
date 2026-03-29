@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil } from "lucide-react"
+import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2, FileText } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
@@ -40,11 +40,11 @@ const SIEGE_G2_LABELS = [
 
 const IRG_LABELS = [
   "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15%",
-  "Jetons de prAsence 15%", "Tantieme 15%",
+  "Jetons de présence 15%", "Tantieme 15%",
 ]
 const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
 const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
-const MONTH_LABELS_SHORT = ["Janv","FAv","Mars","Avr","Mai","Juin","Juil","AoAt","Sept","Oct","Nov","DAc"]
+const MONTH_LABELS_SHORT = ["Janv","Fév","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"]
 
 interface SavedDeclaration {
   id: string
@@ -191,9 +191,9 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
 }
 
 const MONTHS: Record<string, string> = {
-  "01": "Janvier", "02": "FAvrier", "03": "Mars", "04": "Avril",
-  "05": "Mai", "06": "Juin", "07": "Juillet", "08": "AoAt",
-  "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "DAcembre",
+  "01": "Janvier", "02": "Février", "03": "Mars", "04": "Avril",
+  "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Août",
+  "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Décembre",
 }
 
 const DASH_TABS = [
@@ -203,10 +203,10 @@ const DASH_TABS = [
   { key: "droits_timbre", label: "4 - Droits Timbre",      color: "#0891b2", title: "ETAT DROITS DE TIMBRE" },
   { key: "ca_tap",        label: "5 - CA 7% & CA Glob 1%", color: "#ea580c", title: "CA 7% & CA GLOBAL 1%" },
   { key: "etat_tap",      label: "6 - ETAT TAP",           color: "#be123c", title: "ETAT TAP" },
-  { key: "ca_siege",      label: "7 a CA SiAge",           color: "#854d0e", title: "CHIFFRE D'AFFAIRE ENCAISSA SIAGE" },
+  { key: "ca_siege",      label: "7 a CA Siège",           color: "#854d0e", title: "CHIFFRE D'AFFAIRE ENCAISSÉ SIÈGE" },
   { key: "irg",           label: "8 a Situation IRG",      color: "#0f766e", title: "SITUATION IRG" },
   { key: "taxe2",         label: "9 a Taxe 2%",            color: "#6d28d9", title: "SITUATION DE LA TAXE 2%" },
-  { key: "taxe_masters",  label: "10 a Taxe des Master 1,5%", color: "#0369a1", title: "ATAT DE LA TAXE 1,5% DES MASTERS" },
+  { key: "taxe_masters",  label: "10 a Taxe des Master 1,5%", color: "#0369a1", title: "ÉTAT DE LA TAXE 1,5% DES MASTERS" },
   { key: "taxe_vehicule", label: "11 a Taxe Vehicule",      color: "#92400e", title: "TAXE DE VEHICULE" },
   { key: "taxe_formation",label: "12 a Taxe Formation",     color: "#065f46", title: "TAXE DE FORMATION" },
   { key: "acompte",       label: "13 a Acompte Provisionnel", color: "#1e40af", title: "SITUATION DE L'ACOMPTE PROVISIONNEL" },
@@ -849,7 +849,7 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
               color: "#000",
             }}
           >
-            DAclaration Mois : {moisLabel}
+            Déclaration Mois : {moisLabel}
           </div>
           <div
             style={{
@@ -963,16 +963,16 @@ export default function FiscaDashboardPage() {
 
   const showTabAccessDeniedToast = (tabLabel: string, actionLabel: "modifier" | "supprimer") => {
     toast({
-      title: "a AccAs refusA",
-      description: `Votre profil n'est pas autorisA A ${actionLabel} le tableau "${tabLabel}".`,
+      title: "Accès refusé",
+      description: `Votre profil n'est pas autorisé à ${actionLabel} le tableau "${tabLabel}".`,
       variant: "destructive",
     })
   }
 
   const showPeriodLockedToast = (decl: SavedDeclaration, actionLabel: "modifier" | "supprimer") => {
     toast({
-      title: "a PAriode clAturAe",
-      description: `${getFiscalPeriodLockMessage(decl.mois, decl.annee, user.role)} Impossible de ${actionLabel} cette dAclaration.`,
+      title: "Période clôturée",
+      description: `${getFiscalPeriodLockMessage(decl.mois, decl.annee, user.role)} Impossible de ${actionLabel} cette déclaration.`,
       variant: "destructive",
     })
   }
@@ -992,7 +992,7 @@ export default function FiscaDashboardPage() {
     try {
       const declarationId = Number(decl.id)
       if (!Number.isFinite(declarationId)) {
-        throw new Error("ID de dAclaration invalide")
+        throw new Error("ID de déclaration invalide")
       }
 
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
@@ -1018,11 +1018,11 @@ export default function FiscaDashboardPage() {
         // Ignore storage errors.
       }
 
-      toast({ title: "DAclaration supprimAe" })
+      toast({ title: "Déclaration supprimée" })
     } catch (error) {
       toast({
         title: "Erreur de suppression",
-        description: error instanceof Error ? error.message : "Impossible de supprimer la dAclaration.",
+        description: error instanceof Error ? error.message : "Impossible de supprimer la déclaration.",
         variant: "destructive",
       })
     }
@@ -1263,8 +1263,8 @@ export default function FiscaDashboardPage() {
   const handleApprove = async (decl: SavedDeclaration) => {
     if (!canApproveRegionalDeclarations && !canApproveFinanceDeclarations) {
       toast({
-        title: "AccAs refusA",
-        description: "Seuls les comptes approbateurs (rAgional ou finance) peuvent valider les dAclarations.",
+        title: "Accès refusé",
+        description: "Seuls les comptes approbateurs (régional ou finance) peuvent valider les déclarations.",
         variant: "destructive",
       })
       return
@@ -1272,7 +1272,7 @@ export default function FiscaDashboardPage() {
 
     const declarationId = Number(decl.id)
     if (!Number.isFinite(declarationId)) {
-      toast({ title: "Erreur", description: "ID de dAclaration invalide", variant: "destructive" })
+      toast({ title: "Erreur", description: "ID de déclaration invalide", variant: "destructive" })
       return
     }
 
@@ -1311,11 +1311,11 @@ export default function FiscaDashboardPage() {
         // Ignore storage errors.
       }
 
-      toast({ title: "DAclaration approuvAe" })
+      toast({ title: "Déclaration approuvée" })
     } catch (error) {
       toast({
         title: "Erreur d'approbation",
-        description: error instanceof Error ? error.message : "Impossible d'approuver la dAclaration.",
+        description: error instanceof Error ? error.message : "Impossible d'approuver la déclaration.",
         variant: "destructive",
       })
     }
@@ -1338,7 +1338,7 @@ export default function FiscaDashboardPage() {
     if ((decl.ibs14Rows?.length ?? 0) > 0) return { key: "ibs", label: "IBS Fournisseurs Etrangers", color: "#7c2d12" }
     if ((decl.taxe15Rows?.length ?? 0) > 0) return { key: "taxe_domicil", label: "Taxe Domiciliation", color: "#134e4a" }
     if ((decl.tva16Rows?.length ?? 0) > 0) return { key: "tva_autoliq", label: "TVA Auto Liquidation", color: "#312e81" }
-    return { key: "encaissement", label: "Non dAfini", color: "#6b7280" }
+    return { key: "encaissement", label: "Non défini", color: "#6b7280" }
   }
 
   const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterDateFrom || filterDateTo)
@@ -1377,6 +1377,10 @@ export default function FiscaDashboardPage() {
     sortCol === col
       ? sortDir === "asc" ? <ChevronUp size={13} className="inline ml-0.5" /> : <ChevronDown size={13} className="inline ml-0.5" />
       : <span className="inline-block w-3" />
+
+  const viewTab = DASH_TABS.find((t) => t.key === viewTabKey)
+  const viewTabColor = viewTab?.color ?? "#000"
+  const viewTabTitle = viewTab?.title ?? ""
 
   return (
     <LayoutWrapper user={user}>
@@ -1443,15 +1447,15 @@ export default function FiscaDashboardPage() {
       <DashPrintZone
         decl={printDecl}
         tabKey={viewTabKey}
-        tabTitle={DASH_TABS.find((t) => t.key === viewTabKey)?.title ?? ""}
-        color={DASH_TABS.find((t) => t.key === viewTabKey)?.color ?? "#000"}
+        tabTitle={viewTabTitle}
+        color={viewTabColor}
       />
 
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard Fiscal</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            DAclarations fiscales rAcentes
+            Déclarations fiscales récentes
           </p>
         </div>
 
@@ -1460,7 +1464,7 @@ export default function FiscaDashboardPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-base">
-                DAclarations rAcentes
+                Déclarations récentes
                 {declarations.length > 0 && (
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
                     ({filteredDeclarations.length}{hasActiveFilters ? ` / ${declarations.length}` : ""})
@@ -1472,7 +1476,7 @@ export default function FiscaDashboardPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-8 text-xs text-muted-foreground hover:text-red-500"
+                    className="h-8 text-xs text-muted-foreground hover:text-emerald-600"
                     onClick={() => { setFilterType(""); setFilterMois(""); setFilterAnnee(""); setFilterDirection(""); setFilterDateFrom(""); setFilterDateTo("") }}
                   >
                     <X size={14} className="mr-1" /> Effacer filtres
@@ -1500,7 +1504,7 @@ export default function FiscaDashboardPage() {
                     <option value="droits_timbre">Droits Timbre</option>
                     <option value="ca_tap">CA 7% &amp; CA Glob 1%</option>
                     <option value="etat_tap">ETAT TAP</option>
-                    <option value="ca_siege">CA SiAge</option>
+                    <option value="ca_siege">CA Siège</option>
                     <option value="irg">Situation IRG</option>
                     <option value="taxe2">Taxe 2%</option>
                     <option value="taxe_masters">Taxe des Master 1,5%</option>
@@ -1520,7 +1524,7 @@ export default function FiscaDashboardPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">AnnAe</label>
+                  <label className="text-xs text-muted-foreground block mb-1">Année</label>
                   <input type="number" placeholder="ex: 2025" value={filterAnnee} onChange={e => setFilterAnnee(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
                 </div>
                 <div>
@@ -1541,7 +1545,7 @@ export default function FiscaDashboardPage() {
           <CardContent>
             {recentDeclarations.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucune dAclaration fiscale enregistrAe pour le moment.
+                Aucune déclaration fiscale enregistrée pour le moment.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1549,18 +1553,18 @@ export default function FiscaDashboardPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")}>
-                        Type de dAclaration <SortIcon col="type" />
+                        Type de déclaration <SortIcon col="type" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("direction")}>
                         Direction <SortIcon col="direction" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("periode")}>
-                        PAriode <SortIcon col="periode" />
+                        Période <SortIcon col="periode" />
                       </TableHead>
                       <TableHead className="cursor-pointer select-none" onClick={() => handleSort("date")}>
                         Date d&apos;enregistrement <SortIcon col="date" />
                       </TableHead>
-                      <TableHead>Statut</TableHead>
+                      <TableHead className="w-20 text-center">Statut</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1570,9 +1574,9 @@ export default function FiscaDashboardPage() {
                       const isLocked = isDeclarationLocked(decl)
                       const canManage = canManageFiscalTab(user.role, declType.key)
                       const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
-                      const isSiegeDeclaration = declarationDirection === "siAge"
+                      const isSiegeDeclaration = declarationDirection === "siège"
                         || declarationDirection === "siege"
-                        || declarationDirection.includes("siAge")
+                        || declarationDirection.includes("siège")
                         || declarationDirection.includes("siege")
                       const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
                       const canApproveAsRegional = canApproveRegionalDeclarations
@@ -1593,7 +1597,7 @@ export default function FiscaDashboardPage() {
                           title="Cliquer pour consulter"
                         >
                           <TableCell>
-                            <Badge variant="outline" className="text-xs" style={{ borderColor: declType.color, color: declType.color }}>
+                            <Badge variant="outline" className="text-xs">
                               {declType.label}
                             </Badge>
                           </TableCell>
@@ -1603,20 +1607,26 @@ export default function FiscaDashboardPage() {
                               {MONTHS[decl.mois] || decl.mois} {decl.annee}
                             </Badge>
                             {isLocked && (
-                              <Badge variant="secondary" className="ml-2 text-[10px] text-red-600">
-                                ClAturAe
+                              <Badge variant="secondary" className="ml-2 text-[10px] text-emerald-700">
+                                Clôturée
                               </Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
                           </TableCell>
-                          <TableCell>
-                            {decl.isApproved ? (
-                              <Badge className="bg-emerald-100 text-emerald-800">ApprouvAe</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-amber-700 border-amber-400">En attente</Badge>
-                            )}
+                          <TableCell className="w-20 p-0 align-middle">
+                            <div className="flex items-center justify-center">
+                              {decl.isApproved ? (
+                                <span className="inline-flex" title="Approuvée" aria-label="Approuvée">
+                                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                </span>
+                              ) : (
+                                <span className="inline-flex" title="En attente" aria-label="En attente">
+                                  <Clock3 className="h-4 w-4 text-amber-600" />
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-center gap-2">
@@ -1630,7 +1640,7 @@ export default function FiscaDashboardPage() {
                                     event.stopPropagation()
                                     handleApprove(decl)
                                   }}
-                                  title={decl.isApproved ? "DAclaration dAjA approuvAe" : !canApproveThisDeclaration ? "Action non autorisAe pour cette dAclaration" : "Approuver"}
+                                  title={decl.isApproved ? "Déclaration déjà approuvée" : !canApproveThisDeclaration ? "Action non autorisée pour cette déclaration" : "Approuver"}
                                 >
                                   <CheckCircle size={16} />
                                 </Button>
@@ -1638,13 +1648,13 @@ export default function FiscaDashboardPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={isLocked || !canManage}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   handleDelete(decl)
                                 }}
-                                title={!canManage ? "Profil non autorisA pour ce tableau" : isLocked ? "PAriode clAturAe (suppression impossible)" : "Supprimer"}
+                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
                               >
                                 <Trash2 size={16} />
                               </Button>
@@ -1664,53 +1674,72 @@ export default function FiscaDashboardPage() {
 
       {/* aa Consult Dialog aa */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="!w-[69vw] !max-w-[69vw] h-[66vh] max-h-[66vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between gap-4">
-              <span style={{ color: DASH_TABS.find((t) => t.key === viewTabKey)?.color }}>
-                {DASH_TABS.find((t) => t.key === viewTabKey)?.title}
-              </span>
+        <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden">
+          <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+            <DialogHeader className="space-y-3">
+              <DialogTitle className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
+                    Consultation
+                  </Badge>
+                  <p className="text-base font-semibold leading-tight" style={{ color: viewTabColor }}>
+                    {viewTabTitle}
+                  </p>
+                </div>
+              </DialogTitle>
               {viewDecl && (
-                <div className="flex items-center gap-3 text-sm font-normal text-muted-foreground">
-                  <span>{viewDecl.direction}</span>
-                  <span>A</span>
-                  <span>{MONTHS[viewDecl.mois] ?? viewDecl.mois} {viewDecl.annee}</span>
-                  {(() => {
-                    const currentDeclType = getDeclarationType(viewDecl)
-                    const isLocked = isDeclarationLocked(viewDecl)
-                    const canManage = canManageFiscalTab(user.role, currentDeclType.key)
-
-                    return (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-xs h-8 ml-2 border-amber-300 text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled={isLocked || !canManage}
-                        title={!canManage ? "Profil non autorisA pour ce tableau" : isLocked ? "PAriode clAturAe (modification impossible)" : "Modifier"}
-                        onClick={() => {
-                          setShowDialog(false)
-                          handleEdit(viewDecl, viewTabKey)
-                        }}
-                      >
-                        <Pencil size={13} /> Modifier
-                      </Button>
-                    )
-                  })()}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs h-8 ml-2"
-                    onClick={() => { setShowDialog(false); if (viewDecl) handlePrint(viewDecl, viewTabKey) }}
-                  >
-                    <Printer size={13} /> Imprimer
-                  </Button>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="gap-1.5 font-normal">
+                    <Building2 size={12} /> {viewDecl.direction || "-"}
+                  </Badge>
+                  <Badge variant="secondary" className="gap-1.5 font-normal">
+                    <CalendarDays size={12} /> {MONTHS[viewDecl.mois] ?? viewDecl.mois} {viewDecl.annee}
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5 font-normal">
+                    <FileText size={12} /> {getDeclarationType(viewDecl).label}
+                  </Badge>
                 </div>
               )}
-            </DialogTitle>
-          </DialogHeader>
+            </DialogHeader>
+          </div>
           {viewDecl && (
-            <div className="mt-2 overflow-x-auto">
-              <TabDataView tabKey={viewTabKey} decl={viewDecl} color={DASH_TABS.find((t) => t.key === viewTabKey)?.color ?? "#000"} />
+            <div className="h-[calc(82vh-140px)] overflow-auto bg-slate-50/60 px-6 py-5">
+              <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="overflow-x-auto">
+                  <TabDataView tabKey={viewTabKey} decl={viewDecl} color={viewTabColor} />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                {(() => {
+                  const currentDeclType = getDeclarationType(viewDecl)
+                  const isLocked = isDeclarationLocked(viewDecl)
+                  const canManage = canManageFiscalTab(user.role, currentDeclType.key)
+
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={isLocked || !canManage}
+                      title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
+                      onClick={() => {
+                        setShowDialog(false)
+                        handleEdit(viewDecl, viewTabKey)
+                      }}
+                    >
+                      <Pencil size={13} /> Modifier
+                    </Button>
+                  )
+                })()}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => { setShowDialog(false); if (viewDecl) handlePrint(viewDecl, viewTabKey) }}
+                >
+                  <Printer size={13} /> Imprimer
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

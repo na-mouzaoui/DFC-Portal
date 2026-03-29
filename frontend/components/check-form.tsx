@@ -651,7 +651,7 @@ export function CheckForm({ user }: CheckFormProps) {
                   </SelectContent>
                 </Select>
                 {bank && checkbooks.length === 0 && !loadingCheckbooks && (
-                  <p className="text-xs text-red-500">
+                  <p className="text-xs text-emerald-500">
                     Aucun chéquier disponible
                   </p>
                 )}

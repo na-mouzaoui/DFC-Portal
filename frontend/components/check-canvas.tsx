@@ -188,7 +188,7 @@ export function CheckCanvas({
 
           {/* Montant */}
           <div
-            className="absolute border-2 border-red-500 bg-red-100/30"
+            className="absolute border-2 border-emerald-500 bg-emerald-100/30"
             style={{
               left: `${positions.amount.x}px`,
               top: `${positions.amount.y}px`,
@@ -199,7 +199,7 @@ export function CheckCanvas({
             }}
           >
             <div
-              className="flex h-full items-center justify-center px-1 text-center font-bold text-red-900"
+              className="flex h-full items-center justify-center px-1 text-center font-bold text-emerald-900"
               style={{ fontSize: `${positions.amount.fontSize}px` }}
             >
               {amount}
