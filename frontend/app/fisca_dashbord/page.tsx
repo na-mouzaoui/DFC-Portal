@@ -13,6 +13,7 @@ import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil
 import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
+import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { API_BASE } from "@/lib/config"
 import WILAYAS_COMMUNES from "@/lib/wilayas-communes"
 
@@ -899,11 +900,31 @@ export default function FiscaDashboardPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
+  const [, setFiscalPolicyRevision] = useState(0)
   const normalizedRole = (user?.role ?? "").trim().toLowerCase()
   const normalizedRegion = (user?.region ?? "").trim().toLowerCase()
   const isFinanceRole = normalizedRole === "finance" || normalizedRole === "comptabilite"
   const canApproveRegionalDeclarations = normalizedRole === "regionale" && !!user?.isRegionalApprover
   const canApproveFinanceDeclarations = isFinanceRole && !!user?.isFinanceApprover
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") return
+
+    let cancelled = false
+
+    const syncPolicy = async () => {
+      await syncFiscalPolicy()
+      if (!cancelled) {
+        setFiscalPolicyRevision((prev) => prev + 1)
+      }
+    }
+
+    syncPolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
 
   useEffect(() => {
     if (!user || status !== "authenticated") {

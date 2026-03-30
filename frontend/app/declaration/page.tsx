@@ -14,6 +14,7 @@ import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
+import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { API_BASE } from "@/lib/config"
 
 // primary colour used by all tables/buttons
@@ -2332,6 +2333,7 @@ export default function NouvelleDeclarationPage() {
   const [editingCreatedAt, setEditingCreatedAt] = useState("")
   const [editingSourceMois, setEditingSourceMois] = useState("")
   const [editingSourceAnnee, setEditingSourceAnnee] = useState("")
+  const [fiscalPolicyRevision, setFiscalPolicyRevision] = useState(0)
 
   //  Tab data (lifted) 
   const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ht: "" }])
@@ -2359,16 +2361,16 @@ export default function NouvelleDeclarationPage() {
   const adminSelectedDirection = safeString(direction).trim()
   const manageableTabKeys = useMemo(
     () => new Set(getManageableFiscalTabKeysForDirection(userRole, isAdminRole ? adminSelectedDirection : undefined)),
-    [adminSelectedDirection, isAdminRole, userRole],
+    [adminSelectedDirection, fiscalPolicyRevision, isAdminRole, userRole],
   )
   const availableTabs = useMemo(() => TABS.filter((tab) => manageableTabKeys.has(tab.key)), [manageableTabKeys])
   const selectableYears = useMemo(
     () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
-    [userRole],
+    [fiscalPolicyRevision, userRole],
   )
   const selectableMonths = useMemo(
     () => MONTHS.filter((month) => !isFiscalPeriodLocked(month.value, annee, userRole)),
-    [annee, userRole],
+    [annee, fiscalPolicyRevision, userRole],
   )
   const hasFiscalTabAccess = availableTabs.length > 0
 
@@ -2393,11 +2395,31 @@ export default function NouvelleDeclarationPage() {
   const isDirectionLocked = isRegionalRole || isFinanceRole
   const effectiveDirection = isAdminRole ? safeString(direction).trim() : resolveDirectionForRole(direction)
 
+  useEffect(() => {
+    if (!userRole) return
+
+    let cancelled = false
+    const requestedDirection = isAdminRole ? adminSelectedDirection : undefined
+
+    const syncPolicy = async () => {
+      await syncFiscalPolicy(requestedDirection)
+      if (!cancelled) {
+        setFiscalPolicyRevision((prev) => prev + 1)
+      }
+    }
+
+    syncPolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [adminSelectedDirection, isAdminRole, userRole])
+
   const canManageTabForDirection = useCallback(
     (tabKey: string, directionValue: string) => {
       return getManageableFiscalTabKeysForDirection(userRole, isAdminRole ? directionValue : undefined).includes(tabKey)
     },
-    [isAdminRole, userRole],
+    [fiscalPolicyRevision, isAdminRole, userRole],
   )
 
   useEffect(() => {

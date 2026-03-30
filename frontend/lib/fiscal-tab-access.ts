@@ -1,3 +1,5 @@
+import { getCachedFiscalPolicy } from "./fiscal-policy"
+
 export const REGIONAL_FISCAL_TAB_KEYS = [
   "encaissement",
   "tva_immo",
@@ -36,7 +38,19 @@ export const isHeadOfficeDirection = (direction?: string | null) => {
   return normalizedDirection === "siege" || normalizedDirection === "siège"
 }
 
+const getPolicyForRole = (role?: string | null) => {
+  const policy = getCachedFiscalPolicy()
+  if (!policy) return null
+  if (normalizeRole(policy.role) !== normalizeRole(role)) return null
+  return policy
+}
+
 export const getManageableFiscalTabKeys = (role?: string | null): string[] => {
+  const policy = getPolicyForRole(role)
+  if (policy) {
+    return [...policy.manageableTabKeys]
+  }
+
   if (isAdminFiscalRole(role)) {
     return [...REGIONAL_FISCAL_TAB_KEYS, ...FINANCE_FISCAL_TAB_KEYS]
   }
@@ -54,6 +68,7 @@ export const getManageableFiscalTabKeys = (role?: string | null): string[] => {
 
 export const getManageableFiscalTabKeysForDirection = (role?: string | null, direction?: string | null): string[] => {
   const roleBasedKeys = getManageableFiscalTabKeys(role)
+  const policy = getPolicyForRole(role)
 
   if (!isAdminFiscalRole(role)) {
     return roleBasedKeys
@@ -65,8 +80,8 @@ export const getManageableFiscalTabKeysForDirection = (role?: string | null, dir
   }
 
   const directionScopedKeys: readonly string[] = isHeadOfficeDirection(direction)
-    ? FINANCE_FISCAL_TAB_KEYS
-    : REGIONAL_FISCAL_TAB_KEYS
+    ? policy?.financeTabKeys ?? FINANCE_FISCAL_TAB_KEYS
+    : policy?.regionalTabKeys ?? REGIONAL_FISCAL_TAB_KEYS
   return roleBasedKeys.filter((tabKey) => directionScopedKeys.includes(tabKey))
 }
 

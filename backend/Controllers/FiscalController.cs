@@ -175,6 +175,44 @@ public class FiscalController : ControllerBase
         return false;
     }
 
+    private static bool IsHeadOfficeDirection(string? direction)
+    {
+        var normalizedDirection = (direction ?? "").Trim().ToLowerInvariant();
+        return normalizedDirection is "siege" or "siège"
+            || normalizedDirection.Contains("siege")
+            || normalizedDirection.Contains("siège");
+    }
+
+    private static string[] GetManageableTabsForRole(string role)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+
+        if (normalizedRole == "admin")
+            return RegionalManageableTabOrder.Concat(FinanceManageableTabOrder).ToArray();
+
+        if (normalizedRole == "regionale")
+            return RegionalManageableTabOrder.ToArray();
+
+        if (normalizedRole is "comptabilite" or "finance")
+            return FinanceManageableTabOrder.ToArray();
+
+        return Array.Empty<string>();
+    }
+
+    private static string[] GetManageableTabsForRoleAndDirection(string role, string? direction)
+    {
+        var roleTabs = GetManageableTabsForRole(role);
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+
+        if (normalizedRole != "admin" || string.IsNullOrWhiteSpace(direction))
+            return roleTabs;
+
+        var scoped = IsHeadOfficeDirection(direction) ? FinanceManageableTabOrder : RegionalManageableTabOrder;
+        return roleTabs
+            .Where(tab => scoped.Contains(tab, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
     private IActionResult BuildTabAccessDeniedResponse(string role, string? tabKey)
     {
         var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
@@ -326,6 +364,64 @@ public class FiscalController : ControllerBase
         }
 
         return (false, null);
+    }
+
+    // ─── GET api/fiscal/policy ─────────────────────────────────────────────
+    // Expose la politique d'accès et la règle de clôture côté backend.
+    [HttpGet("policy")]
+    public async Task<IActionResult> GetPolicy([FromQuery] string? direction)
+    {
+        var userId = GetCurrentUserId();
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
+
+        var manageableTabKeys = GetManageableTabsForRoleAndDirection(currentUserRole, direction);
+
+        return Ok(new
+        {
+            role = currentUserRole,
+            requestedDirection = (direction ?? "").Trim(),
+            deadlineDay = GetDeadlineDayForRole(currentUserRole),
+            regionalTabKeys = RegionalManageableTabOrder,
+            financeTabKeys = FinanceManageableTabOrder,
+            manageableTabKeys,
+            serverNow = DateTime.UtcNow,
+        });
+    }
+
+    // ─── GET api/fiscal/period-lock ───────────────────────────────────────
+    // Évalue le verrou de période depuis la règle backend.
+    [HttpGet("period-lock")]
+    public async Task<IActionResult> GetPeriodLock([FromQuery] string mois, [FromQuery] string annee)
+    {
+        var userId = GetCurrentUserId();
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = currentUserContext.Role;
+
+        if (!TryBuildPeriodDeadline(mois, annee, currentUserRole, out var deadline))
+        {
+            return BadRequest(new
+            {
+                message = "Période invalide.",
+                mois,
+                annee
+            });
+        }
+
+        var isLocked = DateTime.Now > deadline;
+        var periodLabel = $"{mois}/{annee}";
+
+        return Ok(new
+        {
+            mois,
+            annee,
+            role = currentUserRole,
+            isLocked,
+            deadline,
+            message = isLocked
+                ? $"La période {periodLabel} est clôturée depuis le {deadline:dd/MM/yyyy HH:mm}."
+                : $"La période {periodLabel} est encore ouverte jusqu'au {deadline:dd/MM/yyyy HH:mm}."
+        });
     }
 
     // ─── GET api/fiscal ───────────────────────────────────────────────────────

@@ -1,3 +1,5 @@
+import { getPolicyDeadlineDay } from "./fiscal-policy"
+
 const MONTH_LABELS: Record<string, string> = {
   "01": "Janvier",
   "02": "Février",
@@ -26,6 +28,11 @@ const normalizeYear = (annee: string) => {
 }
 
 const getDeadlineDayForRole = (role?: string | null): number => {
+  const policyDeadlineDay = getPolicyDeadlineDay(role)
+  if (policyDeadlineDay === 10 || policyDeadlineDay === 15) {
+    return policyDeadlineDay
+  }
+
   const normalizedRole = (role ?? "").trim().toLowerCase()
   return normalizedRole === "admin" || normalizedRole === "comptabilite" || normalizedRole === "finance" ? 15 : 10
 }
