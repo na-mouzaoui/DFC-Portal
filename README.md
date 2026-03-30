@@ -1,9 +1,10 @@
 # DFC Portal - Documentation fonctionnelle
 
-Ce document décrit le contenu de l'application en 3 parties :
+Ce document décrit le contenu de l'application en 4 parties :
 1. Impression de chèque
 2. Fisca
-3. Page Admin
+3. Recap Fiscaux
+4. Page Admin
 
 ## 1. Impression de chèque
 
@@ -101,7 +102,56 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
     - direction (global) : voit toutes les déclarations de toutes les directions, uniquement si elles sont approuvées.
 - Les données peuvent exister localement (cache local) et sont aussi persistées côté API.
 
-## 3. Page Admin
+## 3. Recap Fiscaux
+
+### Objectif
+Générer et consulter des récapitulatifs fiscaux automatiques regroupant les 7 tableaux consolidés d'une période donnée.
+
+### Fonctionnalités principales
+- **Génération des recaps** :
+  - Création automatique de récapitulatifs pour une période (mois/année) sélectionnée.
+  - Génération de 7 tableaux consolidés :
+    1. G50 (Acomptes, TVA, Droits Timbre, TACP, TNFPDAL, IRG, autres taxes)
+    2. TVA Collectée (par fournisseur/direction)
+    3. TVA Situation (par DR et type)
+    4. Droits de Timbre
+    5. TACP 7% (Taxe d'Activité professionnelle)
+    6. TNFDAL 1% (Taxe nationale de formation)
+    7. Masters 1,5% (Taxe sur masters)
+  - Overwriting automatique : génération d'une même période remplace l'ancienne version.
+- **Historique des recaps** :
+  - Tableau d'affichage l'historique de tous les recaps générés.
+  - Affichage du mois, année et date de création.
+  - Icône Imprimer (vert) pour générer le PDF.
+  - Icône Supprimer (rouge) pour retirer un recap.
+- **Filtrage avancé** :
+  - Filtres par type recap (type de tableau).
+  - Filtres par mois et année.
+  - Filtres par plage de dates (Du / Au).
+  - Bouton "Effacer filtres" pour réinitialiser.
+  - Toggle "Afficher les filtres" pour réduire l'interface.
+- **Consultation détaillée** :
+  - Clic sur ligne d'historique ouvre une popup de consultation.
+  - Affichage formaté du tableau avec en-têtes, totaux et bordures claires.
+  - Formatage des montants (séparateurs de milliers, virgule pour décimales : format fr-DZ).
+  - Bouton Imprimer dans la popup pour génération PDF.
+- **Génération PDF** :
+  - Template cohérent avec les autres PDFs (en-tête ATM MOBILIS SPA, logo, DR, période, titre).
+  - Format paysage A4.
+  - Tableau avec bordures, en-têtes gras et totaux soulignés.
+  - Impression directe via prévisualisation ou download.
+- **Suppression** :
+  - Bouton Supprimer dans le popup pour retirer un recap (avec confirmation).
+  - Fermeture automatique du popup après suppression.
+
+### Règles métier importantes
+- Accès au module Recap : disponible pour les rôles finance/comptabilite, regionale et admin.
+- Les recaps consolidés remplacent automatiquement ceux de la même période pour éviter les doublons.
+- Les données des recaps sont placeholders zéros (préparation pour intégration avec calculs réels).
+- Formatage des montants cohérent avec le reste de l'application (fr-DZ : milliers espaced, virgule décimale).
+- Design des tableaux unifié avec shadcn/ui Table pour cohérence visuelle.
+
+## 4. Page Admin
 
 ### Objectif
 Centraliser l'administration des utilisateurs, des référentiels et de l'audit.

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2, FileText } from "lucide-react"
+import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
@@ -289,35 +289,31 @@ function EncTable({ rows }: { rows: EncRow[] }) {
   )
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
+    <Table>
+      <TableHeader>
+        <TableRow>
           {["DESIGNATIONS", "ENCAISSEMENTS HT", "TVA", "ENCAISSEMENTS TTC"].map((h) => (
-            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
+            <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {computedRows.map((r, i) => {
-          return (
-            <tr key={i} style={{ background: "#fff", color: "#000" }}>
-              <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "a"}</td>
-              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ht)}</td>
-              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tva)}</td>
-              <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.ttc)}</td>
-            </tr>
-          )
-        })}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.ht)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.tva)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totals.ttc)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {computedRows.map((r, i) => (
+          <TableRow key={i}>
+            <TableCell>{r.designation || "-"}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.ht)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.tva)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.ttc)}</TableCell>
+          </TableRow>
+        ))}
+        <TableRow className="font-bold bg-muted">
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totals.ht)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totals.tva)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totals.ttc)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -326,43 +322,41 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
   const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, showRateColumn), 0)
   const tTTC = tHT + tTVA
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Nom Prenom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
-            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Nom/Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
+            <TableHead key={h} className={["Montant HT", "TVA", "Montant TTC", "Taux TVA"].includes(h) ? "text-right" : undefined}>{h}</TableHead>
           ))}
-        </tr>
-      </thead>
-      <tbody>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r, i) => {
           const rowTva = getTvaAmount(r, showRateColumn)
-          return <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.nomRaisonSociale)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.adresse)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.nif)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authNif)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.numRC)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{textForPdf(r.authRC)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.numFacture || "a"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.dateFacture || "a"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.montantHT)}</td>
-            {showRateColumn && <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "center" }}>{getTvaRateLabel(r.tauxTVA)}</td>}
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : fmt(r.tva)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(r.montantHT) + rowTva)}</td>
-          </tr>
+          return <TableRow key={i}>
+            <TableCell className="text-xs">{textForPdf(r.nomRaisonSociale)}</TableCell>
+            <TableCell className="text-xs">{textForPdf(r.adresse)}</TableCell>
+            <TableCell className="text-xs">{textForPdf(r.nif)}</TableCell>
+            <TableCell className="text-xs">{textForPdf(r.authNif)}</TableCell>
+            <TableCell className="text-xs">{textForPdf(r.numRC)}</TableCell>
+            <TableCell className="text-xs">{textForPdf(r.authRC)}</TableCell>
+            <TableCell className="text-xs">{r.numFacture || "-"}</TableCell>
+            <TableCell className="text-xs">{r.dateFacture || "-"}</TableCell>
+            <TableCell className="text-right text-xs font-semibold">{fmt(r.montantHT)}</TableCell>
+            {showRateColumn && <TableCell className="text-center text-xs">{getTvaRateLabel(r.tauxTVA)}</TableCell>}
+            <TableCell className="text-right text-xs font-semibold">{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : fmt(r.tva)}</TableCell>
+            <TableCell className="text-right text-xs font-semibold">{fmt(num(r.montantHT) + rowTva)}</TableCell>
+          </TableRow>
         })}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
-          <td colSpan={8} style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tHT)}</td>
-          {showRateColumn && <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "center" }}></td>}
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTVA)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(tTTC)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={8}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(tHT)}</TableCell>
+          {showRateColumn && <TableCell></TableCell>}
+          <TableCell className="text-right font-bold">{fmt(tTVA)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(tTTC)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -371,31 +365,29 @@ function TimbreTable({ rows }: { rows: TimbreRow[] }) {
   const totalDroit = rows.reduce((s, r) => s + num(r.droitTimbre), 0)
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["DESIGNATIONS", "CHIFFRE D'AFFAIRES TTC ENCAISSE EN ESPECE", "DROITS DE TIMBRE"].map((h) => (
-            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["DESIGNATIONS", "CHIFFRE D'AFFAIRES TTC", "DROITS DE TIMBRE"].map((h) => (
+            <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
           ))}
-        </tr>
-      </thead>
-      <tbody>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r, i) => (
-          <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.designation || "a"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.caTTCEsp)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.droitTimbre)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell>{r.designation || "-"}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.caTTCEsp)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.droitTimbre)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalCA)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalDroit)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalCA)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalDroit)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -403,76 +395,72 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
   const totalBase = num(b12) + num(b13)
   const totalTaxe = num(b12) * 0.07 + num(b13) * 0.01
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["DESIGNATIONS", "MONTANT DU CHIFFRE D'AFFAIRES HT SOUMIS", "MONTANT DE LA TAXE A VERSER"].map((h) => (
-            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["DESIGNATIONS", "CA HT SOUMIS", "TAXE A VERSER"].map((h) => (
+            <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        <tr style={{ background: "#fff", color: "#000" }}>
-          <td style={{ ...TD, background: "#fff", color: "#000" }}>CHIFFRE D'AFFAIRES RECHARGEMENT SOUMIS A 7%</td>
-          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(b12)}</td>
-          <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(b12) * 0.07)}</td>
-        </tr>
-        <tr style={{ background: "#eee", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>CHIFFRE D'AFFAIRES GLOBAL SOUMIS A 1%</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(b13)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(num(b13) * 0.01)}</td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", color: "#000", fontWeight: "bold" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalBase)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalTaxe)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell>CA RECHARGEMENT SOUMIS A 7%</TableCell>
+          <TableCell className="text-right font-semibold">{fmt(b12)}</TableCell>
+          <TableCell className="text-right font-semibold">{fmt(num(b12) * 0.07)}</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>CA GLOBAL SOUMIS A 1%</TableCell>
+          <TableCell className="text-right font-semibold">{fmt(b13)}</TableCell>
+          <TableCell className="text-right font-semibold">{fmt(num(b13) * 0.01)}</TableCell>
+        </TableRow>
+        <TableRow className="font-bold bg-muted">
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function TAPTable({ rows }: { rows: TAPRow[] }) {
   const getWilayaName = (code: string) =>
-    WILAYAS_COMMUNES.find((entry) => entry.code === code)?.wilaya ?? "a"
+    WILAYAS_COMMUNES.find((entry) => entry.code === code)?.wilaya ?? "-"
 
   const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
   const totalTap = totalImposable * 0.015
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
+    <Table>
+      <TableHeader>
+        <TableRow>
           {["Code", "Wilaya", "Commune", "Montant Imposable", "TAP 1,5%"].map((h) => (
-            <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>
+            <TableHead key={h} className={["Montant Imposable", "TAP 1,5%"].includes(h) ? "text-right" : undefined}>{h}</TableHead>
           ))}
-        </tr>
-      </thead>
-      <tbody>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r, i) => (
-          <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.wilayaCode || "a"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{getWilayaName(r.wilayaCode)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{r.commune || "a"}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(r.tap2)}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(num(r.tap2) * 0.015)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell>{r.wilayaCode || "-"}</TableCell>
+            <TableCell>{getWilayaName(r.wilayaCode)}</TableCell>
+            <TableCell>{r.commune || "-"}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.tap2)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(r.tap2) * 0.015)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", fontWeight: "bold", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }} colSpan={3}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalImposable)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalTap)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={3}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalImposable)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalTap)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
-  if (!rows || rows.length < 12) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length < 12) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const g1 = rows.slice(0, 2)
   const g2 = rows.slice(2, 12)
   const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
@@ -485,273 +473,287 @@ function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
     { label: "TOTAL 1", ttc: fmt(t1ttc), ht: fmt(t1ht), total: true },
     ...g2.map((r, i) => ({ label: SIEGE_G2_LABELS[i], ttc: fmt(r.ttc), ht: fmt(r.ht) })),
     { label: "TOTAL 2", ttc: fmt(t2ttc), ht: fmt(t2ht), total: true },
-    { label: "TOTAL G\u00c9N\u00c9RAL", ttc: fmt(t1ttc + t2ttc), ht: fmt(t1ht + t2ht), total: true },
+    { label: "TOTAL GÉNÉRAL", ttc: fmt(t1ttc + t2ttc), ht: fmt(t1ht + t2ht), total: true },
   ]
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["D\u00e9signation", "TTC", "HT"].map(h => <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>)}
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Désignation", "TTC", "HT"].map(h => <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {displayRows.map((r, i) => (
-          <tr key={i} style={{ background: r.total ? "#eee" : "#fff", color: "#000", fontWeight: r.total ? 700 : 400 }}>
-            <td style={{ ...TD, background: r.total ? "#eee" : "#fff", color: "#000" }}>{r.label}</td>
-            <td style={{ ...TD, background: r.total ? "#eee" : "#fff", color: "#000", textAlign: "right" }}>{r.ttc}</td>
-            <td style={{ ...TD, background: r.total ? "#eee" : "#fff", color: "#000", textAlign: "right" }}>{r.ht}</td>
-          </tr>
+          <TableRow key={i} className={r.total ? "font-bold bg-muted" : ""}>
+            <TableCell>{r.label}</TableCell>
+            <TableCell className="text-right font-semibold">{r.ttc}</TableCell>
+            <TableCell className="text-right font-semibold">{r.ht}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
 function IrgTable({ rows }: { rows: IrgRow[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const total = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Désignation", "Assiette Imposable", "Montant"].map(h => <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>)}
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Désignation", "Assiette Imposable", "Montant"].map(h => <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {IRG_LABELS.map((lbl, i) => (
-          <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{lbl}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(rows[i]?.assietteImposable ?? "0")}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(rows[i]?.montant ?? "0")}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell>{lbl}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(rows[i]?.assietteImposable ?? "0")}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(rows[i]?.montant ?? "0")}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", fontWeight: "bold", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }} colSpan={2}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(total)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={2}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(total)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Taxe2Table({ rows }: { rows: Taxe2Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
   const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, border: "1px solid #000" }}>
-      <thead>
-        <tr style={{ background: "#ddd", color: "#000" }}>
-          {["Désignation", "Montant de la base", "Montant de la Taxe 2%"].map(h => <th key={h} style={{ ...TH, background: "#ddd", color: "#000" }}>{h}</th>)}
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Désignation", "Montant de la base", "Montant de la Taxe 2%"].map(h => <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {TAXE2_LABELS.map((lbl, i) => (
-          <tr key={i} style={{ background: "#fff", color: "#000" }}>
-            <td style={{ ...TD, background: "#fff", color: "#000" }}>{lbl}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(rows[i]?.base ?? "0")}</td>
-            <td style={{ ...TD, background: "#fff", color: "#000", textAlign: "right" }}>{fmt(rows[i]?.montant ?? "0")}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell>{lbl}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(rows[i]?.base ?? "0")}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(rows[i]?.montant ?? "0")}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot>
-        <tr style={{ background: "#eee", fontWeight: "bold", color: "#000" }}>
-          <td style={{ ...TD, background: "#eee", color: "#000" }}>TOTAL</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalBase)}</td>
-          <td style={{ ...TD, background: "#eee", color: "#000", textAlign: "right" }}>{fmt(totalMont)}</td>
-        </tr>
-      </tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalMont)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function MastersTable({ rows }: { rows: MasterRow[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const totalHT   = rows.reduce((s,r)=>s+num(r.montantHT),0)
   const totalTaxe = rows.reduce((s,r)=>s+num(r.montantHT)*0.015,0)
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{ background:"#ddd", color:"#000" }}>
-        {["#","Date","Nom du Master","N° Facture","Date Facture","Montant de la Facture HT","Taxe 1,5%","Mois","Observation"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["#","Date","Nom du Master","N° Facture","Date Facture","Montant HT","Taxe 1,5%","Mois","Observation"].map(h=><TableHead key={h} className={["Montant HT","Taxe 1,5%"].includes(h) ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r,i)=>(
-          <tr key={i} style={{background:"#fff",color:"#000"}}>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"center"}}>{i+1}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.date}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.nomMaster}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.numFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.dateFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantHT)}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(num(r.montantHT)*0.015)}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.mois}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.observation}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell className="text-center">{i+1}</TableCell>
+            <TableCell>{r.date}</TableCell>
+            <TableCell className="text-xs">{r.nomMaster}</TableCell>
+            <TableCell>{r.numFacture}</TableCell>
+            <TableCell>{r.dateFacture}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantHT)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(r.montantHT)*0.015)}</TableCell>
+            <TableCell className="text-xs">{r.mois}</TableCell>
+            <TableCell className="text-xs">{r.observation}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}} colSpan={5}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(totalHT)}</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(totalTaxe)}</td>
-        <td colSpan={2} style={{...TD,background:"#eee",color:"#000"}}/>
-      </tr></tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={5}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalHT)}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
+          <TableCell colSpan={2}/>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Taxe11Table({ montant }: { montant: string }) {
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["Désignation","Montant"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody><tr style={{background:"#fff",color:"#000"}}>
-        <td style={{...TD,background:"#fff",color:"#000"}}>Taxe de vehicule</td>
-        <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(montant)}</td>
-      </tr></tbody>
-    </table>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Désignation","Montant"].map(h=><TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell>Taxe de véhicule</TableCell>
+          <TableCell className="text-right font-semibold">{fmt(montant)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Taxe12Table({ rows }: { rows: Taxe12Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const total = rows.reduce((s,r)=>s+num(r.montant),0)
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["Désignation","Montant"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["Désignation","Montant"].map(h=><TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {TAXE12_LABELS.map((lbl,i)=>(
-          <tr key={i} style={{background:"#fff",color:"#000"}}>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{lbl}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(rows[i]?.montant??"0")}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell>{lbl}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(rows[i]?.montant??"0")}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(total)}</td>
-      </tr></tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(total)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function AcompteTable({ months, annee }: { months: string[]; annee: string }) {
-  if (!months || months.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!months || months.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const yy = annee.slice(-2)
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        <th style={{...TH,background:"#ddd",color:"#000"}}>Désignation</th>
-        {MONTH_LABELS_SHORT.map(m=><th key={m} style={{...TH,background:"#ddd",color:"#000"}}>{m} {yy}</th>)}
-      </tr></thead>
-      <tbody><tr style={{background:"#fff",color:"#000"}}>
-        <td style={{...TD,background:"#fff",color:"#000"}}>Montant</td>
-        {months.map((v,i)=>(<td key={i} style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(v)}</td>))}
-      </tr></tbody>
-    </table>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Désignation</TableHead>
+          {MONTH_LABELS_SHORT.map(m=><TableHead key={m} className="text-center">{m} {yy}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell>Montant</TableCell>
+          {months.map((v,i)=>(<TableCell key={i} className="text-right font-semibold">{fmt(v)}</TableCell>))}
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["#","N° Facture","Mont. Brut Devise","Taux Change","Mont. Brut Dinars","Mont. Net Devise","Mont. IBS","Mont. Net Dinars"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["#","N° Facture","Mont. Brut Devise","Taux Change","Mont. Brut Dinars","Mont. Net Devise","Mont. IBS","Mont. Net Dinars"].map(h=><TableHead key={h} className={h === "#" || h === "Taux Change" || h === "N° Facture" ? undefined : "text-right"}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r,i)=>(
-          <tr key={i} style={{background:"#fff",color:"#000"}}>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"center"}}>{i+1}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.numFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantBrutDevise)}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.tauxChange}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantBrutDinars)}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantNetDevise)}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantIBS)}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantNetDinars)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell className="text-center">{i+1}</TableCell>
+            <TableCell>{r.numFacture}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantBrutDevise)}</TableCell>
+            <TableCell>{r.tauxChange}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantBrutDinars)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantNetDevise)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantIBS)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantNetDinars)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}} colSpan={2}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000"}}/>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantIBS),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantNetDinars),0))}</td>
-      </tr></tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={2}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</TableCell>
+          <TableCell/>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantIBS),0))}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDinars),0))}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Taxe15Table({ rows }: { rows: Taxe15Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. A Payer"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. A Payer"].map(h=><TableHead key={h} className={["Mont. Net Devise","Mont. Dinars","Mont. A Payer"].includes(h) ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r,i)=>(
-          <tr key={i} style={{background:"#fff",color:"#000"}}>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"center"}}>{i+1}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.numFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.dateFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.raisonSociale}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantNetDevise)}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.monnaie}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.tauxChange}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantDinars)}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.tauxTaxe}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantAPayer)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell className="text-center">{i+1}</TableCell>
+            <TableCell className="text-xs">{r.numFacture}</TableCell>
+            <TableCell className="text-xs">{r.dateFacture}</TableCell>
+            <TableCell className="text-xs">{r.raisonSociale}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantNetDevise)}</TableCell>
+            <TableCell>{r.monnaie}</TableCell>
+            <TableCell>{r.tauxChange}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantDinars)}</TableCell>
+            <TableCell className="text-xs">{r.tauxTaxe}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantAPayer)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}} colSpan={4}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000"}}/><td style={{...TD,background:"#eee",color:"#000"}}/>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000"}}/>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
-      </tr></tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={4}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</TableCell>
+          <TableCell/><TableCell/>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</TableCell>
+          <TableCell/>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
 function Tva16Table({ rows }: { rows: Tva16Row[] }) {
-  if (!rows || rows.length === 0) return <p style={{ fontSize: 11, color: "#666" }}>Aucune donnAe</p>
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   return (
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, border:"1px solid #000" }}>
-      <thead><tr style={{background:"#ddd",color:"#000"}}>
-        {["#","N° Facture","Mont. Brut Devises","Taux Change","Mont. Brut Dinars","TVA 19%"].map(h=><th key={h} style={{...TH,background:"#ddd",color:"#000"}}>{h}</th>)}
-      </tr></thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {["#","N° Facture","Mont. Brut Devises","Taux Change","Mont. Brut Dinars","TVA 19%"].map(h=><TableHead key={h} className={["Mont. Brut Devises","Mont. Brut Dinars","TVA 19%"].includes(h) ? "text-right" : undefined}>{h}</TableHead>)}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((r,i)=>(
-          <tr key={i} style={{background:"#fff",color:"#000"}}>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"center"}}>{i+1}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.numFacture}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantBrutDevise)}</td>
-            <td style={{...TD,background:"#fff",color:"#000"}}>{r.tauxChange}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.montantBrutDinars)}</td>
-            <td style={{...TD,background:"#fff",color:"#000",textAlign:"right"}}>{fmt(r.tva19)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell className="text-center">{i+1}</TableCell>
+            <TableCell>{r.numFacture}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantBrutDevise)}</TableCell>
+            <TableCell>{r.tauxChange}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.montantBrutDinars)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(r.tva19)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-      <tfoot><tr style={{background:"#eee",fontWeight:"bold",color:"#000"}}>
-        <td style={{...TD,background:"#eee",color:"#000"}} colSpan={2}>TOTAL</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000"}}/>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-        <td style={{...TD,background:"#eee",color:"#000",textAlign:"right"}}>{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
-      </tr></tfoot>
-    </table>
+        <TableRow className="font-bold bg-muted">
+          <TableCell colSpan={2}>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</TableCell>
+          <TableCell/>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</TableCell>
+          <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -1648,7 +1650,7 @@ export default function FiscaDashboardPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={isLocked || !canManage}
                                 onClick={(event) => {
                                   event.stopPropagation()
@@ -1678,10 +1680,7 @@ export default function FiscaDashboardPage() {
           <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
             <DialogHeader className="space-y-3">
               <DialogTitle className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
-                    Consultation
-                  </Badge>
+                <div>
                   <p className="text-base font-semibold leading-tight" style={{ color: viewTabColor }}>
                     {viewTabTitle}
                   </p>
@@ -1694,9 +1693,6 @@ export default function FiscaDashboardPage() {
                   </Badge>
                   <Badge variant="secondary" className="gap-1.5 font-normal">
                     <CalendarDays size={12} /> {MONTHS[viewDecl.mois] ?? viewDecl.mois} {viewDecl.annee}
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5 font-normal">
-                    <FileText size={12} /> {getDeclarationType(viewDecl).label}
                   </Badge>
                 </div>
               )}
@@ -1747,4 +1743,5 @@ export default function FiscaDashboardPage() {
     </LayoutWrapper>
   )
 }
+
 
