@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AccessDeniedDialog } from "@/components/access-denied-dialog"
+import { isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
 import { CheckCircle, Printer, Trash2, Filter, X } from "lucide-react"
 
 type RecapColumn = {
@@ -280,6 +283,21 @@ export default function RecapPage() {
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
 
+  // Role-based access control
+  const userRole = user?.role ?? ""
+  const isRegionalRole = isRegionalFiscalRole(userRole)
+  const isDirectionRole = userRole?.toLowerCase()?.trim() === "direction"
+  const canGenerate = !isRegionalRole && !isDirectionRole
+
+  // Initialize with current month and year on mount
+  useEffect(() => {
+    const now = new Date()
+    const currentMonth = String(now.getMonth() + 1).padStart(2, "0")
+    const currentYear = String(now.getFullYear())
+    setSelectedMonth(currentMonth)
+    setSelectedYear(currentYear)
+  }, [])
+
   const periodLabel = useMemo(() => {
     if (!selectedMonth || !selectedYear) return "-"
     return `${MONTHS[selectedMonth] ?? selectedMonth} ${selectedYear}`
@@ -454,6 +472,19 @@ export default function RecapPage() {
     )
   }
 
+  // Regional users cannot access recap page
+  if (isRegionalRole) {
+    return (
+      <LayoutWrapper user={user}>
+        <AccessDeniedDialog 
+          title="Accès refusé" 
+          message="Les utilisateurs régionaux ne peuvent pas accéder aux recaps fiscaux. Seuls les utilisateurs admin, finance et comptabilité peuvent consulter cette page."
+          redirectTo="/"
+        />
+      </LayoutWrapper>
+    )
+  }
+
   return (
     <LayoutWrapper user={user}>
       <div className="space-y-6">
@@ -466,28 +497,29 @@ export default function RecapPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Parametres de generation</CardTitle>
+            <CardTitle className="text-base font-semibold">Parametres de generation</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Selectionnez la periode pour generer les recaps fiscaux</p>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Mois</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-full border rounded px-2 py-2 text-sm"
-                >
-                  <option value="">Selectionner</option>
-                  {Object.entries(MONTHS).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Mois</label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="Selectionner un mois" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(MONTHS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Annee</label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Annee</label>
                 <input
                   type="number"
                   min="2000"
@@ -495,14 +527,15 @@ export default function RecapPage() {
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(e.target.value)}
                   placeholder="Ex: 2026"
-                  className="w-full border rounded px-2 py-2 text-sm"
+                  className="h-10 w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"
                 />
               </div>
 
               <Button
                 onClick={handleGenerate}
-                disabled={!selectedMonth || !selectedYear}
-                className="h-10"
+                disabled={!selectedMonth || !selectedYear || !canGenerate}
+                title={!canGenerate ? "Seuls les administrateurs et les utilisateurs finance/comptabilité peuvent générer des recaps. Les utilisateurs de direction peuvent consulter les recaps existants." : ""}
+                className="h-10 bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Generer
               </Button>
@@ -550,23 +583,31 @@ export default function RecapPage() {
             </div>
             {showFilters && (
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 text-sm">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Type</label>
-                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
-                    <option value="">Tous</option>
-                    {RECAP_DEFINITIONS.map((definition) => (
-                      <option key={definition.key} value={definition.key}>{definition.title}</option>
-                    ))}
-                  </select>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-700">Type</label>
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Tous" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECAP_DEFINITIONS.map((definition) => (
+                        <SelectItem key={definition.key} value={definition.key}>{definition.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Mois</label>
-                  <select value={filterMois} onChange={(e) => setFilterMois(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
-                    <option value="">Tous</option>
-                    {Object.entries(MONTHS).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
-                    ))}
-                  </select>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-700">Mois</label>
+                  <Select value={filterMois} onValueChange={setFilterMois}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Tous" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(MONTHS).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Annee</label>

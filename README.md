@@ -195,3 +195,23 @@ Centraliser l'administration des utilisateurs, des référentiels et de l'audit.
 
 ---
 
+## 5. Restrictions d'Accès - Module Recap
+
+### Contrôle d'accès par rôle
+
+Nouvelles règles de contrôle d'accès pour la page Recap :
+
+| Rôle | Accès | Génération | Consultation |
+|------|-------|-----------|--------------|
+| **Admin** | ✅ Complet | ✅ Oui | ✅ Oui |
+| **Finance / Comptabilité** | ✅ Complet | ✅ Oui | ✅ Oui |
+| **Régionale** | ❌ Refusé | ❌ Refusé | ❌ Refusé |
+| **Direction (Global)** | ✅ Limité | ❌ Refusé (bouton désactivé) | ✅ Oui (consultation et filtrage) |
+
+**Détails d'implémentation :**
+- Utilisateurs **régionaux** : voient une page "Accès refusé" avec message explicatif
+- Utilisateurs **direction** : le bouton "Generer" est désactivé avec tooltip informatif
+- Historique visible pour tous les non-régionaux (consultation, filtrage par type/mois/année, impression PDF)
+
+---
+

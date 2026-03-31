@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
@@ -608,7 +608,7 @@ const MONTHS = [
   { value: "11", label: "Novembre" },  { value: "12", label: "Decembre" },
 ]
 const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 10 }, (_, i) => (CURRENT_YEAR - 5 + i).toString())
+const YEARS = Array.from({ length: 101 }, (_, i) => (2000 + i).toString())
 interface Tab6Props {
   rows: TAPRow[]; setRows: React.Dispatch<React.SetStateAction<TAPRow[]>>
   mois: string; setMois: (v: string) => void
@@ -2895,46 +2895,57 @@ export default function NouvelleDeclarationPage() {
       {/* Direction */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Direction</label>
-                <select value={effectiveDirection} onChange={(e) => setDirection(e.target.value)}
-                  disabled={isDirectionLocked}
-                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-60 disabled:cursor-not-allowed">
-                  <option value="">- Selectionner une direction -</option>
-                  <option value="Siege">Siege</option>
-                  {isDirectionLocked && effectiveDirection && effectiveDirection !== "Siege" && !regions.some((r) => r.name === effectiveDirection) && (
-                    <option value={effectiveDirection}>{effectiveDirection}</option>
-                  )}
-                  {regions.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-                </select>
+                <Select value={effectiveDirection} onValueChange={setDirection} disabled={isDirectionLocked}>
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="- Selectionner une direction -" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Siege">Siege</SelectItem>
+                    {isDirectionLocked && effectiveDirection && effectiveDirection !== "Siege" && !regions.some((r) => r.name === effectiveDirection) && (
+                      <SelectItem value={effectiveDirection}>{effectiveDirection}</SelectItem>
+                    )}
+                    {regions.map((r) => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               {/* Mois */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Mois</label>
-                <select value={mois} onChange={(e) => setMois(e.target.value)}
-                  disabled={activeTab === "acompte"}
-                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {selectableMonths.length === 0
-                    ? <option value="">Aucun mois disponible</option>
-                    : selectableMonths.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
+                <Select value={mois} onValueChange={setMois} disabled={activeTab === "acompte"}>
+                  <SelectTrigger className="h-10 text-sm w-[150px]">
+                    <SelectValue placeholder="Mois" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectableMonths.length === 0
+                      ? <SelectItem value="no-months" disabled>Aucun mois disponible</SelectItem>
+                      : selectableMonths.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               {/* Annee */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Annee</label>
-                <select value={annee} onChange={(e) => setAnnee(e.target.value)}
-                  className="rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300">
-                  {selectableYears.length === 0
-                    ? <option value="">Aucune annee disponible</option>
-                    : selectableYears.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
+                <input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={annee}
+                  onChange={(e) => setAnnee(e.target.value)}
+                  placeholder="Ex: 2026"
+                  className="h-10 w-[120px] rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+                />
               </div>
               {/* Tableau */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tableau</label>
-                <select value={activeTab} onChange={(e) => setActiveTab(e.target.value)}
-                  className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: TABS.find(t => t.key === activeTab)?.color ?? undefined }}>
-                  {availableTabs.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
+                <Select value={activeTab} onValueChange={setActiveTab}>
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="Selectionner un tableau" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTabs.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {currentPeriodLockMessage && (
