@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast"
 import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
+import { getFiscalReminders, type ReminderData } from "@/lib/fiscal-reminders"
+import { RemindersCard } from "@/components/fiscal-reminders-card"
 import { API_BASE } from "@/lib/config"
 import WILAYAS_COMMUNES from "@/lib/wilayas-communes"
 
@@ -900,6 +902,9 @@ export default function FiscaDashboardPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
+  const [reminders, setReminders] = useState<ReminderData[]>([])
+  const [remindersLoading, setRemindersLoading] = useState(true)
+  const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [, setFiscalPolicyRevision] = useState(0)
   const normalizedRole = (user?.role ?? "").trim().toLowerCase()
   const normalizedRegion = (user?.region ?? "").trim().toLowerCase()
@@ -968,6 +973,84 @@ export default function FiscaDashboardPage() {
     }
 
     loadDeclarations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setReminders([])
+      setRemindersLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setRemindersLoading(true)
+
+    const loadReminders = async () => {
+      try {
+        const data = await getFiscalReminders()
+        if (!cancelled) {
+          setReminders(data)
+        }
+      } catch {
+        if (!cancelled) setReminders([])
+      } finally {
+        if (!cancelled) setRemindersLoading(false)
+      }
+    }
+
+    loadReminders()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setRegions([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadRegions = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/regions`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setRegions([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const nextRegions = Array.isArray(payload)
+          ? payload
+              .map((item) => ({
+                id: Number((item as { id?: unknown }).id ?? 0),
+                name: String((item as { name?: unknown }).name ?? "").trim(),
+              }))
+              .filter((item) => item.name.length > 0)
+          : []
+
+        if (!cancelled) {
+          setRegions(nextRegions)
+        }
+      } catch {
+        if (!cancelled) setRegions([])
+      }
+    }
+
+    loadRegions()
 
     return () => {
       cancelled = true
@@ -1401,6 +1484,28 @@ export default function FiscaDashboardPage() {
       ? sortDir === "asc" ? <ChevronUp size={13} className="inline ml-0.5" /> : <ChevronDown size={13} className="inline ml-0.5" />
       : <span className="inline-block w-3" />
 
+  const reminderDirectionOptions = (() => {
+    const normalizeDirection = (value: string) => {
+      const normalized = value.trim().toLowerCase()
+      if (!normalized) return ""
+      if (normalized === "siege" || normalized === "siège" || normalized.includes("siege") || normalized.includes("siège")) {
+        return "Siège"
+      }
+      return value.trim()
+    }
+
+    const regionNames = regions.map((region) => normalizeDirection(region.name))
+
+    const allDirections = [
+      ...regionNames,
+      ...(regionNames.length === 0 ? declarations.map((d) => normalizeDirection(d.direction ?? "")) : []),
+      ...(regionNames.length === 0 ? reminders.map((r) => normalizeDirection(r.direction ?? "")) : []),
+      "Siège",
+    ].filter(Boolean)
+
+    return Array.from(new Set(allDirections)).sort((a, b) => a.localeCompare(b, "fr"))
+  })()
+
   const viewTab = DASH_TABS.find((t) => t.key === viewTabKey)
   const viewTabColor = viewTab?.color ?? "#000"
   const viewTabTitle = viewTab?.title ?? ""
@@ -1481,6 +1586,13 @@ export default function FiscaDashboardPage() {
             Déclarations fiscales récentes
           </p>
         </div>
+
+        <RemindersCard
+          reminders={reminders}
+          loading={remindersLoading}
+          userRole={user.role}
+          directionOptions={reminderDirectionOptions}
+        />
 
         {/* Recent declarations */}
         <Card>

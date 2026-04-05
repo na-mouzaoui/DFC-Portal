@@ -253,6 +253,17 @@ const safeString = (value: unknown) => {
   return String(value)
 }
 
+const asArrayPayload = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) return value
+  if (!value || typeof value !== "object") return []
+
+  const raw = value as Record<string, unknown>
+  if (Array.isArray(raw.$values)) return raw.$values
+  if (Array.isArray(raw.items)) return raw.items
+  if (Array.isArray(raw.data)) return raw.data
+  return []
+}
+
 const normalizeFiscalFournisseurOption = (value: unknown): FiscalFournisseurOption | null => {
   if (!value || typeof value !== "object") return null
   const raw = value as Record<string, unknown>
@@ -2302,16 +2313,22 @@ export default function NouvelleDeclarationPage() {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`)
+        }
+        return r.json()
+      })
       .then((data: unknown) => {
-        const normalized = Array.isArray(data)
-          ? data
-              .map((item) => normalizeFiscalFournisseurOption(item))
-              .filter((item): item is FiscalFournisseurOption => item !== null)
-          : []
+        const normalized = asArrayPayload(data)
+          .map((item) => normalizeFiscalFournisseurOption(item))
+          .filter((item): item is FiscalFournisseurOption => item !== null)
         setFiscalFournisseurs(normalized)
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Erreur chargement fournisseurs fiscaux:", err)
+        setFiscalFournisseurs([])
+      })
   }, [])
 
   useEffect(() => {

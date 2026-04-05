@@ -29,9 +29,7 @@ public class FiscalFournisseursController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var userId = GetCurrentUserId();
         var fournisseurs = await _context.FiscalFournisseurs
-            .Where(f => f.UserId == userId)
             .OrderBy(f => f.RaisonSociale)
             .Select(f => new {
                 id = f.Id,

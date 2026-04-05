@@ -54,8 +54,8 @@ public class FiscalController : ControllerBase
 
     private static int GetDeadlineDayForRole(string? role)
     {
-        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
-        return normalizedRole is "admin" or "comptabilite" or "finance" ? 15 : 10;
+        _ = role;
+        return 7;
     }
 
     private static string ResolveDirectionForRole(string role, string? requestedDirection, string userDirection, string userRegion, string? existingDirection = null)
@@ -775,6 +775,154 @@ public class FiscalController : ControllerBase
 
         return Ok(new { message = "Impression enregistrée dans l'audit." });
     }
+
+    // ─── GET api/fiscal/reminders ──────────────────────────────────────────
+    // Retourne les rappels de saisie (j-5) pour la période a echeance (mois precedent).
+    [HttpGet("reminders")]
+    public async Task<IActionResult> GetReminders()
+    {
+        var userId = GetCurrentUserId();
+        var currentUserContext = await GetCurrentUserContextAsync(userId);
+        var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
+
+        var directionsToCheck = new List<string>();
+
+        if (currentUserRole == "admin")
+        {
+            var regions = await _context.Regions
+                .AsNoTracking()
+                .Select(r => (r.Name ?? "").Trim())
+                .ToListAsync();
+
+            directionsToCheck.AddRange(
+                regions
+                    .Where(r => !string.IsNullOrWhiteSpace(r))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+            );
+
+            directionsToCheck.Add("Siège");
+        }
+        else if (currentUserRole == "regionale")
+        {
+            var region = (currentUserContext.Region ?? "").Trim();
+            var fallbackDirection = (currentUserContext.Direction ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(region))
+                directionsToCheck.Add(region);
+            else if (!string.IsNullOrWhiteSpace(fallbackDirection))
+                directionsToCheck.Add(fallbackDirection);
+        }
+        else if (currentUserRole is "finance" or "comptabilite")
+        {
+            directionsToCheck.Add("Siège");
+        }
+
+        directionsToCheck = directionsToCheck
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (directionsToCheck.Count == 0)
+            return Ok(new { reminders = new List<ReminderDto>() });
+
+        var now = DateTime.Now;
+        var targetPeriod = now.AddMonths(-1);
+        var currentMonth = targetPeriod.Month.ToString("00");
+        var currentYear = targetPeriod.Year.ToString();
+        var reminders = new List<ReminderDto>();
+
+        foreach (var direction in directionsToCheck)
+        {
+            var normalizedDirection = (direction ?? "").Trim().ToLower();
+            var isSiegeDirection = IsHeadOfficeDirection(direction);
+            var assignedTabs = isSiegeDirection ? FinanceManageableTabOrder : RegionalManageableTabOrder;
+            var roleForDeadline = isSiegeDirection ? "finance" : "regionale";
+
+            if (!TryBuildPeriodDeadline(currentMonth, currentYear, roleForDeadline, out var deadline))
+                continue;
+
+            var daysUntilDeadline = (int)Math.Floor((deadline - now).TotalDays);
+
+            IQueryable<FiscalDeclaration> declarationsQuery = _context.FiscalDeclarations
+                .AsNoTracking()
+                .Where(d => d.Mois == currentMonth && d.Annee == currentYear);
+
+            if (isSiegeDirection)
+            {
+                declarationsQuery = declarationsQuery.Where(d =>
+                    // Direction explicite Siège
+                    ((d.Direction ?? "").Trim().ToLower() == "siège")
+                    || ((d.Direction ?? "").Trim().ToLower() == "siege")
+                    || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
+                    || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
+                    // Fallback historique: direction vide, déduite du profil utilisateur
+                    || (
+                        string.IsNullOrWhiteSpace(d.Direction)
+                        && (
+                            (d.User.Role ?? "").Trim().ToLower() == "finance"
+                            || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
+                            || (d.User.Role ?? "").Trim().ToLower() == "admin"
+                            || (d.User.Role ?? "").Trim().ToLower() == "direction"
+                        )
+                    )
+                );
+            }
+            else
+            {
+                declarationsQuery = declarationsQuery.Where(d =>
+                    // Direction explicite régionale
+                    ((d.Direction ?? "").Trim().ToLower() == normalizedDirection)
+                    // Fallback historique: direction vide, déduite de la région utilisateur
+                    || (
+                        string.IsNullOrWhiteSpace(d.Direction)
+                        && (d.User.Role ?? "").Trim().ToLower() == "regionale"
+                        && (d.User.Region ?? "").Trim().ToLower() == normalizedDirection
+                    )
+                );
+            }
+
+            var declarations = await declarationsQuery
+                .Select(d => new { d.TabKey, d.IsApproved })
+                .ToListAsync();
+
+            var enteredTabSet = declarations
+                .Select(d => (d.TabKey ?? "").Trim())
+                .Where(tab => !string.IsNullOrWhiteSpace(tab))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var approvedTabSet = declarations
+                .Where(d => d.IsApproved)
+                .Select(d => (d.TabKey ?? "").Trim())
+                .Where(tab => !string.IsNullOrWhiteSpace(tab))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var enteredTabs = assignedTabs.Count(tab => enteredTabSet.Contains(tab));
+            var approvedTabs = assignedTabs.Count(tab => approvedTabSet.Contains(tab));
+            var remainingToEnterTabs = assignedTabs.Length - enteredTabs;
+            var remainingToApproveTabs = enteredTabs - approvedTabs;
+
+            var missingTabs = assignedTabs
+                .Where(tab => !approvedTabSet.Contains(tab))
+                .ToList();
+
+            reminders.Add(new ReminderDto
+            {
+                Direction = direction,
+                Mois = currentMonth,
+                Annee = currentYear,
+                Deadline = deadline,
+                DaysUntilDeadline = daysUntilDeadline,
+                TotalTabs = assignedTabs.Length,
+                EnteredTabs = enteredTabs,
+                ApprovedTabs = approvedTabs,
+                RemainingToEnterTabs = remainingToEnterTabs,
+                RemainingToApproveTabs = remainingToApproveTabs,
+                MissingTabs = missingTabs,
+                IsUrgent = daysUntilDeadline <= 5
+            });
+        }
+
+        return Ok(new { reminders });
+    }
 }
 
 // ─── DTO ─────────────────────────────────────────────────────────────────────
@@ -803,4 +951,20 @@ public sealed class TvaImmoPayload
 public sealed class TvaBiensPayload
 {
     public List<TvaInvoiceRow> TvaBiensRows { get; set; } = new();
+}
+
+public sealed class ReminderDto
+{
+    public string Direction { get; set; } = "";
+    public string Mois { get; set; } = "";
+    public string Annee { get; set; } = "";
+    public DateTime Deadline { get; set; }
+    public int DaysUntilDeadline { get; set; }
+    public int TotalTabs { get; set; }
+    public int EnteredTabs { get; set; }
+    public int ApprovedTabs { get; set; }
+    public int RemainingToEnterTabs { get; set; }
+    public int RemainingToApproveTabs { get; set; }
+    public List<string> MissingTabs { get; set; } = new();
+    public bool IsUrgent { get; set; }
 }

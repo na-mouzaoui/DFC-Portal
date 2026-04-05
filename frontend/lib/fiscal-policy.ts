@@ -42,7 +42,7 @@ export const syncFiscalPolicy = async (direction?: string | null): Promise<Fisca
     const policy: FiscalPolicy = {
       role: String((payload as { role?: unknown }).role ?? "").trim(),
       requestedDirection: String((payload as { requestedDirection?: unknown }).requestedDirection ?? "").trim(),
-      deadlineDay: Number((payload as { deadlineDay?: unknown }).deadlineDay ?? 10) || 10,
+      deadlineDay: Number((payload as { deadlineDay?: unknown }).deadlineDay ?? 7) || 7,
       regionalTabKeys: toStringArray((payload as { regionalTabKeys?: unknown }).regionalTabKeys),
       financeTabKeys: toStringArray((payload as { financeTabKeys?: unknown }).financeTabKeys),
       manageableTabKeys: toStringArray((payload as { manageableTabKeys?: unknown }).manageableTabKeys),
