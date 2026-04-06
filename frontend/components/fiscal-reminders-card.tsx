@@ -31,6 +31,15 @@ const formatCountdown = (daysUntilDeadline: number) => {
   return `${daysUntilDeadline} jours restant`
 }
 
+const formatDeadlineDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  const day = String(date.getDate()).padStart(2, "0")
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const year = String(date.getFullYear())
+  return `${day}/${month}/${year}`
+}
+
 export function RemindersCard({ reminders, loading = false, userRole = "", directionOptions = [] }: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedDirection, setSelectedDirection] = useState("all")
@@ -156,6 +165,18 @@ export function RemindersCard({ reminders, loading = false, userRole = "", direc
     )
   }, [reminders])
 
+  const lastDeadlineLabel = useMemo(() => {
+    if (remindersForDisplay.length === 0) return "-"
+
+    const lastDeadline = remindersForDisplay.reduce((latest, current) => {
+      const latestTime = new Date(latest.deadline).getTime()
+      const currentTime = new Date(current.deadline).getTime()
+      return currentTime > latestTime ? current : latest
+    }, remindersForDisplay[0])
+
+    return formatDeadlineDate(lastDeadline.deadline)
+  }, [remindersForDisplay])
+
   if (loading) {
     return (
       <Card className="border-yellow-200 bg-yellow-50">
@@ -216,13 +237,13 @@ export function RemindersCard({ reminders, loading = false, userRole = "", direc
       {hasActiveReminder ? (
         <div className="rounded-md bg-red-700 px-3 py-2">
           <p className="text-sm font-semibold text-yellow-300 whitespace-nowrap overflow-hidden text-ellipsis">
-            Rappel: delai proche. Verifiez et completez vos declarations fiscales en attente.
+            Rappel: delai proche. Verifiez et completez vos declarations fiscales en attente ({lastDeadlineLabel})
           </p>
         </div>
       ) : (
         <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2">
           <p className="text-sm font-medium text-green-800">
-            Les declarations de la direction sont a jour.
+            Les declarations de la direction sont a jour. Dernier delai: {lastDeadlineLabel}.
           </p>
         </div>
       )}

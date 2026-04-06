@@ -1716,13 +1716,10 @@ export default function FiscaDashboardPage() {
                       const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
                       const canApproveAsRegional = canApproveRegionalDeclarations
                         && !decl.isApproved
-                        && !isOwnDeclaration
-                        && !!normalizedRegion
-                        && declarationDirection === normalizedRegion
+                        && (isOwnDeclaration || (!!normalizedRegion && declarationDirection === normalizedRegion))
                       const canApproveAsFinance = canApproveFinanceDeclarations
                         && !decl.isApproved
-                        && !isOwnDeclaration
-                        && isSiegeDeclaration
+                        && (isOwnDeclaration || isSiegeDeclaration)
                       const canApproveThisDeclaration = canApproveAsRegional || canApproveAsFinance
                       return (
                         <TableRow

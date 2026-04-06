@@ -260,7 +260,7 @@ export function BankManagement({ onChange }: BankManagementProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => setDeleteConfirmId(bank.id)}
-                  className="text-emerald-600 hover:text-emerald-700"
+                  className="text-red-600 hover:text-red-700"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

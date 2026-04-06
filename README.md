@@ -48,6 +48,7 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 - Filtrage automatique des tableaux fiscaux selon le profil et la direction sélectionnée.
 - Sauvegarde d'une déclaration (création et modification).
 - Consultation des déclarations récentes dans le dashboard fiscal.
+- Rappels fiscaux et indicateurs de complétude/approbation dans le dashboard fiscal.
 - Consultation détaillée au clic ligne, impression PDF, modification, suppression.
 - Validation (approbation) des déclarations via bouton dédié dans le dashboard fiscal pour les comptes approbateurs (régional et finance).
 - Filtres avancés (type, période, direction, date) et tri dans le dashboard.
@@ -60,6 +61,27 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - import CSV intelligent avec déduplication,
   - résolution des conflits (garder l'existant ou remplacer par CSV).
 - Gestion des wilayas/communes (tableau TAP) via une source TypeScript dédiée.
+
+### Fonctionnalités de rappel fiscal
+- Endpoint dédié : `GET /api/fiscal/reminders`.
+- Période de calcul : 10/15 du mois suivant 
+- Périmètre selon rôle connecté :
+  - admin : toutes les régions configurées + Siège,
+  - regionale : sa région,
+  - finance/comptabilite : Siège.
+- Indicateurs calculés par direction :
+  - totalTabs,
+  - enteredTabs,
+  - approvedTabs,
+  - remainingToEnterTabs,
+  - remainingToApproveTabs,
+  - missingTabs,
+  - daysUntilDeadline et isUrgent.
+- Urgence rappel : activée à J-5 (et avant échéance) si des tableaux restent à saisir ou approuver.
+- Le bandeau de rappel est dissocié des KPI :
+  - les tuiles KPI restent toujours visibles,
+  - seul le message change (alerte rouge si urgent, statut vert sinon).
+- Côté admin, un filtre par direction est disponible ; la vue "Tout" conserve le dénominateur global (toutes directions + Siège), même si certaines directions n'ont aucune déclaration.
 
 ### Règles métier importantes
 - Le rôle direction n'a pas accès à la création de déclarations fiscales.
@@ -94,7 +116,7 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Un approbateur régional peut approuver uniquement les déclarations d'autres utilisateurs de la même région.
   - Un compte finance/comptabilite peut être marqué comme approbateur finance.
   - Un approbateur finance peut approuver uniquement les déclarations du niveau Siège.
-  - Un approbateur (régional ou finance) ne peut pas approuver ses propres déclarations.
+  - Un approbateur (régional ou finance) peut aussi approuver ses propres déclarations.
   - Une déclaration modifiée repasse automatiquement en état "En attente" (nouvelle approbation requise).
   - Règles de consultation dashboard fiscal :
     - admin : voit toutes les déclarations (approuvées et en attente), y compris celles émises par les comptes admin et finance/comptabilite.

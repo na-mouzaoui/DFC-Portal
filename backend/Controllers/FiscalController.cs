@@ -668,8 +668,7 @@ public class FiscalController : ControllerBase
         if (decl == null)
             return NotFound();
 
-        if (decl.UserId == userId)
-            return BadRequest(new { message = "Vous ne pouvez pas approuver votre propre déclaration." });
+        var isSelfDeclaration = decl.UserId == userId;
 
         var declarationOwnerRole = (decl.User.Role ?? "").Trim().ToLowerInvariant();
         var declarationOwnerRegion = (decl.User.Region ?? "").Trim().ToLowerInvariant();
@@ -684,15 +683,15 @@ public class FiscalController : ControllerBase
                     || declarationOwnerRole == "direction"
                     || declarationOwnerRole == "admin"));
 
-        if (canApproveAsRegional && (declarationOwnerRole != "regionale" || declarationOwnerRegion != approverRegion))
+        if (!isSelfDeclaration && canApproveAsRegional && (declarationOwnerRole != "regionale" || declarationOwnerRegion != approverRegion))
         {
             return StatusCode(403, new
             {
-                message = "Vous ne pouvez approuver que les déclarations d'autres utilisateurs de votre région."
+                message = "Vous ne pouvez approuver que les déclarations des utilisateurs de votre région."
             });
         }
 
-        if (canApproveAsFinance && !isSiegeDeclaration)
+        if (!isSelfDeclaration && canApproveAsFinance && !isSiegeDeclaration)
         {
             return StatusCode(403, new
             {
