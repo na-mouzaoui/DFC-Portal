@@ -111,6 +111,12 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Exemple : période Mars 2026 -> limite au 10 Avril 2026 (régional) et au 15 Avril 2026 (admin/finance), à 23:59:59.
   - Au-delà du délai applicable au compte connecté : création, modification et suppression interdites.
   - Le blocage est appliqué côté frontend et côté backend.
+- Permissions de modification/suppression par groupe/direction :
+  - Tous les utilisateurs d'une même région peuvent modifier et supprimer les déclarations de cette région.
+  - Tous les utilisateurs finance/comptabilité peuvent modifier et supprimer les déclarations du siège.
+  - Les admins peuvent modifier/supprimer toutes les déclarations.
+  - La permission est basée sur le groupe (direction/région) de l'utilisateur, pas sur qui a créé la déclaration.
+  - L'audit enregistre qui a effectué la modification/suppression (audit trail complet).
 - Workflow d'approbation des déclarations :
   - Un compte regionale peut être marqué comme approbateur régional.
   - Un approbateur régional peut approuver uniquement les déclarations d'autres utilisateurs de la même région.

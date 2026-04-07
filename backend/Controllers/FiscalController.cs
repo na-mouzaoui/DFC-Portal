@@ -55,7 +55,7 @@ public class FiscalController : ControllerBase
     private static int GetDeadlineDayForRole(string? role)
     {
         _ = role;
-        return 7;
+        return 10;
     }
 
     private static string ResolveDirectionForRole(string role, string? requestedDirection, string userDirection, string userRegion, string? existingDirection = null)
@@ -211,6 +211,68 @@ public class FiscalController : ControllerBase
         return roleTabs
             .Where(tab => scoped.Contains(tab, StringComparer.OrdinalIgnoreCase))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Vérifie si l'utilisateur courant peut accéder à une déclaration fiscale pour la modifier/consulter/supprimer
+    /// basée sur sa direction et son rôle, indépendamment de qui l'a créée.
+    /// </summary>
+    private async Task<bool> CanUserAccessDeclarationAsync(int userId, FiscalDeclaration declaration)
+    {
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user == null)
+            return false;
+
+        var userRole = (user.Role ?? "").Trim().ToLowerInvariant();
+        var userRegion = (user.Region ?? "").Trim().ToLowerInvariant();
+        var userDirection = (user.Direction ?? "").Trim().ToLowerInvariant();
+
+        var declarationRole = (declaration.User.Role ?? "").Trim().ToLowerInvariant();
+        var declarationRegion = (declaration.User.Region ?? "").Trim().ToLowerInvariant();
+        var declarationDirection = (declaration.Direction ?? "").Trim().ToLowerInvariant();
+
+        // L'admin peut accéder à tout
+        if (userRole == "admin")
+            return true;
+
+        // L'auteur peut toujours accéder à sa propre déclaration
+        if (userId == declaration.UserId)
+            return true;
+
+        // Vérification par rôle et direction/région
+        if (userRole == "regionale")
+        {
+            // Un utilisateur régional peut accéder aux déclarations de sa région
+            // soit via la région de l'auteur, soit via la direction de la déclaration
+            if (!string.IsNullOrWhiteSpace(userRegion))
+            {
+                // La déclaration appartient à la même région
+                if (declarationRegion == userRegion || 
+                    (!string.IsNullOrWhiteSpace(declarationDirection) && declarationDirection == userRegion))
+                {
+                    // Vérifier que l'auteur est aussi régional (pas finance/comptabilité)
+                    if (declarationRole == "regionale")
+                        return true;
+                }
+            }
+        }
+        else if (userRole == "finance" || userRole == "comptabilite")
+        {
+            // Un utilisateur finance/comptabilité peut accéder aux déclarations du siège
+            // créées par d'autres utilisateurs finance/comptabilité/direction/admin
+            if (IsHeadOfficeDirection(declarationDirection) || 
+                (string.IsNullOrWhiteSpace(declarationDirection) && 
+                 (declarationRole == "finance" || declarationRole == "comptabilite" || 
+                  declarationRole == "direction" || declarationRole == "admin")))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private IActionResult BuildTabAccessDeniedResponse(string role, string? tabKey)
@@ -529,9 +591,14 @@ public class FiscalController : ControllerBase
     {
         var userId = GetCurrentUserId();
         var decl = await _context.FiscalDeclarations
-            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id);
 
         if (decl == null) return NotFound();
+
+        // Vérifier les permissions d'accès
+        if (!await CanUserAccessDeclarationAsync(userId, decl))
+            return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez consulter que les déclarations de votre groupe." });
 
         return Ok(new
         {
@@ -596,10 +663,16 @@ public class FiscalController : ControllerBase
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
+        
         var decl = await _context.FiscalDeclarations
-            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id);
 
         if (decl == null) return NotFound();
+
+        // Vérifier les permissions d'accès
+        if (!await CanUserAccessDeclarationAsync(userId, decl))
+            return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez modifier que les déclarations de votre groupe." });
 
         if (!CanManageTabForRole(currentUserRole, decl.TabKey))
             return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
@@ -631,7 +704,7 @@ public class FiscalController : ControllerBase
         await _context.SaveChangesAsync();
 
         await _auditService.LogAction(userId, "FISCAL_SAVE", "FiscalDeclaration", decl.Id,
-            new { decl.TabKey, decl.Mois, decl.Annee, action = "update" });
+            new { decl.TabKey, decl.Mois, decl.Annee, action = "update", modifiedByUserId = userId });
 
         return NoContent();
     }
@@ -738,10 +811,16 @@ public class FiscalController : ControllerBase
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
+        
         var decl = await _context.FiscalDeclarations
-            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id);
 
         if (decl == null) return NotFound();
+
+        // Vérifier les permissions d'accès
+        if (!await CanUserAccessDeclarationAsync(userId, decl))
+            return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez supprimer que les déclarations de votre groupe." });
 
         if (!CanManageTabForRole(currentUserRole, decl.TabKey))
             return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
@@ -749,7 +828,7 @@ public class FiscalController : ControllerBase
         if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(decl.Mois, decl.Annee, periodDeadline);
 
-        var info = new { decl.TabKey, decl.Mois, decl.Annee };
+        var info = new { decl.TabKey, decl.Mois, decl.Annee, deletedByUserId = userId };
         _context.FiscalDeclarations.Remove(decl);
         await _context.SaveChangesAsync();
 
@@ -765,9 +844,14 @@ public class FiscalController : ControllerBase
     {
         var userId = GetCurrentUserId();
         var decl = await _context.FiscalDeclarations
-            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id);
 
         if (decl == null) return NotFound();
+
+        // Vérifier les permissions d'accès
+        if (!await CanUserAccessDeclarationAsync(userId, decl))
+            return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez imprimer que les déclarations de votre groupe." });
 
         await _auditService.LogAction(userId, "FISCAL_PRINT", "FiscalDeclaration", id,
             new { decl.TabKey, decl.Mois, decl.Annee });
