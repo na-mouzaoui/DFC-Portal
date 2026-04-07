@@ -2800,7 +2800,7 @@ export default function NouvelleDeclarationPage() {
       }
     } catch { /* quota or SSR */ }
 
-    // Persist to database (non-blocking)
+    // Persist to database
     try {
       const apiBase = API_BASE
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
@@ -2823,7 +2823,7 @@ export default function NouvelleDeclarationPage() {
         case "taxe_domicil":   tabData = { taxe15Rows }; break
         case "tva_autoliq":    tabData = { tva16Rows }; break
       }
-      await fetch(`${apiBase}/api/fiscal`, {
+      const response = await fetch(`${apiBase}/api/fiscal`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -2838,7 +2838,30 @@ export default function NouvelleDeclarationPage() {
           dataJson: JSON.stringify(tabData),
         }),
       })
-    } catch { /* silently fail if backend unavailable */ }
+      
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}))
+        const errorMessage = errorPayload && typeof errorPayload === "object" && "message" in errorPayload
+          ? String((errorPayload as { message?: unknown }).message ?? "Erreur lors de l'enregistrement")
+          : "Erreur lors de l'enregistrement"
+        
+        setIsSubmitting(false)
+        toast({
+          title: "Erreur d'enregistrement",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        return
+      }
+    } catch (error) {
+      setIsSubmitting(false)
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Impossible de contacter le serveur",
+        variant: "destructive",
+      })
+      return
+    }
     
     const tabLabel = TABS.find((t) => t.key === activeTab)?.label ?? activeTab
     toast({

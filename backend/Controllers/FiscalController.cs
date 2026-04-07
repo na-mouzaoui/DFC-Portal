@@ -373,6 +373,35 @@ public class FiscalController : ControllerBase
         if (incomingRows.Count == 0)
             return (false, null);
 
+        // Validate invoice dates are not older than 13 months from the current period
+        if (!int.TryParse(request.Mois, out var month) || !int.TryParse(request.Annee, out var year))
+            return (false, null);
+
+        var periodDate = new DateTime(year, month, 1);
+        var maxAgeDate = periodDate.AddMonths(-13);
+
+        foreach (var row in incomingRows)
+        {
+            var dateStr = (row.DateFacture ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(dateStr)) continue;
+
+            // Extract date part (before 'T' if ISO format)
+            var datePart = dateStr.IndexOf('T') > 0 ? dateStr[..dateStr.IndexOf('T')] : dateStr;
+            
+            if (DateTime.TryParse(datePart, out var invoiceDate))
+            {
+                if (invoiceDate < maxAgeDate)
+                {
+                    return (true, Conflict(new
+                    {
+                        message = $"Facture rejetée: la date de facture ({invoiceDate:yyyy-MM-dd}) est antérieure à {maxAgeDate:MMMM yyyy}. Les factures doivent dater de moins de 13 mois.",
+                        invoice = BuildInvoiceLabel(row),
+                        limitation = "Factures de moins de 13 mois uniquement"
+                    }));
+                }
+            }
+        }
+
         // Prevent duplicates in the same payload.
         var incomingKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in incomingRows)

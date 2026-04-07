@@ -104,7 +104,10 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - fournisseur,
   - référence facture,
   - montant HT.
-- Cette unicité est contrôlée côté frontend et côté backend, y compris sur l'historique des périodes.
+- Limite temporelle des factures : les factures saisies ne doivent pas dater de plus de 13 mois avant la période actuelle.
+  - Exemple : En avril 2026, les factures doivent être de mars 2025 ou plus récentes.
+  - Le contrôle est appliqué côté backend lors de la validation.
+- Cette unicité et limitation temporelle sont contrôlées côté backend, y compris sur l'historique des périodes.
 - Règle de clôture de période (délai légal interne) :
   - Comptes régionaux : date limite = 10 du mois suivant à 23:59:59.
   - Comptes admin et finance : date limite = 15 du mois suivant à 23:59:59.
