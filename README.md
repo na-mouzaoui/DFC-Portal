@@ -103,7 +103,7 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
 - Unicité des factures pour les tableaux TVA (2 et 3) sur la clé :
   - fournisseur,
   - référence facture,
-  - date facture.
+  - montant HT.
 - Cette unicité est contrôlée côté frontend et côté backend, y compris sur l'historique des périodes.
 - Règle de clôture de période (délai légal interne) :
   - Comptes régionaux : date limite = 10 du mois suivant à 23:59:59.

@@ -297,12 +297,14 @@ public class FiscalController : ControllerBase
 
     private static string NormalizeInvoicePart(string? value) => (value ?? "").Trim().ToUpperInvariant();
 
-    private static string NormalizeInvoiceDate(string? value)
+    private static string NormalizeMontantHT(string? value)
     {
         var raw = (value ?? "").Trim();
         if (string.IsNullOrWhiteSpace(raw)) return "";
-        var sepIndex = raw.IndexOf('T');
-        return sepIndex > 0 ? raw[..sepIndex] : raw;
+        // Normaliser le montant en supprimant les espaces et en utilisant un point comme séparateur
+        var standardized = raw.Replace("\u00A0", "").Replace(" ", "").Replace(",", ".");
+        var cleaned = standardized.Replace("/", "");
+        return cleaned;
     }
 
     private static string BuildSupplierKey(TvaInvoiceRow row)
@@ -318,12 +320,12 @@ public class FiscalController : ControllerBase
     {
         var supplierKey = BuildSupplierKey(row);
         var reference = NormalizeInvoicePart(row.NumFacture);
-        var date = NormalizeInvoiceDate(row.DateFacture);
+        var montant = NormalizeMontantHT(row.MontantHT);
 
-        if (string.IsNullOrWhiteSpace(supplierKey) || string.IsNullOrWhiteSpace(reference) || string.IsNullOrWhiteSpace(date))
+        if (string.IsNullOrWhiteSpace(supplierKey) || string.IsNullOrWhiteSpace(reference) || string.IsNullOrWhiteSpace(montant))
             return "";
 
-        return $"{supplierKey}|{reference}|{date}";
+        return $"{supplierKey}|{reference}|{montant}";
     }
 
     private static string BuildInvoiceLabel(TvaInvoiceRow row)
@@ -332,7 +334,7 @@ public class FiscalController : ControllerBase
             ? (string.IsNullOrWhiteSpace(row.FournisseurId) ? "—" : row.FournisseurId)
             : row.NomRaisonSociale;
 
-        return $"{supplier} | {row.NumFacture} | {NormalizeInvoiceDate(row.DateFacture)}";
+        return $"{supplier} | {row.NumFacture} | {row.MontantHT}";
     }
 
     private static List<TvaInvoiceRow> ExtractTvaRows(string tabKey, string? dataJson)
@@ -382,7 +384,7 @@ public class FiscalController : ControllerBase
             {
                 return (true, Conflict(new
                 {
-                    message = "Facture en doublon dans la déclaration en cours (même fournisseur, même référence et même date).",
+                    message = "Facture en doublon dans la déclaration en cours (même fournisseur, même référence et même montant).",
                     invoice = BuildInvoiceLabel(row)
                 }));
             }
@@ -419,7 +421,7 @@ public class FiscalController : ControllerBase
             {
                 return (true, Conflict(new
                 {
-                    message = "Facture déjà enregistrée dans les tableaux 2/3 (même fournisseur, même référence, même date), même sur une période différente.",
+                    message = "Facture déjà enregistrée dans les tableaux 2/3 (même fournisseur, même référence, même montant), même sur une période différente.",
                     invoice = BuildInvoiceLabel(row)
                 }));
             }
@@ -1024,6 +1026,7 @@ public sealed class TvaInvoiceRow
     public string? NomRaisonSociale { get; set; }
     public string? NumFacture { get; set; }
     public string? DateFacture { get; set; }
+        public string? MontantHT { get; set; }
 }
 
 public sealed class TvaImmoPayload
@@ -1051,3 +1054,4 @@ public sealed class ReminderDto
     public List<string> MissingTabs { get; set; } = new();
     public bool IsUrgent { get; set; }
 }
+
