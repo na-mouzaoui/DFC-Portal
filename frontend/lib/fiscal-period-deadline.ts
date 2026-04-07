@@ -29,11 +29,11 @@ const normalizeYear = (annee: string) => {
 
 const getDeadlineDayForRole = (role?: string | null): number => {
   const policyDeadlineDay = getPolicyDeadlineDay(role)
-  if (policyDeadlineDay === 7) {
+  if (policyDeadlineDay !== null) {
     return policyDeadlineDay
   }
 
-  return 7
+  return 10
 }
 
 export const getFiscalPeriodDeadline = (mois: string, annee: string, role?: string | null): Date | null => {

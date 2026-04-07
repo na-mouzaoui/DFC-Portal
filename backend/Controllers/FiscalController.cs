@@ -55,7 +55,7 @@ public class FiscalController : ControllerBase
     private static int GetDeadlineDayForRole(string? role)
     {
         _ = role;
-        return 7;
+        return 10;
     }
 
     private static string ResolveDirectionForRole(string role, string? requestedDirection, string userDirection, string userRegion, string? existingDirection = null)
