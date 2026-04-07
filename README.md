@@ -129,8 +129,8 @@ Saisir, sauvegarder, modifier, consulter, imprimer et historiser les déclaratio
   - Une déclaration modifiée repasse automatiquement en état "En attente" (nouvelle approbation requise).
   - Règles de consultation dashboard fiscal :
     - admin : voit toutes les déclarations (approuvées et en attente), y compris celles émises par les comptes admin et finance/comptabilite.
-    - finance/comptabilite : voit toutes les déclarations du niveau Siège (approuvées et en attente) + les déclarations régionales approuvées.
-    - direction (global) : voit toutes les déclarations de toutes les directions, uniquement si elles sont approuvées.
+    - finance/comptabilite : voit toutes les déclarations du niveau Siège (approuvées et en attente) + toutes les déclarations régionales (approuvées et en attente).
+    - direction (global) : voit toutes les déclarations du siège approuvées + toutes les déclarations régionales (approuvées et en attente).
 - Les données peuvent exister localement (cache local) et sont aussi persistées côté API.
 
 ## 3. Recap Fiscaux

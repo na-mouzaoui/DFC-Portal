@@ -227,11 +227,7 @@ public class FiscalController : ControllerBase
             return false;
 
         var userRole = (user.Role ?? "").Trim().ToLowerInvariant();
-        var userRegion = (user.Region ?? "").Trim().ToLowerInvariant();
         var userDirection = (user.Direction ?? "").Trim().ToLowerInvariant();
-
-        var declarationRole = (declaration.User.Role ?? "").Trim().ToLowerInvariant();
-        var declarationRegion = (declaration.User.Region ?? "").Trim().ToLowerInvariant();
         var declarationDirection = (declaration.Direction ?? "").Trim().ToLowerInvariant();
 
         // L'admin peut accéder à tout
@@ -242,31 +238,25 @@ public class FiscalController : ControllerBase
         if (userId == declaration.UserId)
             return true;
 
-        // Vérification par rôle et direction/région
+        // Vérification par rôle et direction
+        // Pour regionale: userDirection contient le nom de la région (Nord, Sud, Est, Ouest)
+        // Pour finance/comptabilite: userDirection contient "Siège"
+        // declarationDirection contient la région de la déclaration (ou "Siège")
+        
         if (userRole == "regionale")
         {
             // Un utilisateur régional peut accéder aux déclarations de sa région
-            // soit via la région de l'auteur, soit via la direction de la déclaration
-            if (!string.IsNullOrWhiteSpace(userRegion))
+            // La région de la déclaration est dans FiscalDeclaration.Direction
+            if (!string.IsNullOrWhiteSpace(userDirection) && 
+                userDirection == declarationDirection)
             {
-                // La déclaration appartient à la même région
-                if (declarationRegion == userRegion || 
-                    (!string.IsNullOrWhiteSpace(declarationDirection) && declarationDirection == userRegion))
-                {
-                    // Vérifier que l'auteur est aussi régional (pas finance/comptabilité)
-                    if (declarationRole == "regionale")
-                        return true;
-                }
+                return true;
             }
         }
-        else if (userRole == "finance" || userRole == "comptabilite")
+        else if (userRole == "finance" || userRole == "comptabilite" || userRole == "direction")
         {
-            // Un utilisateur finance/comptabilité peut accéder aux déclarations du siège
-            // créées par d'autres utilisateurs finance/comptabilité/direction/admin
-            if (IsHeadOfficeDirection(declarationDirection) || 
-                (string.IsNullOrWhiteSpace(declarationDirection) && 
-                 (declarationRole == "finance" || declarationRole == "comptabilite" || 
-                  declarationRole == "direction" || declarationRole == "admin")))
+            // Finance/comptabilite/direction peuvent accéder aux déclarations du siège
+            if (IsHeadOfficeDirection(declarationDirection))
             {
                 return true;
             }
@@ -525,7 +515,6 @@ public class FiscalController : ControllerBase
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
-        var currentUserRegion = (currentUserContext.Region ?? "").Trim().ToLowerInvariant();
 
         IQueryable<FiscalDeclaration> query = _context.FiscalDeclarations.AsNoTracking();
 
@@ -538,55 +527,13 @@ public class FiscalController : ControllerBase
         }
         else if (currentUserRole == "regionale")
         {
-            if (string.IsNullOrWhiteSpace(currentUserRegion))
-            {
-                query = query.Where(d => d.UserId == userId);
-            }
-            else
-            {
-                query = query.Where(d =>
-                    ((d.Direction ?? "").Trim().ToLower() == currentUserRegion)
-                    || (
-                        string.IsNullOrWhiteSpace(d.Direction)
-                        && (d.User.Region ?? "").Trim().ToLower() == currentUserRegion
-                    )
-                );
-            }
+            // Les comptes regionale ne voient que leurs propres déclarations.
+            query = query.Where(d => d.UserId == userId);
         }
-        else if (currentUserRole is "finance" or "comptabilite")
+        else if (currentUserRole is "finance" or "comptabilite" or "direction")
         {
-            // Finance voit:
-            // 1) toutes les déclarations de la direction Siège (approuvées ou en attente)
-            // 2) les déclarations régionales approuvées
-            query = query.Where(d =>
-                // Déclarations Siège
-                (
-                    ((d.Direction ?? "").Trim().ToLower() == "siège")
-                    || ((d.Direction ?? "").Trim().ToLower() == "siege")
-                    || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
-                    || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
-                    || (
-                        string.IsNullOrWhiteSpace(d.Direction)
-                        && (
-                            (d.User.Role ?? "").Trim().ToLower() == "finance"
-                            || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
-                            || (d.User.Role ?? "").Trim().ToLower() == "admin"
-                            || (d.User.Role ?? "").Trim().ToLower() == "direction"
-                        )
-                    )
-                )
-                // Déclarations régionales approuvées
-                || (
-                    (d.User.Role ?? "").Trim().ToLower() == "regionale"
-                    && d.IsApproved
-                )
-            );
-        }
-        else if (currentUserRole == "direction")
-        {
-            // Global/Direction voit toutes les déclarations, toutes directions confondues,
-            // mais uniquement celles approuvées.
-            query = query.Where(d => d.IsApproved);
+            // Les comptes finance/comptabilite/global(direction) voient toutes les déclarations,
+            // qu'elles soient approuvées ou non.
         }
         else
         {
