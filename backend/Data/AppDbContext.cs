@@ -17,8 +17,10 @@ public class AppDbContext : DbContext
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Checkbook> Checkbooks { get; set; }
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
-    public DbSet<FiscalDeclaration> FiscalDeclarations { get; set; }
+    public DbSet<Declaration> Declarations { get; set; }
     public DbSet<FiscalFournisseur> FiscalFournisseurs { get; set; }
+    public DbSet<EtatsDeSortie> EtatsDeSortie { get; set; }
+    public DbSet<AdminFiscalSetting> AdminFiscalSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -136,9 +138,10 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.UserId);
         });
 
-        // FiscalDeclaration configuration
-        modelBuilder.Entity<FiscalDeclaration>(entity =>
+        // Declaration configuration
+        modelBuilder.Entity<Declaration>(entity =>
         {
+            entity.ToTable("Declaration");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.User)
                   .WithMany()
@@ -157,6 +160,34 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Mois).HasMaxLength(10);
             entity.Property(e => e.Annee).HasMaxLength(10);
             entity.Property(e => e.IsApproved).HasDefaultValue(false);
+        });
+
+        // EtatsDeSortie configuration
+        modelBuilder.Entity<EtatsDeSortie>(entity =>
+        {
+            entity.ToTable("EtatsDeSortie");
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.Key, e.Mois, e.Annee }).IsUnique();
+            entity.Property(e => e.Key).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Mois).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.Annee).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.RowsJson).IsRequired();
+            entity.Property(e => e.FormulasJson).IsRequired();
+            entity.Property(e => e.IsGenerated).HasDefaultValue(true);
+        });
+
+        // AdminFiscalSetting configuration
+        modelBuilder.Entity<AdminFiscalSetting>(entity =>
+        {
+            entity.ToTable("AdminFiscalSettings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.IsTable6Enabled).HasDefaultValue(true);
         });
 
         // Seed data
@@ -232,6 +263,15 @@ public class AppDbContext : DbContext
             new Region { Id = 2, Name = "sud", VillesJson = "[\"Ouargla\", \"Ghardaia\", \"Tamanrasset\", \"Adrar\", \"Illizi\"]", CreatedAt = seedCreatedAt },
             new Region { Id = 3, Name = "est", VillesJson = "[\"Constantine\", \"Annaba\", \"Sétif\", \"Batna\", \"Guelma\"]", CreatedAt = seedCreatedAt },
             new Region { Id = 4, Name = "ouest", VillesJson = "[\"Oran\", \"Tlemcen\", \"Sidi Bel Abbès\", \"Mostaganem\", \"Mascara\"]", CreatedAt = seedCreatedAt }
+        );
+
+        modelBuilder.Entity<AdminFiscalSetting>().HasData(
+            new AdminFiscalSetting
+            {
+                Id = 1,
+                IsTable6Enabled = true,
+                UpdatedAt = seedCreatedAt
+            }
         );
     }
 }

@@ -12,8 +12,8 @@ import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
-import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
-import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
+import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
+import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole, isFiscalTabDisabledByPolicy } from "@/lib/fiscal-tab-access"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { API_BASE } from "@/lib/config"
 
@@ -619,6 +619,7 @@ const MONTHS = [
   { value: "11", label: "Novembre" },  { value: "12", label: "Decembre" },
 ]
 const CURRENT_YEAR = new Date().getFullYear()
+const INITIAL_FISCAL_PERIOD = getCurrentFiscalPeriod()
 const YEARS = Array.from({ length: 101 }, (_, i) => (2000 + i).toString())
 interface Tab6Props {
   rows: TAPRow[]; setRows: React.Dispatch<React.SetStateAction<TAPRow[]>>
@@ -744,14 +745,24 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 // 
 interface Tab7Props { rows: SiegeEncRow[]; setRows: React.Dispatch<React.SetStateAction<SiegeEncRow[]>>; onSave: () => void; isSubmitting: boolean }
 function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
-  const upd = (i: number, f: keyof SiegeEncRow, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const upd = (i: number, v: string) =>
+    setRows((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r
+
+        const ttcValue = v
+        const ttcNumeric = num(ttcValue)
+        const htValue = (ttcValue ?? "").trim() === "" ? "" : (ttcNumeric / 1.19).toFixed(2)
+
+        return { ...r, ttc: ttcValue, ht: htValue }
+      }),
+    )
   const g1 = rows.slice(0, 2)
   const g2 = rows.slice(2, 12)
   const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
-  const t1ht  = g1.reduce((s, r) => s + num(r.ht), 0)
+  const t1ht  = g1.reduce((s, r) => s + (num(r.ttc) / 1.19), 0)
   const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
-  const t2ht  = g2.reduce((s, r) => s + num(r.ht), 0)
+  const t2ht  = g2.reduce((s, r) => s + (num(r.ttc) / 1.19), 0)
   const totalRow: React.CSSProperties = { background: "#f3f4f6", fontWeight: 700 }
   const grandRow: React.CSSProperties = { background: "#dcfce7", fontWeight: 700 }
   return (
@@ -769,8 +780,8 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             {SIEGE_G1_LABELS.map((lbl, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ht} onChange={(e) => upd(i, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right bg-gray-100" value={(rows[i].ttc ?? "").trim() === "" ? "" : (num(rows[i].ttc) / 1.19).toFixed(2)} readOnly placeholder="0.00" style={{ minWidth: 130 }} /></td>
               </tr>
             ))}
             <tr style={totalRow}>
@@ -781,8 +792,8 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             {SIEGE_G2_LABELS.map((lbl, i) => (
               <tr key={i + 2} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, "ttc", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ht} onChange={(e) => upd(i + 2, "ht", e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right bg-gray-100" value={(rows[i + 2].ttc ?? "").trim() === "" ? "" : (num(rows[i + 2].ttc) / 1.19).toFixed(2)} readOnly placeholder="0.00" style={{ minWidth: 130 }} /></td>
               </tr>
             ))}
             <tr style={totalRow}>
@@ -2343,8 +2354,8 @@ export default function NouvelleDeclarationPage() {
   //  Global meta 
   const [activeTab,  setActiveTab]  = useState("encaissement")
   const [direction,  setDirection]  = useState("")
-  const [mois,       setMois]       = useState(String(new Date().getMonth() + 1).padStart(2, "0"))
-  const [annee,      setAnnee]      = useState(String(CURRENT_YEAR))
+  const [mois,       setMois]       = useState(INITIAL_FISCAL_PERIOD.mois)
+  const [annee,      setAnnee]      = useState(INITIAL_FISCAL_PERIOD.annee)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingDeclarationId, setEditingDeclarationId] = useState<string | null>(null)
   const [editingCreatedAt, setEditingCreatedAt] = useState("")
@@ -2381,6 +2392,14 @@ export default function NouvelleDeclarationPage() {
     [adminSelectedDirection, fiscalPolicyRevision, isAdminRole, userRole],
   )
   const availableTabs = useMemo(() => TABS.filter((tab) => manageableTabKeys.has(tab.key)), [manageableTabKeys])
+  const disabledTabKeys = useMemo(
+    () => new Set(availableTabs.filter((tab) => isFiscalTabDisabledByPolicy(tab.key)).map((tab) => tab.key)),
+    [availableTabs, fiscalPolicyRevision],
+  )
+  const selectableTabs = useMemo(
+    () => availableTabs.map((tab) => ({ ...tab, isDisabled: disabledTabKeys.has(tab.key) })),
+    [availableTabs, disabledTabKeys],
+  )
   const selectableYears = useMemo(
     () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
     [fiscalPolicyRevision, userRole],
@@ -2390,6 +2409,7 @@ export default function NouvelleDeclarationPage() {
     [annee, fiscalPolicyRevision, userRole],
   )
   const hasFiscalTabAccess = availableTabs.length > 0
+  const isActiveTabDisabled = disabledTabKeys.has(activeTab)
 
   const resolveDirectionForRole = useCallback(
     (fallbackDirection = "") => {
@@ -2441,10 +2461,11 @@ export default function NouvelleDeclarationPage() {
 
   useEffect(() => {
     if (availableTabs.length === 0) return
-    if (!availableTabs.some((tab) => tab.key === activeTab)) {
-      setActiveTab(availableTabs[0].key)
+    const firstEnabledTab = selectableTabs.find((tab) => !tab.isDisabled)?.key ?? availableTabs[0].key
+    if (!availableTabs.some((tab) => tab.key === activeTab) || disabledTabKeys.has(activeTab)) {
+      setActiveTab(firstEnabledTab)
     }
-  }, [activeTab, availableTabs])
+  }, [activeTab, availableTabs, disabledTabKeys, selectableTabs])
 
   useEffect(() => {
     if (!selectableYears.includes(annee)) {
@@ -2470,6 +2491,10 @@ export default function NouvelleDeclarationPage() {
   }, [user, isAdminRole, resolveDirectionForRole])
 
   useEffect(() => {
+    if (isLoading || status !== "authenticated" || !user) {
+      return
+    }
+
     if (!editQuery.editId) {
       setEditingDeclarationId(null)
       setEditingCreatedAt("")
@@ -2496,7 +2521,7 @@ export default function NouvelleDeclarationPage() {
       const loadedDirection = safeString(declaration.direction).trim()
       const scopedDirection = isAdminRole ? loadedDirection : resolveDirectionForRole(loadedDirection)
 
-      if (!canManageTabForDirection(requestedTab, scopedDirection)) {
+      if (!isAdminRole && !canManageTabForDirection(requestedTab, scopedDirection)) {
         toast({
           title: "Acces refuse",
           description: "Votre profil n'est pas autorise a modifier ce tableau fiscal.",
@@ -2541,7 +2566,17 @@ export default function NouvelleDeclarationPage() {
         variant: "destructive",
       })
     }
-  }, [canManageTabForDirection, editQuery.editId, editQuery.tab, isAdminRole, resolveDirectionForRole, router])
+  }, [
+    canManageTabForDirection,
+    editQuery.editId,
+    editQuery.tab,
+    isAdminRole,
+    isLoading,
+    resolveDirectionForRole,
+    router,
+    status,
+    user,
+  ])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -2554,10 +2589,20 @@ export default function NouvelleDeclarationPage() {
   const handleSave = async () => {
     const saveDirection = effectiveDirection
 
-    if (!canManageTabForDirection(activeTab, saveDirection)) {
+    const isAdminEditing = isAdminRole && !!editingDeclarationId
+    if (!isAdminEditing && !canManageTabForDirection(activeTab, saveDirection)) {
       toast({
         title: "Acces refuse",
         description: "Votre profil n'est pas autorise a creer ou modifier ce tableau fiscal.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (isActiveTabDisabled) {
+      toast({
+        title: "Tableau desactive",
+        description: "Le tableau selectionne est desactive par l'administration.",
         variant: "destructive",
       })
       return
@@ -2678,6 +2723,10 @@ export default function NouvelleDeclarationPage() {
     } catch {
       existingDeclarations = []
     }
+
+    const originalDeclaration = editingDeclarationId
+      ? existingDeclarations.find((item) => safeString(item.id) === editingDeclarationId) ?? null
+      : null
 
     if (activeTab === "tva_immo" || activeTab === "tva_biens") {
       const currentRows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
@@ -2823,37 +2872,128 @@ export default function NouvelleDeclarationPage() {
         case "taxe_domicil":   tabData = { taxe15Rows }; break
         case "tva_autoliq":    tabData = { tva16Rows }; break
       }
-      const response = await fetch(`${apiBase}/api/fiscal`, {
+      const requestPayload = {
+        tabKey: activeTab,
+        mois,
+        annee,
+        direction: saveDirection,
+        dataJson: JSON.stringify(tabData),
+      }
+
+      if (editingDeclarationId) {
+        const deleteResponse = await fetch(`${apiBase}/api/fiscal/${encodeURIComponent(editingDeclarationId)}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+
+        if (!deleteResponse.ok && deleteResponse.status !== 404) {
+          const deleteErrorPayload = await deleteResponse.json().catch(() => ({}))
+          const deleteErrorMessage = deleteErrorPayload && typeof deleteErrorPayload === "object" && "message" in deleteErrorPayload
+            ? String((deleteErrorPayload as { message?: unknown }).message ?? "Erreur lors de la suppression avant modification")
+            : "Erreur lors de la suppression avant modification"
+
+          try {
+            localStorage.setItem("fiscal_declarations", JSON.stringify(existingDeclarations))
+          } catch {
+            // Ignore local cache restore failures.
+          }
+
+          setIsSubmitting(false)
+          toast({
+            title: "Erreur de modification",
+            description: deleteErrorMessage,
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      const createResponse = await fetch(`${apiBase}/api/fiscal`, {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          tabKey: activeTab,
-          mois,
-          annee,
-          direction: saveDirection,
-          dataJson: JSON.stringify(tabData),
-        }),
+        body: JSON.stringify(requestPayload),
       })
-      
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}))
+
+      if (!createResponse.ok) {
+        const errorPayload = await createResponse.json().catch(() => ({}))
         const errorMessage = errorPayload && typeof errorPayload === "object" && "message" in errorPayload
           ? String((errorPayload as { message?: unknown }).message ?? "Erreur lors de l'enregistrement")
           : "Erreur lors de l'enregistrement"
-        
+
+        let restoreSucceeded = false
+        if (editingDeclarationId && originalDeclaration) {
+          let restoreTabData: unknown = {}
+          switch (activeTab) {
+            case "encaissement":   restoreTabData = { encRows: originalDeclaration.encRows ?? [] }; break
+            case "tva_immo":       restoreTabData = { tvaImmoRows: originalDeclaration.tvaImmoRows ?? [] }; break
+            case "tva_biens":      restoreTabData = { tvaBiensRows: originalDeclaration.tvaBiensRows ?? [] }; break
+            case "droits_timbre":  restoreTabData = { timbreRows: originalDeclaration.timbreRows ?? [] }; break
+            case "ca_tap":         restoreTabData = { b12: originalDeclaration.b12 ?? "", b13: originalDeclaration.b13 ?? "" }; break
+            case "etat_tap":       restoreTabData = { tapRows: originalDeclaration.tapRows ?? [] }; break
+            case "ca_siege":       restoreTabData = { caSiegeRows: originalDeclaration.caSiegeRows ?? [] }; break
+            case "irg":            restoreTabData = { irgRows: originalDeclaration.irgRows ?? [] }; break
+            case "taxe2":          restoreTabData = { taxe2Rows: originalDeclaration.taxe2Rows ?? [] }; break
+            case "taxe_masters":   restoreTabData = { masterRows: originalDeclaration.masterRows ?? [] }; break
+            case "taxe_vehicule":  restoreTabData = { taxe11Montant: originalDeclaration.taxe11Montant ?? "" }; break
+            case "taxe_formation": restoreTabData = { taxe12Rows: originalDeclaration.taxe12Rows ?? [] }; break
+            case "acompte":        restoreTabData = { acompteMonths: originalDeclaration.acompteMonths ?? [] }; break
+            case "ibs":            restoreTabData = { ibs14Rows: originalDeclaration.ibs14Rows ?? [] }; break
+            case "taxe_domicil":   restoreTabData = { taxe15Rows: originalDeclaration.taxe15Rows ?? [] }; break
+            case "tva_autoliq":    restoreTabData = { tva16Rows: originalDeclaration.tva16Rows ?? [] }; break
+          }
+
+          const restoreResponse = await fetch(`${apiBase}/api/fiscal`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              tabKey: activeTab,
+              mois: originalDeclaration.mois,
+              annee: originalDeclaration.annee,
+              direction: originalDeclaration.direction,
+              dataJson: JSON.stringify(restoreTabData),
+            }),
+          })
+
+          restoreSucceeded = restoreResponse.ok
+        }
+
+        try {
+          localStorage.setItem("fiscal_declarations", JSON.stringify(existingDeclarations))
+        } catch {
+          // Ignore local cache restore failures.
+        }
+
+        const finalErrorMessage = restoreSucceeded
+          ? `${errorMessage} L'ancienne déclaration a été restaurée automatiquement.`
+          : errorMessage
+
         setIsSubmitting(false)
         toast({
           title: "Erreur d'enregistrement",
-          description: errorMessage,
+          description: finalErrorMessage,
           variant: "destructive",
         })
         return
       }
     } catch (error) {
+      try {
+        localStorage.setItem("fiscal_declarations", JSON.stringify(existingDeclarations))
+      } catch {
+        // Ignore local cache restore failures.
+      }
+
       setIsSubmitting(false)
       toast({
         title: "Erreur",
@@ -2978,16 +3118,28 @@ export default function NouvelleDeclarationPage() {
               {/* Tableau */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tableau</label>
-                <Select value={activeTab} onValueChange={setActiveTab}>
+                <Select value={activeTab} onValueChange={(value) => {
+                  if (disabledTabKeys.has(value)) return
+                  setActiveTab(value)
+                }}>
                   <SelectTrigger className="h-10 text-sm">
                     <SelectValue placeholder="Selectionner un tableau" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableTabs.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                    {selectableTabs.map((t) => (
+                      <SelectItem key={t.key} value={t.key} disabled={t.isDisabled} className={t.isDisabled ? "text-muted-foreground" : ""}>
+                        {t.label}{t.isDisabled ? " (desactive)" : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            {isActiveTabDisabled && (
+              <p className="mt-3 rounded border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
+                Ce tableau est desactive par l'administration. Il apparait en grise et ne peut pas etre enregistre.
+              </p>
+            )}
             {currentPeriodLockMessage && (
               <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
                  {currentPeriodLockMessage}

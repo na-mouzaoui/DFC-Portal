@@ -342,6 +342,24 @@ export function FiscalFournisseursManagement() {
     if (ignoredCount > 0) summary.push(`${ignoredCount} ligne(s) ignorée(s)`)
     if (summary.length === 0) summary.push("Aucun changement")
 
+    try {
+      await authFetch("/api/fiscal-fournisseurs/import-audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          created,
+          updated,
+          kept,
+          unchanged: unchangedCount,
+          ignored: ignoredCount,
+          errors,
+          source: "csv",
+        }),
+      })
+    } catch {
+      // Keep import flow resilient even if audit endpoint fails.
+    }
+
     toast({
       title: "Import terminé",
       description: `${summary.join(", ")}${errors > 0 ? `, ${errors} erreur(s)` : ""}.`,

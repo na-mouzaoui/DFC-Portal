@@ -221,7 +221,7 @@ namespace CheckFillingAPI.Migrations
                     b.ToTable("Checkbooks");
                 });
 
-            modelBuilder.Entity("CheckFillingAPI.Models.FiscalDeclaration", b =>
+            modelBuilder.Entity("CheckFillingAPI.Models.Declaration", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -283,7 +283,67 @@ namespace CheckFillingAPI.Migrations
 
                     b.HasIndex("UserId", "TabKey", "Mois", "Annee");
 
-                    b.ToTable("FiscalDeclarations");
+                    b.ToTable("Declaration", (string)null);
+                });
+
+            modelBuilder.Entity("CheckFillingAPI.Models.EtatsDeSortie", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Annee")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FormulasJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsGenerated")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Mois")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("RowsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Key", "Mois", "Annee")
+                        .IsUnique();
+
+                    b.ToTable("EtatsDeSortie", (string)null);
                 });
 
             modelBuilder.Entity("CheckFillingAPI.Models.FiscalFournisseur", b =>
@@ -617,7 +677,7 @@ namespace CheckFillingAPI.Migrations
                     b.Navigation("Bank");
                 });
 
-            modelBuilder.Entity("CheckFillingAPI.Models.FiscalDeclaration", b =>
+            modelBuilder.Entity("CheckFillingAPI.Models.Declaration", b =>
                 {
                     b.HasOne("CheckFillingAPI.Models.User", "ApprovedByUser")
                         .WithMany()
@@ -631,6 +691,17 @@ namespace CheckFillingAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("ApprovedByUser");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CheckFillingAPI.Models.EtatsDeSortie", b =>
+                {
+                    b.HasOne("CheckFillingAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

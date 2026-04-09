@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, Hourglass, ClipboardList, FileClock, ShieldC
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { ReminderData } from "@/lib/fiscal-reminders"
 
 const normalizeDirectionKey = (value: string) => {
@@ -21,7 +22,26 @@ interface RemindersCardProps {
   loading?: boolean
   userRole?: string
   directionOptions?: string[]
+  selectedMonth?: string
+  selectedYear?: string
+  onMonthChange?: (value: string) => void
+  onYearChange?: (value: string) => void
 }
+
+const MONTH_OPTIONS = [
+  { value: "01", label: "Janvier" },
+  { value: "02", label: "Fevrier" },
+  { value: "03", label: "Mars" },
+  { value: "04", label: "Avril" },
+  { value: "05", label: "Mai" },
+  { value: "06", label: "Juin" },
+  { value: "07", label: "Juillet" },
+  { value: "08", label: "Aout" },
+  { value: "09", label: "Septembre" },
+  { value: "10", label: "Octobre" },
+  { value: "11", label: "Novembre" },
+  { value: "12", label: "Decembre" },
+]
 
 const formatCountdown = (daysUntilDeadline: number) => {
   if (daysUntilDeadline < 0) {
@@ -40,10 +60,21 @@ const formatDeadlineDate = (value: string) => {
   return `${day}/${month}/${year}`
 }
 
-export function RemindersCard({ reminders, loading = false, userRole = "", directionOptions = [] }: RemindersCardProps) {
+export function RemindersCard({
+  reminders,
+  loading = false,
+  userRole = "",
+  directionOptions = [],
+  selectedMonth = "",
+  selectedYear = "",
+  onMonthChange,
+  onYearChange,
+}: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedDirection, setSelectedDirection] = useState("all")
-  const isAdmin = userRole.trim().toLowerCase() === "admin"
+  const normalizedRole = userRole.trim().toLowerCase()
+  const isAdmin = normalizedRole === "admin"
+  const isGlobalRole = normalizedRole === "direction" || normalizedRole === "global" || normalizedRole === "globale"
 
   const availableDirectionOptions = useMemo(
     () =>
@@ -61,7 +92,7 @@ export function RemindersCard({ reminders, loading = false, userRole = "", direc
   }, [isAdmin, reminders, selectedDirection])
 
   const directionStatus = useMemo(() => {
-    if (!isAdmin) return null
+    if (!isAdmin && !isGlobalRole) return null
 
     const totalDirections = availableDirectionOptions.length
     const remindersByDirection = new Map(
@@ -85,85 +116,42 @@ export function RemindersCard({ reminders, loading = false, userRole = "", direc
       upToDateDirections,
       totalDirections,
     }
-  }, [isAdmin, availableDirectionOptions, reminders])
+  }, [isAdmin, isGlobalRole, availableDirectionOptions, reminders])
 
   const remindersForDisplay = useMemo(() => {
-    const now = new Date()
-    const targetPeriod = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const month = String(targetPeriod.getMonth() + 1).padStart(2, "0")
-    const year = String(targetPeriod.getFullYear())
-    const deadline = new Date(targetPeriod.getFullYear(), targetPeriod.getMonth() + 1, 7, 23, 59, 59)
-    const daysUntilDeadline = Math.floor((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    const expectedTabsForDirection = (direction: string) => {
-      const normalizedDirection = direction.trim().toLowerCase()
-      const isSiegeDirection = normalizedDirection === "siège"
-        || normalizedDirection === "siege"
-        || normalizedDirection.includes("siège")
-        || normalizedDirection.includes("siege")
-      return isSiegeDirection ? 10 : 6
-    }
-
-    const makeFallback = (direction: string): ReminderData => {
-      const expectedTotalTabs = expectedTabsForDirection(direction)
-      return {
-        direction,
-        mois: month,
-        annee: year,
-        deadline: deadline.toISOString(),
-        daysUntilDeadline,
-        totalTabs: expectedTotalTabs,
-        enteredTabs: 0,
-        approvedTabs: 0,
-        remainingToEnterTabs: expectedTotalTabs,
-        remainingToApproveTabs: 0,
-        missingTabs: [],
-        isUrgent: daysUntilDeadline <= 5 && daysUntilDeadline >= 0,
-      }
-    }
+    // Utiliser directement les rappels du backend sans recalcul local
+    // Le backend calcule correctement la période fiscale et le deadline
 
     if (isAdmin && selectedDirection === "all") {
       if (availableDirectionOptions.length === 0) {
-        if (filteredReminders.length > 0) return filteredReminders
-        return [
-          {
-            direction: "Tout",
-            mois: month,
-            annee: year,
-            deadline: deadline.toISOString(),
-            daysUntilDeadline,
-            totalTabs: 0,
-            enteredTabs: 0,
-            approvedTabs: 0,
-            remainingToEnterTabs: 0,
-            remainingToApproveTabs: 0,
-            missingTabs: [],
-            isUrgent: daysUntilDeadline <= 5 && daysUntilDeadline >= 0,
-          } satisfies ReminderData,
-        ]
+        return filteredReminders.length > 0 ? filteredReminders : []
       }
 
       const remindersByDirection = new Map(
         filteredReminders.map((reminder) => [normalizeDirectionKey(reminder.direction), reminder] as const),
       )
 
-      return availableDirectionOptions.map((direction) => {
-        const reminder = remindersByDirection.get(normalizeDirectionKey(direction))
-        return reminder ?? makeFallback(direction)
-      })
+      // Retourner les rappels du backend pour chaque direction, sans modification
+      return availableDirectionOptions
+        .map((direction) => remindersByDirection.get(normalizeDirectionKey(direction)))
+        .filter((reminder) => reminder !== undefined) as ReminderData[]
     }
 
-    if (filteredReminders.length > 0) return filteredReminders
-
-    const fallbackDirection = isAdmin ? selectedDirection : "Direction"
-    return [makeFallback(fallbackDirection)]
+    // Pour les non-admins ou quand une direction est sélectionnée, retourner les rappels directement
+    return filteredReminders
   }, [availableDirectionOptions, filteredReminders, isAdmin, selectedDirection])
 
   const hasActiveReminder = useMemo(() => {
+    if ((isAdmin || isGlobalRole) && directionStatus) {
+      if (directionStatus.totalDirections === 0) return false
+      return directionStatus.upToDateDirections < directionStatus.totalDirections
+    }
+
     return reminders.some((reminder) =>
       reminder.daysUntilDeadline <= 5
       && (reminder.remainingToEnterTabs > 0 || reminder.remainingToApproveTabs > 0),
     )
-  }, [reminders])
+  }, [reminders, isAdmin, isGlobalRole, directionStatus])
 
   const lastDeadlineLabel = useMemo(() => {
     if (remindersForDisplay.length === 0) return "-"
@@ -195,42 +183,73 @@ export function RemindersCard({ reminders, loading = false, userRole = "", direc
 
   return (
     <div className="space-y-3">
-      {isAdmin && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <Button onClick={() => setShowFilters(!showFilters)} variant="outline" size="sm" className="gap-2">
-              <Filter className="h-4 w-4" style={{ color: "#e82c2a" }} />
-              {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
-            </Button>
-          </div>
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <Button onClick={() => setShowFilters(!showFilters)} variant="outline" size="sm" className="gap-2">
+            <Filter className="h-4 w-4" style={{ color: "#e82c2a" }} />
+            {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
+          </Button>
+        </div>
 
-          {showFilters && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Filtres indicateurs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="max-w-xs space-y-2">
-                  <p className="text-sm font-medium">Direction</p>
-                  <Select value={selectedDirection} onValueChange={setSelectedDirection}>
+        {showFilters && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Filtres indicateurs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Mois</p>
+                  <Select value={selectedMonth} onValueChange={(value) => onMonthChange?.(value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Tout" />
+                      <SelectValue placeholder="Selectionner un mois" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Tout</SelectItem>
-                      {availableDirectionOptions.map((direction) => (
-                        <SelectItem key={direction} value={direction}>
-                          {direction}
+                      {MONTH_OPTIONS.map((month) => (
+                        <SelectItem key={month.value} value={month.value}>
+                          {month.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Annee</p>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={2000}
+                    max={2100}
+                    placeholder="ex: 2026"
+                    value={selectedYear}
+                    onChange={(event) => onYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  />
+                </div>
+
+                {isAdmin && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Direction</p>
+                    <Select value={selectedDirection} onValueChange={setSelectedDirection}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tout" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tout</SelectItem>
+                        {availableDirectionOptions.map((direction) => (
+                          <SelectItem key={direction} value={direction}>
+                            {direction}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <ReminderKpiRow reminders={remindersForDisplay} directionStatus={directionStatus} />
 
@@ -258,6 +277,17 @@ function ReminderKpiRow({
   reminders: ReminderData[]
   directionStatus: { upToDateDirections: number; totalDirections: number } | null
 }) {
+  // Si aucun rappel n'existe, afficher un message d'erreur
+  if (!reminders || reminders.length === 0) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="pt-6">
+          <p className="text-sm text-amber-800">Aucun rappel disponible pour cette période.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   const closestReminder = reminders.reduce((acc, current) =>
     current.daysUntilDeadline < acc.daysUntilDeadline ? current : acc,
   reminders[0])

@@ -56,6 +56,10 @@ const actionLabels: Record<string, string> = {
   CREATE_SUPPLIER: "Fournisseur - CrÃ©ation",
   UPDATE_SUPPLIER: "Fournisseur - Modification",
   DELETE_SUPPLIER: "Fournisseur - Suppression",
+  FISCAL_FOURNISSEUR_CREATE: "Fournisseur fiscal - CrÃ©ation",
+  FISCAL_FOURNISSEUR_UPDATE: "Fournisseur fiscal - Modification",
+  FISCAL_FOURNISSEUR_DELETE: "Fournisseur fiscal - Suppression",
+  FISCAL_FOURNISSEUR_IMPORT: "Fournisseur fiscal - Import",
   
   // RÃ©gions
   CREATE_REGION: "RÃ©gion - CrÃ©ation",
@@ -81,6 +85,7 @@ const actionGroups: Record<string, string[]> = {
   "Banques": ["CREATE_BANK", "UPDATE_BANK", "DELETE_BANK"],
   "ChÃ©quiers": ["CREATE_CHECKBOOK", "UPDATE_CHECKBOOK", "DELETE_CHECKBOOK"],
   "Fournisseurs": ["CREATE_SUPPLIER", "UPDATE_SUPPLIER", "DELETE_SUPPLIER"],
+  "Fournisseurs fiscaux": ["FISCAL_FOURNISSEUR_CREATE", "FISCAL_FOURNISSEUR_UPDATE", "FISCAL_FOURNISSEUR_DELETE", "FISCAL_FOURNISSEUR_IMPORT"],
   "RÃ©gions": ["CREATE_REGION", "UPDATE_REGION", "DELETE_REGION"],
   "ChÃ¨ques": ["UPDATE_CHECK_STATUS", "PRINT_CHECK"],
   "Utilisateurs": ["CREATE_USER", "UPDATE_USER", "DELETE_USER"]

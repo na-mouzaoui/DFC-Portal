@@ -36,6 +36,15 @@ const getDeadlineDayForRole = (role?: string | null): number => {
   return 10
 }
 
+export const getCurrentFiscalPeriod = (now: Date = new Date()) => {
+  const referenceDate = now.getDate() >= 11 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  return {
+    mois: String(referenceDate.getMonth() + 1).padStart(2, "0"),
+    annee: String(referenceDate.getFullYear()),
+  }
+}
+
 export const getFiscalPeriodDeadline = (mois: string, annee: string, role?: string | null): Date | null => {
   const normalizedMonth = normalizeMonth(mois)
   const normalizedYear = normalizeYear(annee)

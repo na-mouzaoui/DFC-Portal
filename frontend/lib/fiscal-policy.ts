@@ -7,6 +7,7 @@ export type FiscalPolicy = {
   regionalTabKeys: string[]
   financeTabKeys: string[]
   manageableTabKeys: string[]
+  disabledTabKeys: string[]
   serverNow: string
 }
 
@@ -46,6 +47,7 @@ export const syncFiscalPolicy = async (direction?: string | null): Promise<Fisca
       regionalTabKeys: toStringArray((payload as { regionalTabKeys?: unknown }).regionalTabKeys),
       financeTabKeys: toStringArray((payload as { financeTabKeys?: unknown }).financeTabKeys),
       manageableTabKeys: toStringArray((payload as { manageableTabKeys?: unknown }).manageableTabKeys),
+      disabledTabKeys: toStringArray((payload as { disabledTabKeys?: unknown }).disabledTabKeys),
       serverNow: String((payload as { serverNow?: unknown }).serverNow ?? ""),
     }
 

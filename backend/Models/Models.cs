@@ -138,7 +138,7 @@ public class UserBankCalibration
     public Bank Bank { get; set; } = null!;
 }
 
-public class FiscalDeclaration
+public class Declaration
 {
     public int Id { get; set; }
     public int UserId { get; set; }
@@ -171,4 +171,28 @@ public class FiscalFournisseur
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public User User { get; set; } = null!;
+}
+
+public class EtatsDeSortie
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string Key { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Mois { get; set; } = string.Empty;
+    public string Annee { get; set; } = string.Empty;
+    public string RowsJson { get; set; } = "[]";
+    public string FormulasJson { get; set; } = "{}";
+    public bool IsGenerated { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public User User { get; set; } = null!;
+}
+
+public class AdminFiscalSetting
+{
+    public int Id { get; set; }
+    public bool IsTable6Enabled { get; set; } = true;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CheckFillingAPI.Data;
 using CheckFillingAPI.Models;
+using CheckFillingAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -13,10 +14,12 @@ namespace CheckFillingAPI.Controllers;
 public class FiscalFournisseursController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IAuditService _auditService;
 
-    public FiscalFournisseursController(AppDbContext context)
+    public FiscalFournisseursController(AppDbContext context, IAuditService auditService)
     {
         _context = context;
+        _auditService = auditService;
     }
 
     private int GetCurrentUserId()
@@ -71,6 +74,21 @@ public class FiscalFournisseursController : ControllerBase
         _context.FiscalFournisseurs.Add(fournisseur);
         await _context.SaveChangesAsync();
 
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_CREATE",
+            "FiscalFournisseur",
+            fournisseur.Id,
+            new
+            {
+                fournisseur.RaisonSociale,
+                fournisseur.NIF,
+                fournisseur.AuthNIF,
+                fournisseur.RC,
+                fournisseur.AuthRC
+            }
+        );
+
         return CreatedAtAction(nameof(GetAll), new { id = fournisseur.Id }, new {
             id = fournisseur.Id,
             raisonSociale = fournisseur.RaisonSociale,
@@ -98,6 +116,16 @@ public class FiscalFournisseursController : ControllerBase
         if (fournisseur == null)
             return NotFound(new { message = "Fournisseur introuvable." });
 
+        var oldValues = new
+        {
+            fournisseur.RaisonSociale,
+            fournisseur.Adresse,
+            fournisseur.AuthNIF,
+            fournisseur.RC,
+            fournisseur.AuthRC,
+            fournisseur.NIF,
+        };
+
         fournisseur.RaisonSociale = dto.RaisonSociale.Trim();
         fournisseur.Adresse = dto.Adresse?.Trim() ?? string.Empty;
         fournisseur.AuthNIF = dto.AuthNIF?.Trim() ?? string.Empty;
@@ -106,7 +134,30 @@ public class FiscalFournisseursController : ControllerBase
         fournisseur.NIF = dto.NIF?.Trim() ?? string.Empty;
         fournisseur.UpdatedAt = DateTime.UtcNow;
 
+        var auditPayload = new
+        {
+            oldValues,
+            newValues = new
+            {
+                fournisseur.RaisonSociale,
+                fournisseur.Adresse,
+                fournisseur.AuthNIF,
+                fournisseur.RC,
+                fournisseur.AuthRC,
+                fournisseur.NIF,
+            }
+        };
+
         await _context.SaveChangesAsync();
+
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_UPDATE",
+            "FiscalFournisseur",
+            fournisseur.Id,
+            auditPayload
+        );
+
         return Ok(new {
             id = fournisseur.Id,
             raisonSociale = fournisseur.RaisonSociale,
@@ -131,9 +182,54 @@ public class FiscalFournisseursController : ControllerBase
         if (fournisseur == null)
             return NotFound(new { message = "Fournisseur introuvable." });
 
+        var auditPayload = new
+        {
+            fournisseur.RaisonSociale,
+            fournisseur.Adresse,
+            fournisseur.AuthNIF,
+            fournisseur.RC,
+            fournisseur.AuthRC,
+            fournisseur.NIF,
+        };
+
         _context.FiscalFournisseurs.Remove(fournisseur);
         await _context.SaveChangesAsync();
+
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_DELETE",
+            "FiscalFournisseur",
+            id,
+            auditPayload
+        );
+
         return NoContent();
+    }
+
+    // POST api/fiscal-fournisseurs/import-audit
+    [HttpPost("import-audit")]
+    public async Task<IActionResult> LogImportAudit([FromBody] FiscalFournisseurImportAuditRequest request)
+    {
+        var userId = GetCurrentUserId();
+
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_IMPORT",
+            "FiscalFournisseur",
+            null,
+            new
+            {
+                request.Created,
+                request.Updated,
+                request.Kept,
+                request.Unchanged,
+                request.Ignored,
+                request.Errors,
+                request.Source,
+            }
+        );
+
+        return Ok(new { message = "Import audit log enregistré." });
     }
 }
 
@@ -145,4 +241,15 @@ public class FiscalFournisseurDto
     public string? RC { get; set; }
     public string? AuthRC { get; set; }
     public string? NIF { get; set; }
+}
+
+public class FiscalFournisseurImportAuditRequest
+{
+    public int Created { get; set; }
+    public int Updated { get; set; }
+    public int Kept { get; set; }
+    public int Unchanged { get; set; }
+    public int Ignored { get; set; }
+    public int Errors { get; set; }
+    public string? Source { get; set; }
 }

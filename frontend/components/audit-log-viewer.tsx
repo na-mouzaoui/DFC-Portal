@@ -132,6 +132,10 @@ export default function AuditLogViewer() {
               <SelectItem value="CREATE_USER">Créer utilisateur</SelectItem>
               <SelectItem value="UPDATE_USER">Modifier utilisateur</SelectItem>
               <SelectItem value="DELETE_USER">Supprimer utilisateur</SelectItem>
+              <SelectItem value="FISCAL_FOURNISSEUR_CREATE">Fournisseur fiscal - Création</SelectItem>
+              <SelectItem value="FISCAL_FOURNISSEUR_UPDATE">Fournisseur fiscal - Modification</SelectItem>
+              <SelectItem value="FISCAL_FOURNISSEUR_DELETE">Fournisseur fiscal - Suppression</SelectItem>
+              <SelectItem value="FISCAL_FOURNISSEUR_IMPORT">Fournisseur fiscal - Import</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -90,3 +90,13 @@ export const canManageFiscalTab = (role: string | null | undefined, tabKey: stri
   if (!normalizedTabKey) return false
   return getManageableFiscalTabKeys(role).includes(normalizedTabKey)
 }
+
+export const isFiscalTabDisabledByPolicy = (tabKey: string | null | undefined): boolean => {
+  const normalizedTabKey = normalizeTabKey(tabKey)
+  if (!normalizedTabKey) return false
+
+  const policy = getCachedFiscalPolicy()
+  if (!policy) return false
+
+  return policy.disabledTabKeys.map((key) => normalizeTabKey(key)).includes(normalizedTabKey)
+}

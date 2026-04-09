@@ -36,6 +36,71 @@ public class AdminController : ControllerBase
         return user?.Role == "admin";
     }
 
+    private async Task<AdminFiscalSetting> GetOrCreateFiscalSettingAsync()
+    {
+        var setting = await _context.AdminFiscalSettings.FirstOrDefaultAsync(s => s.Id == 1);
+        if (setting != null)
+            return setting;
+
+        setting = new AdminFiscalSetting
+        {
+            Id = 1,
+            IsTable6Enabled = true,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.AdminFiscalSettings.Add(setting);
+        await _context.SaveChangesAsync();
+        return setting;
+    }
+
+    [HttpGet("fiscal-settings")]
+    public async Task<IActionResult> GetFiscalSettings()
+    {
+        if (!await IsAdmin())
+            return Forbid();
+
+        var setting = await GetOrCreateFiscalSettingAsync();
+        return Ok(new
+        {
+            isTable6Enabled = setting.IsTable6Enabled,
+            updatedAt = setting.UpdatedAt
+        });
+    }
+
+    [HttpPut("fiscal-settings/table6")]
+    public async Task<IActionResult> UpdateTable6Setting([FromBody] UpdateTable6SettingRequest request)
+    {
+        if (!await IsAdmin())
+            return Forbid();
+
+        var setting = await GetOrCreateFiscalSettingAsync();
+        var oldValue = setting.IsTable6Enabled;
+
+        setting.IsTable6Enabled = request.IsEnabled;
+        setting.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        await _auditService.LogAction(
+            GetCurrentUserId(),
+            "UPDATE_FISCAL_SETTING",
+            "AdminFiscalSetting",
+            setting.Id,
+            new
+            {
+                settingName = "table6",
+                oldValue,
+                newValue = setting.IsTable6Enabled
+            }
+        );
+
+        return Ok(new
+        {
+            isTable6Enabled = setting.IsTable6Enabled,
+            updatedAt = setting.UpdatedAt
+        });
+    }
+
     // GET: api/admin/users
     [HttpGet("users")]
     public async Task<IActionResult> GetAllUsers()
@@ -387,4 +452,9 @@ public class UpdateUserRequest
     public bool? IsFinanceApprover { get; set; }
     public string? Password { get; set; }
     public string? AccessModules { get; set; }
+}
+
+public class UpdateTable6SettingRequest
+{
+    public bool IsEnabled { get; set; }
 }

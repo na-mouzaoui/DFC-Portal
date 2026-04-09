@@ -1,6 +1,6 @@
-"use client"
+﻿"use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,9 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import { isRegionalFiscalRole } from "@/lib/fiscal-tab-access"
-import { CheckCircle, Printer, Trash2, Filter, X } from "lucide-react"
+import { getCurrentFiscalPeriod } from "@/lib/fiscal-period-deadline"
+import { API_BASE } from "@/lib/config"
+import { CheckCircle, Printer, Trash2, Filter, X, Pencil, Save } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
 type RecapColumn = {
   key: string
@@ -34,6 +38,74 @@ type GeneratedRecap = {
   annee: string
   createdAt: string
   isGenerated: boolean
+  rows?: Record<string, string>[]
+  formulas?: Record<string, string>
+  source?: "draft" | "saved"
+}
+
+type ApiFiscalRecap = {
+  id: number
+  key: string
+  title: string
+  mois: string
+  annee: string
+  direction: string
+  rowsJson: string
+  formulasJson: string
+  isGenerated: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+type ApiFiscalDeclaration = {
+  id: number
+  tabKey: string
+  mois: string
+  annee: string
+  direction: string
+  dataJson: string
+}
+
+type TvaRow = {
+  montantHT?: string
+  tva?: string
+  tauxTVA?: string
+}
+
+type TimbreRow = {
+  caTTCEsp?: string
+  droitTimbre?: string
+}
+
+type EtapTapRow = {
+  tap2?: string
+}
+
+type CaSiegeRow = {
+  ttc?: string
+  ht?: string
+}
+
+type EncaissementRow = {
+  ht?: string
+  ttc?: string
+}
+
+type IrgRow = {
+  montant?: string
+}
+
+type Taxe2Row = {
+  montant?: string
+}
+
+type Taxe12Row = {
+  montant?: string
+}
+
+type MasterRow = {
+  montantHT?: string
+  taxe15?: string
 }
 
 const MONTHS: Record<string, string> = {
@@ -71,15 +143,30 @@ const RECAP_G50_ROWS = [
 ]
 
 const TVA_SITUATION_ROWS = [
-  "Precompte",
-  "Reversement",
   "Direction Generale",
+  "Direction AutoLiquidation",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+]
+
+const TVA_RECAP_ROWS = [
+  "PrÃ©compte",
+  "Reversement",
+  "Direction GÃ©nÃ©rale",
   "TVA AutoLiquidation",
   "DR Alger",
   "DR Setif",
   "DR Constantine",
   "DR Annaba",
   "DR Chlef",
+  "DR Oran",
   "DR Bechar",
   "DR Ouargla",
   "Total",
@@ -110,6 +197,17 @@ const TVA_COLLECTEE_ROWS = [
   "Total (2)",
   "Total (1)+(2)",
 ]
+
+const TVA_COLLECTEE_DR_ROWS = [
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+] as const
 
 const DROITS_TIMBRE_ROWS = [
   "DR Alger",
@@ -169,7 +267,7 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
       { key: "designation", label: "Designation" },
       { key: "montant", label: "Montant", right: true },
     ],
-    rows: RECAP_G50_ROWS.map((designation) => ({ designation, montant: "0 DZD" })),
+    rows: RECAP_G50_ROWS.map((designation) => ({ designation, montant: "0" })),
   },
   {
     key: "tva_collectee",
@@ -183,30 +281,46 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
     ],
     rows: TVA_COLLECTEE_ROWS.map((designation) => ({
       designation,
-      ttc: "0,00 DZD",
-      exonere: "0,00 DZD",
-      ht: "0,00 DZD",
-      tva: "0,00 DZD",
+      ttc: "0,00",
+      exonere: "0,00",
+      ht: "0,00",
+      tva: "0,00",
+    })),
+  },
+  {
+    key: "tva_a_payer",
+    title: "TVA Ã€ PAYER",
+    columns: [
+      { key: "designation", label: "DÃ©signation" },
+      { key: "collectee", label: "TVA CollectÃ©e", right: true },
+      { key: "immo", label: "TVA DÃ©ductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA DÃ©ductible sur Biens et Services", right: true },
+      { key: "totalDed", label: "Total de la TVA DÃ©ductible", right: true },
+      { key: "payer", label: "TVA Ã  Payer", right: true },
+    ],
+    rows: TVA_RECAP_ROWS.map((designation) => ({
+      designation,
+      collectee: designation === "Direction GÃ©nÃ©rale" || designation === "Total" ? "0" : "0,00",
+      immo: "0,00",
+      biens: "0,00",
+      totalDed: "0,00",
+      payer: designation === "Direction GÃ©nÃ©rale" || designation === "Total" ? "0" : "0,00",
     })),
   },
   {
     key: "tva_situation",
-    title: "Situation de la TVA",
+    title: "TVA DEDUCTIBLE",
     columns: [
       { key: "designation", label: "Designation" },
-      { key: "collectee", label: "TVA Collectee", right: true },
       { key: "immo", label: "TVA Deductible sur Immobilisation", right: true },
       { key: "biens", label: "TVA Deductible sur Biens et services", right: true },
       { key: "totalDed", label: "Total de la TVA Deductible", right: true },
-      { key: "payer", label: "TVA a Payer", right: true },
     ],
     rows: TVA_SITUATION_ROWS.map((designation) => ({
       designation,
-      collectee: "0,00 DZD",
-      immo: "0,00 DZD",
-      biens: "0,00 DZD",
-      totalDed: "0,00 DZD",
-      payer: "0,00 DZD",
+      immo: "0,00",
+      biens: "0,00",
+      totalDed: "0,00",
     })),
   },
   {
@@ -219,8 +333,8 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
     ],
     rows: DROITS_TIMBRE_ROWS.map((designation) => ({
       designation,
-      caHt: "0,00 DZD",
-      montant: "0,00 DZD",
+      caHt: "0,00",
+      montant: "0,00",
     })),
   },
   {
@@ -233,8 +347,8 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
     ],
     rows: TACP7_ROWS.map((designation) => ({
       designation,
-      base: "0,00 DZD",
-      taxe: "0,00 DZD",
+      base: "0,00",
+      taxe: "0,00",
     })),
   },
   {
@@ -247,8 +361,22 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
     ],
     rows: TNFDAL1_ROWS.map((designation) => ({
       designation,
-      caHt: "0,00 DZD",
-      taxe: "0,00 DZD",
+      caHt: "0,00",
+      taxe: "0,00",
+    })),
+  },
+  {
+    key: "tap15",
+    title: "TAP 1.5%",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "caHt", label: "Chiffres d'Affaires E HT", right: true },
+      { key: "taxe", label: "Montant du TAP 1,5%", right: true },
+    ],
+    rows: TNFDAL1_ROWS.map((designation) => ({
+      designation,
+      caHt: "0,00",
+      taxe: "0,00",
     })),
   },
   {
@@ -261,20 +389,812 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
     ],
     rows: MASTERS15_ROWS.map((designation) => ({
       designation,
-      base: "0 DZD",
-      taxe: "0 DZD",
+      base: "0",
+      taxe: "0",
     })),
   },
 ]
 
 const getRecapDefinition = (key: string) => RECAP_DEFINITIONS.find((item) => item.key === key)
 
+const parseAmount = (value: unknown): number => {
+  const raw = String(value ?? "").replace(/\u00A0/g, " ").trim()
+  if (!raw) return 0
+  const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+  const normalizedDots = standardized.replace(/\.(?=.*\.)/g, "")
+  const parsed = Number.parseFloat(normalizedDots)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const isHeadOfficeDirectionValue = (direction: string): boolean => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  return (
+    normalized === "siÃ¨ge"
+    || normalized === "siege"
+    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siege")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction gÃ©nÃ©rale")
+  )
+}
+
+const formatDzd = (value: number): string => {
+  const safe = Number.isFinite(value) ? value : 0
+  return safe.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const normalizeRate = (value?: string): 19 | 9 | null => {
+  if (value === "19") return 19
+  if (value === "9") return 9
+  return null
+}
+
+const getTvaFromRow = (row: TvaRow): number => {
+  const explicitTva = parseAmount(row.tva)
+  if (explicitTva > 0) return explicitTva
+
+  const rate = normalizeRate(row.tauxTVA)
+  if (!rate) return 0
+
+  const montantHt = parseAmount(row.montantHT)
+  return montantHt * (rate / 100)
+}
+
+const resolveTvaSituationRowByDirection = (direction: string): string | null => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    normalized === "siÃ¨ge"
+    || normalized === "siege"
+    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siege")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction gÃ©nÃ©rale")
+  ) {
+    return "Direction Generale"
+  }
+
+  if (normalized.includes("autoliquidation") || normalized.includes("auto liquidation")) {
+    return "Direction AutoLiquidation"
+  }
+
+  if (normalized.includes("alger")) return "DR Alger"
+  if (normalized.includes("setif") || normalized.includes("sÃ©tif")) return "DR Setif"
+  if (normalized.includes("constantine")) return "DR Constantine"
+  if (normalized.includes("annaba")) return "DR Annaba"
+  if (normalized.includes("chlef")) return "DR Chlef"
+  if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
+  if (normalized.includes("bechar") || normalized.includes("bÃ©char")) return "DR Bechar"
+  if (normalized.includes("ouargla")) return "DR Ouargla"
+
+  return null
+}
+
+const resolveRegionalRowByDirection = (direction: string): string | null => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    normalized === "siÃ¨ge"
+    || normalized === "siege"
+    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siege")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction gÃ©nÃ©rale")
+    || normalized.includes("autoliquidation")
+    || normalized.includes("auto liquidation")
+  ) {
+    return null
+  }
+
+  if (normalized.includes("alger")) return "DR Alger"
+  if (normalized.includes("setif") || normalized.includes("sÃ©tif")) return "DR Setif"
+  if (normalized.includes("constantine")) return "DR Constantine"
+  if (normalized.includes("annaba")) return "DR Annaba"
+  if (normalized.includes("chlef")) return "DR Chlef"
+  if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
+  if (normalized.includes("bechar") || normalized.includes("bÃ©char")) return "DR Bechar"
+  if (normalized.includes("ouargla")) return "DR Ouargla"
+
+  return null
+}
+
+const buildTvaSituationRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const immoByRow = new Map<string, number>()
+  const biensByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "tva_immo" && declaration.tabKey !== "tva_biens") continue
+
+    const rowLabel = resolveTvaSituationRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    let payload: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(declaration.dataJson ?? "{}")
+      if (parsed && typeof parsed === "object") {
+        payload = parsed as Record<string, unknown>
+      }
+    } catch {
+      payload = {}
+    }
+
+    const sourceRows = declaration.tabKey === "tva_immo"
+      ? (Array.isArray(payload.tvaImmoRows) ? (payload.tvaImmoRows as TvaRow[]) : [])
+      : (Array.isArray(payload.tvaBiensRows) ? (payload.tvaBiensRows as TvaRow[]) : [])
+
+    const totalTva = sourceRows.reduce((sum, row) => sum + getTvaFromRow(row), 0)
+
+    if (declaration.tabKey === "tva_immo") {
+      immoByRow.set(rowLabel, (immoByRow.get(rowLabel) ?? 0) + totalTva)
+    } else {
+      biensByRow.set(rowLabel, (biensByRow.get(rowLabel) ?? 0) + totalTva)
+    }
+  }
+
+  let totalImmo = 0
+  let totalBiens = 0
+
+  const rows = TVA_SITUATION_ROWS.map((designation, index) => {
+    if (index < 2) {
+      return {
+        designation,
+        immo: "0,00",
+        biens: "0,00",
+        totalDed: "0,00",
+      }
+    }
+
+    if (designation === "Total") {
+      const totalDed = totalImmo + totalBiens
+      return {
+        designation,
+        immo: formatDzd(totalImmo),
+        biens: formatDzd(totalBiens),
+        totalDed: formatDzd(totalDed),
+      }
+    }
+
+    const immo = immoByRow.get(designation) ?? 0
+    const biens = biensByRow.get(designation) ?? 0
+    const totalDed = immo + biens
+
+    totalImmo += immo
+    totalBiens += biens
+
+    return {
+      designation,
+      immo: formatDzd(immo),
+      biens: formatDzd(biens),
+      totalDed: formatDzd(totalDed),
+    }
+  })
+
+  return rows
+}
+
+const buildDroitsTimbreRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const caByRow = new Map<string, number>()
+  const montantByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "droits_timbre") continue
+
+    const rowLabel = resolveRegionalRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    let payload: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(declaration.dataJson ?? "{}")
+      if (parsed && typeof parsed === "object") {
+        payload = parsed as Record<string, unknown>
+      }
+    } catch {
+      payload = {}
+    }
+
+    const rows = Array.isArray(payload.timbreRows) ? (payload.timbreRows as TimbreRow[]) : []
+    const totalCa = rows.reduce((sum, row) => sum + parseAmount(row.caTTCEsp), 0)
+    const totalMontant = rows.reduce((sum, row) => sum + parseAmount(row.droitTimbre), 0)
+
+    caByRow.set(rowLabel, (caByRow.get(rowLabel) ?? 0) + totalCa)
+    montantByRow.set(rowLabel, (montantByRow.get(rowLabel) ?? 0) + totalMontant)
+  }
+
+  let totalCa = 0
+  let totalMontant = 0
+
+  return DROITS_TIMBRE_ROWS.map((designation) => {
+    if (designation === "Total") {
+      return {
+        designation,
+        caHt: formatDzd(totalCa),
+        montant: formatDzd(totalMontant),
+      }
+    }
+
+    const ca = caByRow.get(designation) ?? 0
+    const montant = montantByRow.get(designation) ?? 0
+
+    totalCa += ca
+    totalMontant += montant
+
+    return {
+      designation,
+      caHt: formatDzd(ca),
+      montant: formatDzd(montant),
+    }
+  })
+}
+
+const getEncaissementTtc = (row: EncaissementRow): number => {
+  const htRaw = String(row.ht ?? "").trim()
+  if (htRaw !== "") {
+    const ht = parseAmount(htRaw)
+    return ht + (ht * 0.19)
+  }
+
+  return parseAmount(row.ttc)
+}
+
+const buildTvaCollecteeRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  let siegeFirstLineTtc = 0
+  const drTtcByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+
+    if (declaration.tabKey === "ca_siege") {
+      if (!isHeadOfficeDirectionValue(declaration.direction)) continue
+
+      let payload: Record<string, unknown> = {}
+      try {
+        const parsed = JSON.parse(declaration.dataJson ?? "{}")
+        if (parsed && typeof parsed === "object") {
+          payload = parsed as Record<string, unknown>
+        }
+      } catch {
+        payload = {}
+      }
+
+      const rows = Array.isArray(payload.caSiegeRows) ? (payload.caSiegeRows as CaSiegeRow[]) : []
+      const firstRow = rows[0]
+      if (firstRow) {
+        siegeFirstLineTtc += parseAmount(firstRow.ttc)
+      }
+
+      continue
+    }
+
+    if (declaration.tabKey === "encaissement") {
+      const rowLabel = resolveRegionalRowByDirection(declaration.direction)
+      if (!rowLabel) continue
+
+      let payload: Record<string, unknown> = {}
+      try {
+        const parsed = JSON.parse(declaration.dataJson ?? "{}")
+        if (parsed && typeof parsed === "object") {
+          payload = parsed as Record<string, unknown>
+        }
+      } catch {
+        payload = {}
+      }
+
+      const rows = Array.isArray(payload.encRows) ? (payload.encRows as EncaissementRow[]) : []
+      const totalTtc = rows.reduce((sum, row) => sum + getEncaissementTtc(row), 0)
+      drTtcByRow.set(rowLabel, (drTtcByRow.get(rowLabel) ?? 0) + totalTtc)
+    }
+  }
+
+  const firstLineExonere = 0
+  const firstLineHt = ((siegeFirstLineTtc - firstLineExonere) / 1.19) + firstLineExonere
+  const firstLineTva = (firstLineHt - firstLineExonere) * 0.19
+
+  let total1Ttc = 0
+  let total1Exonere = 0
+  let total1Ht = 0
+  let total1Tva = 0
+
+  const total2Ttc = TVA_COLLECTEE_DR_ROWS.reduce((sum, rowLabel) => sum + (drTtcByRow.get(rowLabel) ?? 0), 0)
+
+  return TVA_COLLECTEE_ROWS.map((designation) => {
+    if (designation === "BNA EXPLOITATION (Siege)") {
+      total1Ttc += siegeFirstLineTtc
+      total1Exonere += firstLineExonere
+      total1Ht += firstLineHt
+      total1Tva += firstLineTva
+
+      return {
+        designation,
+        ttc: formatDzd(siegeFirstLineTtc),
+        exonere: formatDzd(firstLineExonere),
+        ht: formatDzd(firstLineHt),
+        tva: formatDzd(firstLineTva),
+      }
+    }
+
+    if (designation === "Total (1)") {
+      return {
+        designation,
+        ttc: formatDzd(total1Ttc),
+        exonere: formatDzd(total1Exonere),
+        ht: formatDzd(total1Ht),
+        tva: formatDzd(total1Tva),
+      }
+    }
+
+    if (designation === "Total (2)") {
+      return {
+        designation,
+        ttc: formatDzd(total2Ttc),
+        exonere: "0,00",
+        ht: "0,00",
+        tva: "0,00",
+      }
+    }
+
+    if (designation === "Total (1)+(2)") {
+      return {
+        designation,
+        ttc: formatDzd(total1Ttc + total2Ttc),
+        exonere: formatDzd(total1Exonere),
+        ht: formatDzd(total1Ht),
+        tva: formatDzd(total1Tva),
+      }
+    }
+
+    if ((TVA_COLLECTEE_DR_ROWS as readonly string[]).includes(designation)) {
+      return {
+        designation,
+        ttc: formatDzd(drTtcByRow.get(designation) ?? 0),
+        exonere: "0,00",
+        ht: "0,00",
+        tva: "0,00",
+      }
+    }
+
+    return {
+      designation,
+      ttc: "0,00",
+      exonere: "0,00",
+      ht: "0,00",
+      tva: "0,00",
+    }
+  })
+}
+
+const buildTap15Rows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const baseByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "etat_tap") continue
+
+    const rowLabel = resolveRegionalRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    let payload: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(declaration.dataJson ?? "{}")
+      if (parsed && typeof parsed === "object") {
+        payload = parsed as Record<string, unknown>
+      }
+    } catch {
+      payload = {}
+    }
+
+    const rows = Array.isArray(payload.tapRows) ? (payload.tapRows as EtapTapRow[]) : []
+    const totalBase = rows.reduce((sum, row) => sum + parseAmount(row.tap2), 0)
+
+    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + totalBase)
+  }
+
+  let totalBase = 0
+  let totalTaxe = 0
+
+  return TNFDAL1_ROWS.map((designation, index) => {
+    if (index === 0) {
+      return {
+        designation,
+        caHt: "0,00",
+        taxe: "0,00",
+      }
+    }
+
+    if (designation === "Total") {
+      return {
+        designation,
+        caHt: formatDzd(totalBase),
+        taxe: formatDzd(totalTaxe),
+      }
+    }
+
+    const base = baseByRow.get(designation) ?? 0
+    const taxe = base * 0.015
+
+    totalBase += base
+    totalTaxe += taxe
+
+    return {
+      designation,
+      caHt: formatDzd(base),
+      taxe: formatDzd(taxe),
+    }
+  })
+}
+
+const normalizeDesignation = (value: string): string =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+const buildTvaRecapRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const collecteeRows = buildTvaCollecteeRows(mois, annee, declarations)
+  const deductibleRows = buildTvaSituationRows(mois, annee, declarations)
+
+  const collecteeByDesignation = new Map<string, number>()
+  for (const row of collecteeRows) {
+    collecteeByDesignation.set(normalizeDesignation(String(row.designation ?? "")), parseAmount(row.ttc))
+  }
+
+  const deductibleImmoByDesignation = new Map<string, number>()
+  const deductibleBiensByDesignation = new Map<string, number>()
+  for (const row of deductibleRows) {
+    const key = normalizeDesignation(String(row.designation ?? ""))
+    deductibleImmoByDesignation.set(key, parseAmount(row.immo))
+    deductibleBiensByDesignation.set(key, parseAmount(row.biens))
+  }
+
+  let totalCollectee = 0
+  let totalImmo = 0
+  let totalBiens = 0
+
+  return TVA_RECAP_ROWS.map((designation) => {
+    const normalized = normalizeDesignation(designation)
+
+    if (normalized === "total") {
+      const totalDed = totalImmo + totalBiens
+      return {
+        designation,
+        collectee: formatDzd(totalCollectee),
+        immo: formatDzd(totalImmo),
+        biens: formatDzd(totalBiens),
+        totalDed: formatDzd(totalDed),
+        payer: formatDzd(totalCollectee - totalDed),
+      }
+    }
+
+    let collectee = 0
+    if (normalized === "direction generale") {
+      collectee = collecteeByDesignation.get(normalizeDesignation("Total (1)")) ?? 0
+    } else if (normalized.startsWith("dr ")) {
+      collectee = collecteeByDesignation.get(normalized) ?? 0
+    }
+
+    let immo = 0
+    let biens = 0
+    if (normalized === "direction generale") {
+      immo = deductibleImmoByDesignation.get(normalizeDesignation("Direction Generale")) ?? 0
+      biens = deductibleBiensByDesignation.get(normalizeDesignation("Direction Generale")) ?? 0
+    } else if (normalized === "tva autoliquidation") {
+      immo = deductibleImmoByDesignation.get(normalizeDesignation("Direction AutoLiquidation")) ?? 0
+      biens = deductibleBiensByDesignation.get(normalizeDesignation("Direction AutoLiquidation")) ?? 0
+    } else if (normalized.startsWith("dr ")) {
+      immo = deductibleImmoByDesignation.get(normalized) ?? 0
+      biens = deductibleBiensByDesignation.get(normalized) ?? 0
+    }
+
+    const totalDed = immo + biens
+    const payer = collectee - totalDed
+
+    totalCollectee += collectee
+    totalImmo += immo
+    totalBiens += biens
+
+    return {
+      designation,
+      collectee: formatDzd(collectee),
+      immo: formatDzd(immo),
+      biens: formatDzd(biens),
+      totalDed: formatDzd(totalDed),
+      payer: formatDzd(payer),
+    }
+  })
+}
+
+const parsePayload = (dataJson: string): Record<string, unknown> => {
+  try {
+    const parsed = JSON.parse(dataJson ?? "{}")
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    return {}
+  }
+
+  return {}
+}
+
+const buildG50Rows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const tvaRecapRows = buildTvaRecapRows(mois, annee, declarations)
+  const tvaSituationRows = buildTvaSituationRows(mois, annee, declarations)
+  const droitsTimbreRows = buildDroitsTimbreRows(mois, annee, declarations)
+  const tapRows = buildTap15Rows(mois, annee, declarations)
+
+  const getRowAmount = (rows: Record<string, string>[], designation: string, key: string): number => {
+    const normalized = normalizeDesignation(designation)
+    const row = rows.find((item) => normalizeDesignation(String(item.designation ?? "")) === normalized)
+    return parseAmount(row?.[key])
+  }
+
+  const values = {
+    acompte: 0,
+    tvaCollectee: getRowAmount(tvaRecapRows, "Total", "collectee"),
+    tvaDeductible: getRowAmount(tvaSituationRows, "Total", "totalDed"),
+    tvaAPayer: getRowAmount(tvaRecapRows, "Total", "payer"),
+    droitsTimbre: getRowAmount(droitsTimbreRows, "Total", "montant"),
+    tacp7: 0,
+    tnfpdal1: 0,
+    irgSalaire: 0,
+    autreIrg: 0,
+    taxeFormation: 0,
+    taxeVehicule: 0,
+    tap: getRowAmount(tapRows, "Total", "taxe"),
+    taxe2: 0,
+    masters15: 0,
+  }
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+
+    const payload = parsePayload(declaration.dataJson)
+
+    if (declaration.tabKey === "acompte") {
+      const months = Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : []
+      values.acompte += months.reduce((sum, value) => sum + parseAmount(value), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "ca_tap") {
+      const b12 = parseAmount(payload.b12)
+      const b13 = parseAmount(payload.b13)
+      values.tacp7 += b12 * 0.07
+      values.tnfpdal1 += b13 * 0.01
+      continue
+    }
+
+    if (declaration.tabKey === "irg") {
+      const rows = Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : []
+      values.irgSalaire += parseAmount(rows[0]?.montant)
+      values.autreIrg += rows.slice(1).reduce((sum, row) => sum + parseAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_formation") {
+      const rows = Array.isArray(payload.taxe12Rows) ? (payload.taxe12Rows as Taxe12Row[]) : []
+      values.taxeFormation += rows.reduce((sum, row) => sum + parseAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_vehicule") {
+      values.taxeVehicule += parseAmount(payload.taxe11Montant)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe2") {
+      const rows = Array.isArray(payload.taxe2Rows) ? (payload.taxe2Rows as Taxe2Row[]) : []
+      values.taxe2 += rows.reduce((sum, row) => sum + parseAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_masters") {
+      const rows = Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : []
+      values.masters15 += rows.reduce((sum, row) => {
+        const taxe = parseAmount(row.taxe15)
+        if (taxe > 0) return sum + taxe
+        return sum + (parseAmount(row.montantHT) * 0.015)
+      }, 0)
+      continue
+    }
+  }
+
+  const totalDeclarationG50 = values.acompte
+    + values.tvaCollectee
+    + values.tvaDeductible
+    + values.tvaAPayer
+    + values.droitsTimbre
+    + values.tacp7
+    + values.tnfpdal1
+    + values.irgSalaire
+    + values.autreIrg
+    + values.taxeFormation
+    + values.taxeVehicule
+    + values.tap
+    + values.taxe2
+
+  const totalGeneral = totalDeclarationG50 + values.masters15
+
+  const amountByDesignation = new Map<string, number>([
+    ["acompte provisionel", values.acompte],
+    ["tva collectee", values.tvaCollectee],
+    ["tva deductible", values.tvaDeductible],
+    ["total tva a payer (voir la piece)", values.tvaAPayer],
+    ["droit de timbre", values.droitsTimbre],
+    ["tacp 7%", values.tacp7],
+    ["tnfpdal 1%", values.tnfpdal1],
+    ["irg salaire", values.irgSalaire],
+    ["autre irg", values.autreIrg],
+    ["taxe de formation", values.taxeFormation],
+    ["taxe vehicule", values.taxeVehicule],
+    ["la tap", values.tap],
+    ["taxe 2%", values.taxe2],
+    ["total declaration g 50 (voir la piece)", totalDeclarationG50],
+    ["taxe 1,5% sur masters (voir la piece)", values.masters15],
+    ["total", totalGeneral],
+  ])
+
+  return RECAP_G50_ROWS.map((designation) => ({
+    designation,
+    montant: formatDzd(amountByDesignation.get(normalizeDesignation(designation)) ?? 0),
+  }))
+}
+
+const getFormulaKey = (designation: string, columnKey: string): string =>
+  `${normalizeDesignation(designation)}|${columnKey}`
+
+const getCellFormula = (itemKey: string, designation: string, columnKey: string): string => {
+  const row = normalizeDesignation(designation)
+
+  if (columnKey === "designation") return "Saisie manuelle"
+
+  if (itemKey === "g50" && columnKey === "montant") {
+    if (row === "tva collectee") return "TVA collectee = TVA_a_payer.Total(colonne TVA collectee)"
+    if (row === "tva deductible") return "TVA deductible = TVA_situation.Total = (TVA immo + TVA biens)"
+    if (row === "total tva a payer (voir la piece)") return "TVA a payer = TVA_a_payer.Total(colonne TVA a payer) = (TVA collectee - TVA deductible)"
+    if (row === "droit de timbre") return "Droit de timbre = Droits_timbre.Total"
+    if (row === "tacp 7%") return "TACP 7% = SUM(CA_TAP.B12) * (7 / 100)"
+    if (row === "tnfpdal 1%") return "TNFPDAL 1% = SUM(CA_TAP.B13) * (1 / 100)"
+    if (row === "irg salaire") return "IRG salaire = SUM(IRG.ligne1)"
+    if (row === "autre irg") return "Autre IRG = SUM(IRG.lignes2..n)"
+    if (row === "taxe de formation") return "Taxe formation = (Taxe formation pro) + (Taxe d'apprentissage)"
+    if (row === "taxe vehicule") return "Taxe vehicule = SUM(Tableau taxe vehicule)"
+    if (row === "la tap") return "LA TAP = TAP_1.5%.Total"
+    if (row === "taxe 2%") return "Taxe 2% = SUM(Tableau taxe 2%.montant)"
+    if (row === "total declaration g 50 (voir la piece)") return "Total declaration G50 = (Acompte + TVA collectee + TVA deductible + TVA a payer + Droit de timbre + TACP 7% + TNFPDAL 1% + IRG salaire + Autre IRG + Taxe formation + Taxe vehicule + LA TAP + Taxe 2%)"
+    if (row === "taxe 1,5% sur masters (voir la piece)") return "Taxe masters = SUM( IF(taxe15 > 0, taxe15, montantHT * (1.5 / 100)) )"
+    if (row === "total") return "Total general = (Total declaration G50) + (Taxe 1.5% sur masters)"
+    return "Saisie manuelle"
+  }
+
+  if (itemKey === "tva_a_payer") {
+    if (columnKey === "collectee") return "TVA collectee = source recap TVA collectee (Total)"
+    if (columnKey === "immo") return "TVA immo = source recap TVA deductible(colonne immobilisation)"
+    if (columnKey === "biens") return "TVA biens = source recap TVA deductible(colonne biens et services)"
+    if (columnKey === "totalDed") return "Total TVA deductible = (TVA immo + TVA biens)"
+    if (columnKey === "payer") return "TVA a payer = (TVA collectee - Total TVA deductible)"
+  }
+
+  if (itemKey === "tva_situation") {
+    if (columnKey === "immo") return "TVA immo = SUM(TVA/IMMO.TVA)"
+    if (columnKey === "biens") return "TVA biens = SUM(TVA/Biens&Services.TVA)"
+    if (columnKey === "totalDed") return "Total TVA deductible = (TVA immo + TVA biens)"
+  }
+
+  if (itemKey === "tva_collectee") {
+    if (columnKey === "ttc") return "TTC = SUM(CA siege + Encaissement)"
+    if (columnKey === "ht") return "HT = ((TTC - Exonere) / 1.19) + Exonere"
+    if (columnKey === "tva") return "TVA = (HT - Exonere) * (19 / 100)"
+    if (columnKey === "exonere") return "Exonere = valeur saisie (defaut: 0)"
+  }
+
+  if (itemKey === "droits_timbre") {
+    if (columnKey === "caHt") return "Base CA = SUM(Droits de timbre.CA TTC especes)"
+    if (columnKey === "montant") return "Montant = SUM(Droits de timbre.droit timbre)"
+  }
+
+  if (itemKey === "tnfdal1" || itemKey === "tap15") {
+    if (columnKey === "caHt") return "Base = SUM(ETAT_TAP.montant imposable)"
+    if (columnKey === "taxe") return "Taxe = Base * (1.5 / 100)"
+  }
+
+  return "Saisie manuelle"
+}
+
+const buildFormulaMap = (
+  itemKey: string,
+  definition: RecapDefinition,
+  rows: Record<string, string>[],
+): Record<string, string> => {
+  const formulas: Record<string, string> = {}
+
+  for (const row of rows) {
+    const designation = String(row.designation ?? "")
+    for (const column of definition.columns) {
+      formulas[getFormulaKey(designation, column.key)] = getCellFormula(itemKey, designation, column.key)
+    }
+  }
+
+  return formulas
+}
+
+const getRecapRows = (
+  item: GeneratedRecap,
+  definition: RecapDefinition,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  if (item.source === "saved" && item.rows && item.rows.length > 0) {
+    return item.rows
+  }
+
+  if (item.key === "g50") {
+    return buildG50Rows(item.mois, item.annee, declarations)
+  }
+
+  if (item.key === "tva_a_payer") {
+    return buildTvaRecapRows(item.mois, item.annee, declarations)
+  }
+
+  if (item.key === "tva_collectee") {
+    return buildTvaCollecteeRows(item.mois, item.annee, declarations)
+  }
+
+  if (item.key === "tva_situation") {
+    return buildTvaSituationRows(item.mois, item.annee, declarations)
+  }
+
+  if (item.key === "droits_timbre") {
+    return buildDroitsTimbreRows(item.mois, item.annee, declarations)
+  }
+
+  if (item.key === "tnfdal1" || item.key === "tap15") {
+    return buildTap15Rows(item.mois, item.annee, declarations)
+  }
+
+  return item.rows ?? definition.rows
+}
+
 export default function RecapPage() {
   const { user, isLoading, status } = useAuth({ requireAuth: true, redirectTo: "/login" })
-  const [selectedMonth, setSelectedMonth] = useState("")
-  const [selectedYear, setSelectedYear] = useState("")
+  const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
+  const [editRecapId, setEditRecapId] = useState("")
+  const [selectedMonth, setSelectedMonth] = useState(initialFiscalPeriod.mois)
+  const [selectedYear, setSelectedYear] = useState(initialFiscalPeriod.annee)
   const [generatedRecaps, setGeneratedRecaps] = useState<GeneratedRecap[]>([])
+  const [savedRecaps, setSavedRecaps] = useState<GeneratedRecap[]>([])
   const [viewRecap, setViewRecap] = useState<GeneratedRecap | null>(null)
+  const [editingRecap, setEditingRecap] = useState<GeneratedRecap | null>(null)
+  const [editingRows, setEditingRows] = useState<Record<string, string>[]>([])
+  const [editingDefinition, setEditingDefinition] = useState<RecapDefinition | null>(null)
+  const [isSavingRecap, setIsSavingRecap] = useState(false)
   const [showDialog, setShowDialog] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [filterType, setFilterType] = useState("")
@@ -282,6 +1202,14 @@ export default function RecapPage() {
   const [filterAnnee, setFilterAnnee] = useState("")
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
+  const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
+  const [handledEditRecapId, setHandledEditRecapId] = useState("")
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    setEditRecapId((params.get("editId") ?? "").trim())
+  }, [])
 
   // Role-based access control
   const userRole = user?.role ?? ""
@@ -289,14 +1217,130 @@ export default function RecapPage() {
   const isDirectionRole = userRole?.toLowerCase()?.trim() === "direction"
   const canGenerate = !isRegionalRole && !isDirectionRole
 
-  // Initialize with current month and year on mount
   useEffect(() => {
-    const now = new Date()
-    const currentMonth = String(now.getMonth() + 1).padStart(2, "0")
-    const currentYear = String(now.getFullYear())
-    setSelectedMonth(currentMonth)
-    setSelectedYear(currentYear)
-  }, [])
+    if (!user || status !== "authenticated") {
+      setFiscalDeclarations([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadDeclarations = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setFiscalDeclarations([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const declarations = Array.isArray(payload)
+          ? payload.map((item) => ({
+              id: Number((item as { id?: unknown }).id ?? 0),
+              tabKey: String((item as { tabKey?: unknown }).tabKey ?? "").trim().toLowerCase(),
+              mois: String((item as { mois?: unknown }).mois ?? "").trim(),
+              annee: String((item as { annee?: unknown }).annee ?? "").trim(),
+              direction: String((item as { direction?: unknown }).direction ?? "").trim(),
+              dataJson: String((item as { dataJson?: unknown }).dataJson ?? "{}"),
+            }))
+          : []
+
+        if (!cancelled) {
+          setFiscalDeclarations(declarations)
+        }
+      } catch {
+        if (!cancelled) setFiscalDeclarations([])
+      }
+    }
+
+    loadDeclarations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setSavedRecaps([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadRecaps = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal-recaps`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setSavedRecaps([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const recaps: GeneratedRecap[] = Array.isArray(payload)
+          ? (payload as ApiFiscalRecap[]).map((item) => {
+              let rows: Record<string, string>[] = []
+              let formulas: Record<string, string> = {}
+
+              try {
+                const parsedRows = JSON.parse(item.rowsJson ?? "[]")
+                rows = Array.isArray(parsedRows) ? (parsedRows as Record<string, string>[]) : []
+              } catch {
+                rows = []
+              }
+
+              try {
+                const parsedFormulas = JSON.parse(item.formulasJson ?? "{}")
+                formulas = parsedFormulas && typeof parsedFormulas === "object"
+                  ? (parsedFormulas as Record<string, string>)
+                  : {}
+              } catch {
+                formulas = {}
+              }
+
+              return {
+                id: String(item.id),
+                key: String(item.key ?? ""),
+                title: String(item.title ?? ""),
+                mois: String(item.mois ?? ""),
+                annee: String(item.annee ?? ""),
+                createdAt: String(item.createdAt ?? new Date().toISOString()),
+                isGenerated: Boolean(item.isGenerated),
+                rows,
+                formulas,
+                source: "saved",
+              }
+            })
+          : []
+
+        if (!cancelled) {
+          setSavedRecaps(recaps)
+        }
+      } catch {
+        if (!cancelled) setSavedRecaps([])
+      }
+    }
+
+    loadRecaps()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
 
   const periodLabel = useMemo(() => {
     if (!selectedMonth || !selectedYear) return "-"
@@ -330,18 +1374,52 @@ export default function RecapPage() {
     })
   }, [generatedRecaps, filterType, filterMois, filterAnnee, filterDateFrom, filterDateTo])
 
+  const filteredSavedRecaps = useMemo(() => {
+    return savedRecaps.filter((item) => {
+      if (filterType && item.key !== filterType) return false
+      if (filterMois && item.mois !== filterMois) return false
+      if (filterAnnee && item.annee !== filterAnnee.trim()) return false
+
+      if (filterDateFrom) {
+        const created = new Date(item.createdAt)
+        const from = new Date(`${filterDateFrom}T00:00:00`)
+        if (!Number.isNaN(created.getTime()) && created < from) return false
+      }
+
+      if (filterDateTo) {
+        const created = new Date(item.createdAt)
+        const to = new Date(`${filterDateTo}T23:59:59`)
+        if (!Number.isNaN(created.getTime()) && created > to) return false
+      }
+
+      return true
+    })
+  }, [savedRecaps, filterType, filterMois, filterAnnee, filterDateFrom, filterDateTo])
+
   const handleGenerate = () => {
     if (!selectedMonth || !selectedYear) return
     const now = new Date().toISOString()
-    const entries: GeneratedRecap[] = RECAP_DEFINITIONS.map((definition) => ({
-      id: `${definition.key}-${selectedYear}${selectedMonth}-${Date.now()}`,
-      key: definition.key,
-      title: definition.title,
-      mois: selectedMonth,
-      annee: selectedYear,
-      createdAt: now,
-      isGenerated: true,
-    }))
+    const entries: GeneratedRecap[] = RECAP_DEFINITIONS.map((definition) => {
+      const draftItem: GeneratedRecap = {
+        id: `${definition.key}-${selectedYear}${selectedMonth}-${Date.now()}`,
+        key: definition.key,
+        title: definition.title,
+        mois: selectedMonth,
+        annee: selectedYear,
+        createdAt: now,
+        isGenerated: true,
+        source: "draft",
+      }
+
+      const rows = getRecapRows(draftItem, definition, fiscalDeclarations)
+      const formulas = buildFormulaMap(definition.key, definition, rows)
+
+      return {
+        ...draftItem,
+        rows,
+        formulas,
+      }
+    })
 
     setGeneratedRecaps((prev) => {
       const withoutSamePeriod = prev.filter(
@@ -356,9 +1434,116 @@ export default function RecapPage() {
     setShowDialog(true)
   }
 
-  const handleDelete = (id: string) => {
-    setGeneratedRecaps((prev) => prev.filter((item) => item.id !== id))
-    if (viewRecap?.id === id) {
+  const handleEdit = useCallback((item: GeneratedRecap) => {
+    const definition = getRecapDefinition(item.key)
+    if (!definition) return
+
+    const rows = getRecapRows(item, definition, fiscalDeclarations)
+
+    setEditingRecap(item)
+    setEditingDefinition(definition)
+    setEditingRows(rows)
+  }, [fiscalDeclarations])
+
+  useEffect(() => {
+    if (!editRecapId || handledEditRecapId === editRecapId) return
+
+    const recap = savedRecaps.find((item) => item.id === editRecapId)
+    if (!recap) return
+
+    handleEdit(recap)
+    setHandledEditRecapId(editRecapId)
+  }, [editRecapId, handleEdit, handledEditRecapId, savedRecaps])
+
+  const handleEditCellChange = (rowIndex: number, columnKey: string, value: string) => {
+    setEditingRows((prev) =>
+      prev.map((row, index) => {
+        if (index !== rowIndex) return row
+        return {
+          ...row,
+          [columnKey]: value,
+        }
+      }),
+    )
+  }
+
+  const handleSaveEditedRecap = async () => {
+    if (!editingRecap || !editingDefinition) return
+
+    const formulas = buildFormulaMap(editingRecap.key, editingDefinition, editingRows)
+    const payload = {
+      key: editingRecap.key,
+      title: editingRecap.title,
+      mois: editingRecap.mois,
+      annee: editingRecap.annee,
+      rows: editingRows,
+      formulas,
+      isGenerated: false,
+    }
+
+    setIsSavingRecap(true)
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      const response = await fetch(`${API_BASE}/api/fiscal-recaps/save`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) return
+
+      const saved = (await response.json().catch(() => null)) as ApiFiscalRecap | null
+      if (!saved) return
+
+      const savedRecap: GeneratedRecap = {
+        id: String(saved.id),
+        key: saved.key,
+        title: saved.title,
+        mois: saved.mois,
+        annee: saved.annee,
+        createdAt: saved.updatedAt ?? saved.createdAt,
+        isGenerated: false,
+        rows: editingRows,
+        formulas,
+        source: "saved",
+      }
+
+      setSavedRecaps((prev) => {
+        const filtered = prev.filter((item) => !(item.key === savedRecap.key && item.mois === savedRecap.mois && item.annee === savedRecap.annee))
+        return [savedRecap, ...filtered]
+      })
+
+      setGeneratedRecaps((prev) => prev.filter((item) => !(item.key === savedRecap.key && item.mois === savedRecap.mois && item.annee === savedRecap.annee)))
+
+      if (viewRecap && viewRecap.key === savedRecap.key && viewRecap.mois === savedRecap.mois && viewRecap.annee === savedRecap.annee) {
+        setViewRecap(savedRecap)
+      }
+
+      setEditingRecap(savedRecap)
+    } finally {
+      setIsSavingRecap(false)
+    }
+  }
+
+  const handleDelete = async (item: GeneratedRecap) => {
+    if (item.source === "saved") {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      await fetch(`${API_BASE}/api/fiscal-recaps/${item.id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }).catch(() => null)
+
+      setSavedRecaps((prev) => prev.filter((recap) => recap.id !== item.id))
+    } else {
+      setGeneratedRecaps((prev) => prev.filter((recap) => recap.id !== item.id))
+    }
+
+    if (viewRecap?.id === item.id) {
       setShowDialog(false)
       setViewRecap(null)
     }
@@ -408,7 +1593,8 @@ export default function RecapPage() {
         drawUnderlinedText(headerTitle, 10, 56, "left")
 
         const tableHead = [definition.columns.map((col) => col.label)]
-        const tableBody = definition.rows.map((row) => definition.columns.map((col) => String(row[col.key] ?? "")))
+        const recapRows = getRecapRows(item, definition, fiscalDeclarations)
+        const tableBody = recapRows.map((row) => definition.columns.map((col) => String(row[col.key] ?? "")))
 
         autoTable(pdf, {
           head: tableHead,
@@ -444,6 +1630,17 @@ export default function RecapPage() {
                 .replace(/\u00A0/g, " "),
             )
 
+            const rowValues = Array.isArray(data.row.raw)
+              ? data.row.raw.map((value) => String(value ?? "").toLowerCase())
+              : []
+            const isTotalRow = data.section === "body" && rowValues.some((value) => value.includes("total"))
+
+            if (isTotalRow) {
+              data.cell.styles.fillColor = [45, 179, 75]
+              data.cell.styles.textColor = [255, 255, 255]
+              data.cell.styles.fontStyle = "bold"
+            }
+
             if (data.section === "body") {
               if (data.column.index === 0) {
                 data.cell.styles.halign = "left"
@@ -477,8 +1674,8 @@ export default function RecapPage() {
     return (
       <LayoutWrapper user={user}>
         <AccessDeniedDialog 
-          title="Accès refusé" 
-          message="Les utilisateurs régionaux ne peuvent pas accéder aux recaps fiscaux. Seuls les utilisateurs admin, finance et comptabilité peuvent consulter cette page."
+          title="AccÃ¨s refusÃ©" 
+          message="Les utilisateurs rÃ©gionaux ne peuvent pas accÃ©der aux recaps fiscaux. Seuls les utilisateurs admin, finance et comptabilitÃ© peuvent consulter cette page."
           redirectTo="/"
         />
       </LayoutWrapper>
@@ -534,7 +1731,7 @@ export default function RecapPage() {
               <Button
                 onClick={handleGenerate}
                 disabled={!selectedMonth || !selectedYear || !canGenerate}
-                title={!canGenerate ? "Seuls les administrateurs et les utilisateurs finance/comptabilité peuvent générer des recaps. Les utilisateurs de direction peuvent consulter les recaps existants." : ""}
+                title={!canGenerate ? "Seuls les administrateurs et les utilisateurs finance/comptabilitÃ© peuvent gÃ©nÃ©rer des recaps. Les utilisateurs de direction peuvent consulter les recaps existants." : ""}
                 className="h-10 bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Generer
@@ -547,7 +1744,7 @@ export default function RecapPage() {
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-base">
-                Historique des recaps generes
+                Brouillons recaps generes (non enregistres)
                 {generatedRecaps.length > 0 && (
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
                     ({filteredRecaps.length}{hasActiveFilters ? ` / ${generatedRecaps.length}` : ""})
@@ -643,7 +1840,7 @@ export default function RecapPage() {
           <CardContent>
             {generatedRecaps.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucun recap genere pour le moment.
+                Aucun brouillon genere pour le moment.
               </p>
             ) : filteredRecaps.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
@@ -657,7 +1854,6 @@ export default function RecapPage() {
                       <TableHead>Type de recap</TableHead>
                       <TableHead>Periode</TableHead>
                       <TableHead>Date de generation</TableHead>
-                      <TableHead className="w-20 text-center">Statut</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -676,15 +1872,20 @@ export default function RecapPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {new Date(item.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
                         </TableCell>
-                        <TableCell className="w-20 p-0 align-middle">
-                          <div className="flex items-center justify-center">
-                            <span className="inline-flex" title="Genere" aria-label="Genere">
-                              <CheckCircle className="h-4 w-4 text-emerald-600" />
-                            </span>
-                          </div>
-                        </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 p-0 border-sky-300 text-sky-700 hover:bg-sky-50"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleEdit(item)
+                              }}
+                              title="Modifier"
+                            >
+                              <Pencil size={16} />
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -703,7 +1904,7 @@ export default function RecapPage() {
                               className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                handleDelete(item.id)
+                                void handleDelete(item)
                               }}
                               title="Supprimer"
                             >
@@ -720,9 +1921,103 @@ export default function RecapPage() {
           </CardContent>
         </Card>
 
+        {editingRecap && editingDefinition && (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold">
+                  Modification manuelle: {editingRecap.title}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{MONTHS[editingRecap.mois] ?? editingRecap.mois} {editingRecap.annee}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-gray-300 text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      setEditingRecap(null)
+                      setEditingDefinition(null)
+                      setEditingRows([])
+                    }}
+                    disabled={isSavingRecap}
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => void handleSaveEditedRecap()}
+                    disabled={isSavingRecap}
+                  >
+                    <Save size={14} /> {isSavingRecap ? "Enregistrement..." : "Enregistrer"}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la formule appliquee ou 'Saisie manuelle'.</p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      {editingDefinition.columns.map((column) => (
+                        <th
+                          key={column.key}
+                          className={`px-3 py-2 text-xs font-semibold text-gray-700 border-b ${column.right ? "text-right" : "text-left"}`}
+                        >
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editingRows.map((row, rowIndex) => (
+                      <tr key={`${editingRecap.id}-edit-${rowIndex}`} className={rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        {editingDefinition.columns.map((column) => {
+                          const designation = String(row.designation ?? "")
+                          const formula = editingRecap.formulas?.[getFormulaKey(designation, column.key)]
+                            ?? getCellFormula(editingRecap.key, designation, column.key)
+
+                          if (column.key === "designation") {
+                            return (
+                              <td key={column.key} className="px-3 py-2 border-b text-xs">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-block w-full">{String(row[column.key] ?? "")}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">{formula}</TooltipContent>
+                                </Tooltip>
+                              </td>
+                            )
+                          }
+
+                          return (
+                            <td key={column.key} className={`px-2 py-1 border-b ${column.right ? "text-right" : "text-left"}`}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Input
+                                    value={String(row[column.key] ?? "")}
+                                    onChange={(event) => handleEditCellChange(rowIndex, column.key, event.target.value)}
+                                    className="h-7 px-2 text-xs bg-white"
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent side="top">{formula}</TooltipContent>
+                              </Tooltip>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {viewRecap && (
           <Dialog open={showDialog} onOpenChange={setShowDialog}>
-            <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden">
+            <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden [&_[data-slot=table-head]]:border-r [&_[data-slot=table-head]]:border-border [&_[data-slot=table-head]:last-child]:border-r-0 [&_[data-slot=table-cell]]:border-r [&_[data-slot=table-cell]]:border-border [&_[data-slot=table-cell]:last-child]:border-r-0">
               <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
                 <DialogHeader className="space-y-2">
                   <DialogTitle className="text-base font-semibold leading-tight">
@@ -753,13 +2048,24 @@ export default function RecapPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {definition.rows.map((row, index) => (
+                            {getRecapRows(viewRecap, definition, fiscalDeclarations).map((row, index) => (
                               <TableRow key={`${viewRecap.key}-${index}`}>
-                                {definition.columns.map((column) => (
-                                  <TableCell key={column.key} className={column.right ? "text-right font-semibold" : undefined}>
-                                    {row[column.key] ?? ""}
-                                  </TableCell>
-                                ))}
+                                {definition.columns.map((column) => {
+                                  const designation = String(row.designation ?? "")
+                                  const formula = viewRecap.formulas?.[getFormulaKey(designation, column.key)]
+                                    ?? getCellFormula(viewRecap.key, designation, column.key)
+
+                                  return (
+                                    <TableCell key={column.key} className={column.right ? "text-right font-semibold" : undefined}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block w-full">{String(row[column.key] ?? "")}</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">{formula}</TooltipContent>
+                                      </Tooltip>
+                                    </TableCell>
+                                  )
+                                })}
                               </TableRow>
                             ))}
                           </TableBody>
@@ -770,6 +2076,14 @@ export default function RecapPage() {
                 </div>
 
                 <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs h-8 border-sky-300 text-sky-700 hover:bg-sky-50"
+                    onClick={() => handleEdit(viewRecap)}
+                  >
+                    <Pencil size={13} /> Modifier
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -788,3 +2102,4 @@ export default function RecapPage() {
     </LayoutWrapper>
   )
 }
+

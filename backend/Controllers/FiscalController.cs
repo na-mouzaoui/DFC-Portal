@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CheckFillingAPI.Data;
 using CheckFillingAPI.Models;
+using CheckFillingAPI.RealTime;
 using CheckFillingAPI.Services;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
@@ -16,11 +18,38 @@ public class FiscalController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IAuditService _auditService;
+    private readonly IHubContext<CheckUpdatesHub> _hubContext;
 
-    public FiscalController(AppDbContext context, IAuditService auditService)
+    public FiscalController(AppDbContext context, IAuditService auditService, IHubContext<CheckUpdatesHub> hubContext)
     {
         _context = context;
         _auditService = auditService;
+        _hubContext = hubContext;
+    }
+
+    private async Task NotifyFiscalDeclarationChangedAsync(string action, Declaration declaration, int changedByUserId)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("fiscalDeclarationChanged", new
+            {
+                action,
+                declarationId = declaration.Id,
+                declaration.TabKey,
+                declaration.Mois,
+                declaration.Annee,
+                declaration.Direction,
+                declaration.IsApproved,
+                declaration.ApprovedByUserId,
+                declaration.ApprovedAt,
+                declaration.UpdatedAt,
+                changedByUserId,
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR fiscalDeclarationChanged failed: {ex.Message}");
+        }
     }
 
     private int GetCurrentUserId()
@@ -156,6 +185,15 @@ public class FiscalController : ControllerBase
 
     private static string NormalizeTabKey(string? tabKey) => (tabKey ?? "").Trim().ToLowerInvariant();
 
+    private async Task<bool> IsTable6EnabledAsync()
+    {
+        var setting = await _context.AdminFiscalSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == 1);
+
+        return setting?.IsTable6Enabled ?? true;
+    }
+
     private static bool CanManageTabForRole(string role, string? tabKey)
     {
         var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
@@ -217,7 +255,7 @@ public class FiscalController : ControllerBase
     /// Vérifie si l'utilisateur courant peut accéder à une déclaration fiscale pour la modifier/consulter/supprimer
     /// basée sur sa direction et son rôle, indépendamment de qui l'a créée.
     /// </summary>
-    private async Task<bool> CanUserAccessDeclarationAsync(int userId, FiscalDeclaration declaration)
+    private async Task<bool> CanUserAccessDeclarationAsync(int userId, Declaration declaration)
     {
         var user = await _context.Users
             .AsNoTracking()
@@ -229,6 +267,8 @@ public class FiscalController : ControllerBase
         var userRole = (user.Role ?? "").Trim().ToLowerInvariant();
         var userDirection = (user.Direction ?? "").Trim().ToLowerInvariant();
         var declarationDirection = (declaration.Direction ?? "").Trim().ToLowerInvariant();
+        var declarationOwnerRole = (declaration.User.Role ?? "").Trim().ToLowerInvariant();
+        var declarationOwnerRegion = (declaration.User.Region ?? "").Trim().ToLowerInvariant();
 
         // L'admin peut accéder à tout
         if (userRole == "admin")
@@ -240,23 +280,33 @@ public class FiscalController : ControllerBase
 
         // Vérification par rôle et direction
         // Pour regionale: userDirection contient le nom de la région (Nord, Sud, Est, Ouest)
-        // Pour finance/comptabilite: userDirection contient "Siège"
+        // Pour finance: accès uniquement aux déclarations dont la direction est Siège
         // declarationDirection contient la région de la déclaration (ou "Siège")
         
         if (userRole == "regionale")
         {
             // Un utilisateur régional peut accéder aux déclarations de sa région
-            // La région de la déclaration est dans FiscalDeclaration.Direction
+            // La région de la déclaration est dans Declaration.Direction
             if (!string.IsNullOrWhiteSpace(userDirection) && 
-                userDirection == declarationDirection)
+                (
+                    userDirection == declarationDirection
+                    || (string.IsNullOrWhiteSpace(declarationDirection)
+                        && declarationOwnerRole == "regionale"
+                        && declarationOwnerRegion == userDirection)
+                ))
             {
                 return true;
             }
         }
-        else if (userRole == "finance" || userRole == "comptabilite" || userRole == "direction")
+        else if (userRole == "finance" || userRole == "comptabilite")
         {
-            // Finance/comptabilite/direction peuvent accéder aux déclarations du siège
-            if (IsHeadOfficeDirection(declarationDirection))
+            // Finance peut accéder aux déclarations du siège
+            if (IsHeadOfficeDirection(declarationDirection)
+                || (string.IsNullOrWhiteSpace(declarationDirection)
+                    && (declarationOwnerRole == "finance"
+                        || declarationOwnerRole == "comptabilite"
+                        || declarationOwnerRole == "direction"
+                        || declarationOwnerRole == "admin")))
             {
                 return true;
             }
@@ -354,7 +404,40 @@ public class FiscalController : ControllerBase
         return new List<TvaInvoiceRow>();
     }
 
-    private async Task<(bool hasConflict, IActionResult? response)> ValidateTvaInvoiceUniquenessAsync(FiscalDeclarationRequest request, int? excludedDeclarationId = null)
+    private async Task<(bool hasConflict, IActionResult? response)> ValidateDeclarationUniquenessAsync(DeclarationRequest request, int? excludedDeclarationId = null)
+    {
+        // Vérifier qu'il n'existe pas déjà une déclaration avec le même TabKey, Direction et Mois/Année
+        var requestTabKeyLower = (request.TabKey ?? "").Trim().ToLowerInvariant();
+        var requestDirLower = (request.Direction ?? "").Trim().ToLowerInvariant();
+        var requestMonth = (request.Mois ?? "").Trim();
+        var requestYear = (request.Annee ?? "").Trim();
+        
+        var query = _context.Declarations
+            .AsNoTracking()
+            .Where(d => (d.TabKey ?? "").Trim().ToLower() == requestTabKeyLower
+                && (d.Mois ?? "").Trim() == requestMonth
+                && (d.Annee ?? "").Trim() == requestYear
+                && (d.Direction ?? "").Trim().ToLower() == requestDirLower);
+
+        if (excludedDeclarationId.HasValue)
+            query = query.Where(d => d.Id != excludedDeclarationId.Value);
+
+        var existingDeclaration = await query.FirstOrDefaultAsync();
+
+        if (existingDeclaration != null)
+        {
+            return (true, Conflict(new
+            {
+                message = $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), cette direction et cette période ({request.Mois}/{request.Annee}). Veuillez utiliser la déclaration existante ou en supprimer une.",
+                conflictingDeclarationId = existingDeclaration.Id,
+                isDoubloon = true
+            }));
+        }
+
+        return (false, null);
+    }
+
+    private async Task<(bool hasConflict, IActionResult? response)> ValidateTvaInvoiceUniquenessAsync(DeclarationRequest request, int? excludedDeclarationId = null)
     {
         if (!IsTvaTab(request.TabKey))
             return (false, null);
@@ -409,7 +492,7 @@ public class FiscalController : ControllerBase
             }
         }
 
-        var existingQuery = _context.FiscalDeclarations
+        var existingQuery = _context.Declarations
             .AsNoTracking()
             .Where(d => d.TabKey == "tva_immo" || d.TabKey == "tva_biens");
 
@@ -457,17 +540,27 @@ public class FiscalController : ControllerBase
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
+        var isTable6Enabled = await IsTable6EnabledAsync();
+
+        var regionalTabKeys = isTable6Enabled
+            ? RegionalManageableTabOrder
+            : RegionalManageableTabOrder.Where(tab => !string.Equals(tab, "etat_tap", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+        var financeTabKeys = FinanceManageableTabOrder;
 
         var manageableTabKeys = GetManageableTabsForRoleAndDirection(currentUserRole, direction);
+
+        var disabledTabKeys = isTable6Enabled ? Array.Empty<string>() : new[] { "etat_tap" };
 
         return Ok(new
         {
             role = currentUserRole,
             requestedDirection = (direction ?? "").Trim(),
             deadlineDay = GetDeadlineDayForRole(currentUserRole),
-            regionalTabKeys = RegionalManageableTabOrder,
-            financeTabKeys = FinanceManageableTabOrder,
+            regionalTabKeys,
+            financeTabKeys,
             manageableTabKeys,
+            disabledTabKeys,
             serverNow = DateTime.UtcNow,
         });
     }
@@ -516,7 +609,7 @@ public class FiscalController : ControllerBase
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
 
-        IQueryable<FiscalDeclaration> query = _context.FiscalDeclarations.AsNoTracking();
+        IQueryable<Declaration> query = _context.Declarations.AsNoTracking();
 
         // Le dashboard fiscal est piloté par une portée métier (profil + direction),
         // pas uniquement par l'auteur de la déclaration.
@@ -568,7 +661,7 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> GetById(int id)
     {
         var userId = GetCurrentUserId();
-        var decl = await _context.FiscalDeclarations
+        var decl = await _context.Declarations
             .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == id);
 
@@ -592,11 +685,21 @@ public class FiscalController : ControllerBase
     // ─── POST api/fiscal ─────────────────────────────────────────────────────
     // Crée une nouvelle déclaration
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] FiscalDeclarationRequest request)
+    public async Task<IActionResult> Create([FromBody] DeclarationRequest request)
     {
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
+        var targetDirection = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region);
+
+        if (string.Equals(NormalizeTabKey(request.TabKey), "etat_tap", StringComparison.OrdinalIgnoreCase)
+            && !await IsTable6EnabledAsync())
+        {
+            return Conflict(new
+            {
+                message = "Le tableau 6 (ETAT TAP) est désactivé par l'administration."
+            });
+        }
 
         if (!CanManageTabForRole(currentUserRole, request.TabKey))
             return BuildTabAccessDeniedResponse(currentUserRole, request.TabKey);
@@ -604,17 +707,31 @@ public class FiscalController : ControllerBase
         if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(request.Mois, request.Annee, periodDeadline);
 
+        // Vérifier qu'il n'existe pas de doublon (même TabKey, Direction, Mois/Année)
+        var uniquenessRequest = new DeclarationRequest
+        {
+            TabKey = request.TabKey,
+            Mois = request.Mois,
+            Annee = request.Annee,
+            Direction = targetDirection,
+            DataJson = request.DataJson,
+        };
+
+        var doubloonCheck = await ValidateDeclarationUniquenessAsync(uniquenessRequest);
+        if (doubloonCheck.hasConflict && doubloonCheck.response != null)
+            return doubloonCheck.response;
+
         var duplicateCheck = await ValidateTvaInvoiceUniquenessAsync(request);
         if (duplicateCheck.hasConflict && duplicateCheck.response != null)
             return duplicateCheck.response;
 
-        var decl = new FiscalDeclaration
+        var decl = new Declaration
         {
             UserId    = userId,
             TabKey    = request.TabKey,
             Mois      = request.Mois,
             Annee     = request.Annee,
-            Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region),
+            Direction = targetDirection,
             DataJson  = request.DataJson ?? "{}",
             IsApproved = false,
             ApprovedByUserId = null,
@@ -623,40 +740,45 @@ public class FiscalController : ControllerBase
             UpdatedAt = DateTime.UtcNow,
         };
 
-        _context.FiscalDeclarations.Add(decl);
+        _context.Declarations.Add(decl);
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_SAVE", "FiscalDeclaration", decl.Id,
+        await _auditService.LogAction(userId, "FISCAL_SAVE", "Declaration", decl.Id,
             new { decl.TabKey, decl.Mois, decl.Annee, action = "create" });
+
+        await NotifyFiscalDeclarationChangedAsync("create", decl, userId);
 
         return CreatedAtAction(nameof(GetById), new { id = decl.Id },
             new { decl.Id, decl.TabKey, decl.Mois, decl.Annee, decl.CreatedAt });
     }
 
     // ─── PUT api/fiscal/{id} ─────────────────────────────────────────────────
-    // Met à jour une déclaration existante
+    // Met à jour directement une déclaration existante
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] FiscalDeclarationRequest request)
+    public async Task<IActionResult> Update(int id, [FromBody] DeclarationRequest request)
     {
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
         
-        var decl = await _context.FiscalDeclarations
+        var decl = await _context.Declarations
             .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == id);
 
         if (decl == null) return NotFound();
 
+        if (string.Equals(NormalizeTabKey(request.TabKey), "etat_tap", StringComparison.OrdinalIgnoreCase)
+            && !await IsTable6EnabledAsync())
+        {
+            return Conflict(new
+            {
+                message = "Le tableau 6 (ETAT TAP) est désactivé par l'administration."
+            });
+        }
+
         // Vérifier les permissions d'accès
         if (!await CanUserAccessDeclarationAsync(userId, decl))
             return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez modifier que les déclarations de votre groupe." });
-
-        if (!CanManageTabForRole(currentUserRole, decl.TabKey))
-            return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
-
-        if (!CanManageTabForRole(currentUserRole, request.TabKey))
-            return BuildTabAccessDeniedResponse(currentUserRole, request.TabKey);
 
         if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var sourceDeadline))
             return BuildPeriodLockedResponse(decl.Mois, decl.Annee, sourceDeadline);
@@ -664,15 +786,31 @@ public class FiscalController : ControllerBase
         if (IsPeriodLocked(request.Mois, request.Annee, currentUserRole, out var targetDeadline))
             return BuildPeriodLockedResponse(request.Mois, request.Annee, targetDeadline);
 
+        var targetDirection = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region, decl.Direction);
+
+        var uniquenessRequest = new DeclarationRequest
+        {
+            TabKey = request.TabKey,
+            Mois = request.Mois,
+            Annee = request.Annee,
+            Direction = targetDirection,
+            DataJson = request.DataJson,
+        };
+
+        // La modification de la même déclaration est autorisée (on exclut son propre id)
+        var doubloonCheck = await ValidateDeclarationUniquenessAsync(uniquenessRequest, id);
+        if (doubloonCheck.hasConflict && doubloonCheck.response != null)
+            return doubloonCheck.response;
+
         var duplicateCheck = await ValidateTvaInvoiceUniquenessAsync(request, id);
         if (duplicateCheck.hasConflict && duplicateCheck.response != null)
             return duplicateCheck.response;
 
-        decl.TabKey    = request.TabKey;
-        decl.Mois      = request.Mois;
-        decl.Annee     = request.Annee;
-        decl.Direction = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region, decl.Direction);
-        decl.DataJson  = request.DataJson ?? decl.DataJson;
+        decl.TabKey = request.TabKey;
+        decl.Mois = request.Mois;
+        decl.Annee = request.Annee;
+        decl.Direction = targetDirection;
+        decl.DataJson = request.DataJson ?? decl.DataJson;
         // Toute modification remet la déclaration en attente d'approbation.
         decl.IsApproved = false;
         decl.ApprovedByUserId = null;
@@ -681,8 +819,10 @@ public class FiscalController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_SAVE", "FiscalDeclaration", decl.Id,
+        await _auditService.LogAction(userId, "FISCAL_SAVE", "Declaration", decl.Id,
             new { decl.TabKey, decl.Mois, decl.Annee, action = "update", modifiedByUserId = userId });
+
+        await NotifyFiscalDeclarationChangedAsync("update", decl, userId);
 
         return NoContent();
     }
@@ -695,24 +835,18 @@ public class FiscalController : ControllerBase
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
 
-        var approver = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var canApproveAsAdmin = currentUserRole == "admin";
+        var canApproveAsRegional = currentUserRole == "regionale";
+        var canApproveAsFinance = currentUserRole == "finance" || currentUserRole == "comptabilite";
 
-        if (approver == null)
-            return Unauthorized();
-
-        var canApproveAsRegional = currentUserRole == "regionale" && approver.IsRegionalApprover;
-        var canApproveAsFinance = (currentUserRole == "finance" || currentUserRole == "comptabilite") && approver.IsFinanceApprover;
-
-        if (!canApproveAsRegional && !canApproveAsFinance)
+        if (!canApproveAsAdmin && !canApproveAsRegional && !canApproveAsFinance)
             return StatusCode(403, new { message = "Ce compte n'a pas le droit d'approbation." });
 
-        var approverRegion = (approver.Region ?? "").Trim().ToLowerInvariant();
+        var approverRegion = (currentUserContext.Region ?? "").Trim().ToLowerInvariant();
         if (canApproveAsRegional && string.IsNullOrWhiteSpace(approverRegion))
             return BadRequest(new { message = "Le compte approbateur doit être rattaché à une région." });
 
-        var decl = await _context.FiscalDeclarations
+        var decl = await _context.Declarations
             .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == id);
 
@@ -734,7 +868,7 @@ public class FiscalController : ControllerBase
                     || declarationOwnerRole == "direction"
                     || declarationOwnerRole == "admin"));
 
-        if (!isSelfDeclaration && canApproveAsRegional && (declarationOwnerRole != "regionale" || declarationOwnerRegion != approverRegion))
+        if (!canApproveAsAdmin && !isSelfDeclaration && canApproveAsRegional && (declarationOwnerRole != "regionale" || declarationOwnerRegion != approverRegion))
         {
             return StatusCode(403, new
             {
@@ -742,7 +876,7 @@ public class FiscalController : ControllerBase
             });
         }
 
-        if (!isSelfDeclaration && canApproveAsFinance && !isSiegeDeclaration)
+        if (!canApproveAsAdmin && !isSelfDeclaration && canApproveAsFinance && !isSiegeDeclaration)
         {
             return StatusCode(403, new
             {
@@ -769,8 +903,10 @@ public class FiscalController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_APPROVE", "FiscalDeclaration", decl.Id,
+        await _auditService.LogAction(userId, "FISCAL_APPROVE", "Declaration", decl.Id,
             new { decl.TabKey, decl.Mois, decl.Annee, decl.UserId, approverRegion, approverRole = currentUserRole });
+
+        await NotifyFiscalDeclarationChangedAsync("approve", decl, userId);
 
         return Ok(new
         {
@@ -790,7 +926,7 @@ public class FiscalController : ControllerBase
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = currentUserContext.Role;
         
-        var decl = await _context.FiscalDeclarations
+        var decl = await _context.Declarations
             .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == id);
 
@@ -800,17 +936,16 @@ public class FiscalController : ControllerBase
         if (!await CanUserAccessDeclarationAsync(userId, decl))
             return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez supprimer que les déclarations de votre groupe." });
 
-        if (!CanManageTabForRole(currentUserRole, decl.TabKey))
-            return BuildTabAccessDeniedResponse(currentUserRole, decl.TabKey);
-
         if (IsPeriodLocked(decl.Mois, decl.Annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(decl.Mois, decl.Annee, periodDeadline);
 
         var info = new { decl.TabKey, decl.Mois, decl.Annee, deletedByUserId = userId };
-        _context.FiscalDeclarations.Remove(decl);
+        _context.Declarations.Remove(decl);
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_DELETE", "FiscalDeclaration", id, info);
+        await _auditService.LogAction(userId, "FISCAL_DELETE", "Declaration", id, info);
+
+        await NotifyFiscalDeclarationChangedAsync("delete", decl, userId);
 
         return NoContent();
     }
@@ -821,7 +956,7 @@ public class FiscalController : ControllerBase
     public async Task<IActionResult> LogPrint(int id)
     {
         var userId = GetCurrentUserId();
-        var decl = await _context.FiscalDeclarations
+        var decl = await _context.Declarations
             .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == id);
 
@@ -831,7 +966,7 @@ public class FiscalController : ControllerBase
         if (!await CanUserAccessDeclarationAsync(userId, decl))
             return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez imprimer que les déclarations de votre groupe." });
 
-        await _auditService.LogAction(userId, "FISCAL_PRINT", "FiscalDeclaration", id,
+        await _auditService.LogAction(userId, "FISCAL_PRINT", "Declaration", id,
             new { decl.TabKey, decl.Mois, decl.Annee });
 
         return Ok(new { message = "Impression enregistrée dans l'audit." });
@@ -840,121 +975,182 @@ public class FiscalController : ControllerBase
     // ─── GET api/fiscal/reminders ──────────────────────────────────────────
     // Retourne les rappels de saisie (j-5) pour la période a echeance (mois precedent).
     [HttpGet("reminders")]
-    public async Task<IActionResult> GetReminders()
+    public async Task<IActionResult> GetReminders([FromQuery] string? mois, [FromQuery] string? annee)
     {
+        Console.WriteLine("=== [API CALLED] GET /api/fiscal/reminders ===");
+        
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
+        
+        Console.WriteLine($"[GetReminders] userId={userId}, role={currentUserRole}");
+        var isTable6Enabled = await IsTable6EnabledAsync();
 
-        var directionsToCheck = new List<string>();
+        var now = DateTime.Now;
+        // Période fiscale courante: du 11 au 10.
+        // Avant le 11, on reste sur le mois précédent.
+        DateTime fiscalCurrentPeriodDate = now.Day >= 11 ? now : now.AddMonths(-1);
+        DateTime activePeriodDate = fiscalCurrentPeriodDate;
+
+        if (int.TryParse((mois ?? "").Trim(), out var requestedMonth)
+            && int.TryParse((annee ?? "").Trim(), out var requestedYear)
+            && requestedMonth >= 1
+            && requestedMonth <= 12
+            && requestedYear >= 1900
+            && requestedYear <= 9999)
+        {
+            activePeriodDate = new DateTime(requestedYear, requestedMonth, 1);
+        }
+
+        IQueryable<Declaration> visibleDeclarationsQuery = _context.Declarations
+            .AsNoTracking();
+
+        // Aligner la portée des rappels avec la portée du dashboard fiscal.
+        if (currentUserRole == "admin") { }
+        else if (currentUserRole == "regionale") {
+            visibleDeclarationsQuery = visibleDeclarationsQuery.Where(d => d.UserId == userId);
+        }
+        else if (currentUserRole is "finance" or "comptabilite" or "direction") { }
+        else {
+            visibleDeclarationsQuery = visibleDeclarationsQuery.Where(d => d.UserId == userId);
+        }
+
+        var visibleDeclarationsRaw = await visibleDeclarationsQuery
+            .Select(d => new
+            {
+                d.TabKey,
+                d.IsApproved,
+                d.Mois,
+                d.Annee,
+                Direction = d.Direction,
+            })
+            .ToListAsync();
+
+        // La période fiscale est calculée avec la règle 11-10.
+        // On fait un matching numérique Mois/Annee pour supporter "4" et "04".
+
+        bool MatchesPeriod(string? moisValue, string? anneeValue, DateTime target)
+        {
+            if (!int.TryParse((moisValue ?? "").Trim(), out var month) || month < 1 || month > 12)
+                return false;
+
+            if (!int.TryParse((anneeValue ?? "").Trim(), out var year) || year < 1900 || year > 9999)
+                return false;
+
+            return month == target.Month && year == target.Year;
+        }
+
+        var currentMonth = activePeriodDate.Month.ToString("00");
+        var currentYear = activePeriodDate.Year.ToString();
+
+        var visibleDeclarations = visibleDeclarationsRaw
+            .Where(d => MatchesPeriod(d.Mois, d.Annee, activePeriodDate))
+            .ToList();
+
+        Console.WriteLine($"[REMINDERS] Date={now:yyyy-MM-dd}, Période fiscale système={fiscalCurrentPeriodDate:MM/yyyy}, Période active={currentMonth}/{currentYear}, Rôle={currentUserRole}");
+
+        Console.WriteLine($"[REMINDERS] Total declarations in DB for this user: {visibleDeclarationsRaw.Count}, Visible declarations used for KPI: {visibleDeclarations.Count}");
+        Console.WriteLine($"[REMINDERS] Declarations by Mois/Annee: {string.Join(", ", visibleDeclarationsRaw.GroupBy(d => $"{d.Mois}/{d.Annee}").Select(g => $"{g.Key}({g.Count()})"))}");
+
+        string ResolveDeclarationDirection(string? declarationDirection)
+        {
+            var explicitDirection = (declarationDirection ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(explicitDirection))
+            {
+                return IsHeadOfficeDirection(explicitDirection) ? "Siège" : explicitDirection;
+            }
+            return string.Empty;
+        }
+
+        // Collecter toutes les directions accessibles
+        var allAccessibleDirections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (currentUserRole == "admin")
         {
-            var regions = await _context.Regions
-                .AsNoTracking()
-                .Select(r => (r.Name ?? "").Trim())
-                .ToListAsync();
-
-            directionsToCheck.AddRange(
-                regions
-                    .Where(r => !string.IsNullOrWhiteSpace(r))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-            );
-
-            directionsToCheck.Add("Siège");
+            // Admin: ajouter toutes les régions + siège
+            var allRegions = await _context.Regions.Select(r => r.Name).ToListAsync();
+            allAccessibleDirections.UnionWith(allRegions);
+            allAccessibleDirections.Add("Siège");
         }
         else if (currentUserRole == "regionale")
         {
-            var region = (currentUserContext.Region ?? "").Trim();
-            var fallbackDirection = (currentUserContext.Direction ?? "").Trim();
-            if (!string.IsNullOrWhiteSpace(region))
-                directionsToCheck.Add(region);
-            else if (!string.IsNullOrWhiteSpace(fallbackDirection))
-                directionsToCheck.Add(fallbackDirection);
+            // Régionale: ajouter seulement sa région + siège
+            var userRegion = currentUserContext.Region ?? "";
+            if (!string.IsNullOrWhiteSpace(userRegion))
+                allAccessibleDirections.Add(userRegion);
+            allAccessibleDirections.Add("Siège");
         }
-        else if (currentUserRole is "finance" or "comptabilite")
+        else if (currentUserRole is "finance" or "comptabilite" or "direction")
         {
-            directionsToCheck.Add("Siège");
+            // Finance/Comptabilité/Global: ajouter toutes les régions + siège
+            var allRegions = await _context.Regions.Select(r => r.Name).ToListAsync();
+            allAccessibleDirections.UnionWith(allRegions);
+            allAccessibleDirections.Add("Siège");
+        }
+        else
+        {
+            // Pour les autres rôles (agents, etc), afficher la région de l'utilisateur ou au moins Siège
+            var userRegion = currentUserContext.Region ?? "";
+            if (!string.IsNullOrWhiteSpace(userRegion))
+                allAccessibleDirections.Add(userRegion);
+            allAccessibleDirections.Add("Siège");
         }
 
-        directionsToCheck = directionsToCheck
-            .Where(d => !string.IsNullOrWhiteSpace(d))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var declarationsByDirection = visibleDeclarations
+            .Select(d => new
+            {
+                d.TabKey,
+                d.IsApproved,
+                Direction = ResolveDeclarationDirection(d.Direction)
+            })
+            .Where(d => !string.IsNullOrWhiteSpace(d.Direction))
+            .GroupBy(d => d.Direction, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (directionsToCheck.Count == 0)
-            return Ok(new { reminders = new List<ReminderDto>() });
-
-        var now = DateTime.Now;
-        var targetPeriod = now.AddMonths(-1);
-        var currentMonth = targetPeriod.Month.ToString("00");
-        var currentYear = targetPeriod.Year.ToString();
         var reminders = new List<ReminderDto>();
 
-        foreach (var direction in directionsToCheck)
+        // Créer un map des déclarations par direction
+        var declarationsByDirectionMap = new Dictionary<string, List<(string TabKey, bool IsApproved)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var directionGroup in declarationsByDirection)
         {
-            var normalizedDirection = (direction ?? "").Trim().ToLower();
+            var directionKey = (directionGroup.Key ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(directionKey))
+            {
+                declarationsByDirectionMap[directionKey] = directionGroup
+                    .Select(d => ((d.TabKey ?? "").Trim(), d.IsApproved))
+                    .Where(d => !string.IsNullOrWhiteSpace(d.Item1))
+                    .ToList();
+            }
+        }
+
+        foreach (var direction in allAccessibleDirections)
+        {
             var isSiegeDirection = IsHeadOfficeDirection(direction);
-            var assignedTabs = isSiegeDirection ? FinanceManageableTabOrder : RegionalManageableTabOrder;
+            var assignedTabs = (isSiegeDirection ? FinanceManageableTabOrder : RegionalManageableTabOrder)
+                .Where(tab => isTable6Enabled || !string.Equals(tab, "etat_tap", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
             var roleForDeadline = isSiegeDirection ? "finance" : "regionale";
 
             if (!TryBuildPeriodDeadline(currentMonth, currentYear, roleForDeadline, out var deadline))
                 continue;
 
-            var daysUntilDeadline = (int)Math.Floor((deadline - now).TotalDays);
+            // Calcul des jours restants jusqu'à minuit du jour suivant le deadline
+            // Pour inclure tout le jour du 10 (par ex. 10 avril complet pour période mars)
+            var deadlineEndOfDay = deadline.AddDays(1).Date; // Minuit du jour suivant
+            var daysUntilDeadline = (int)Math.Floor((deadlineEndOfDay - now).TotalDays);
 
-            IQueryable<FiscalDeclaration> declarationsQuery = _context.FiscalDeclarations
-                .AsNoTracking()
-                .Where(d => d.Mois == currentMonth && d.Annee == currentYear);
+            // Récupérer les déclarations pour cette direction
+            var hasDirectionDeclarations = declarationsByDirectionMap.TryGetValue(direction, out var directionsDeclarations);
+            var enteredTabSet = hasDirectionDeclarations && directionsDeclarations != null
+                ? directionsDeclarations.Select(d => d.TabKey).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (isSiegeDirection)
-            {
-                declarationsQuery = declarationsQuery.Where(d =>
-                    // Direction explicite Siège
-                    ((d.Direction ?? "").Trim().ToLower() == "siège")
-                    || ((d.Direction ?? "").Trim().ToLower() == "siege")
-                    || ((d.Direction ?? "").Trim().ToLower().Contains("siège"))
-                    || ((d.Direction ?? "").Trim().ToLower().Contains("siege"))
-                    // Fallback historique: direction vide, déduite du profil utilisateur
-                    || (
-                        string.IsNullOrWhiteSpace(d.Direction)
-                        && (
-                            (d.User.Role ?? "").Trim().ToLower() == "finance"
-                            || (d.User.Role ?? "").Trim().ToLower() == "comptabilite"
-                            || (d.User.Role ?? "").Trim().ToLower() == "admin"
-                            || (d.User.Role ?? "").Trim().ToLower() == "direction"
-                        )
-                    )
-                );
-            }
-            else
-            {
-                declarationsQuery = declarationsQuery.Where(d =>
-                    // Direction explicite régionale
-                    ((d.Direction ?? "").Trim().ToLower() == normalizedDirection)
-                    // Fallback historique: direction vide, déduite de la région utilisateur
-                    || (
-                        string.IsNullOrWhiteSpace(d.Direction)
-                        && (d.User.Role ?? "").Trim().ToLower() == "regionale"
-                        && (d.User.Region ?? "").Trim().ToLower() == normalizedDirection
-                    )
-                );
-            }
-
-            var declarations = await declarationsQuery
-                .Select(d => new { d.TabKey, d.IsApproved })
-                .ToListAsync();
-
-            var enteredTabSet = declarations
-                .Select(d => (d.TabKey ?? "").Trim())
-                .Where(tab => !string.IsNullOrWhiteSpace(tab))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var approvedTabSet = declarations
-                .Where(d => d.IsApproved)
-                .Select(d => (d.TabKey ?? "").Trim())
-                .Where(tab => !string.IsNullOrWhiteSpace(tab))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var approvedTabSet = hasDirectionDeclarations && directionsDeclarations != null
+                ? directionsDeclarations
+                    .Where(d => d.IsApproved)
+                    .Select(d => d.TabKey)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var enteredTabs = assignedTabs.Count(tab => enteredTabSet.Contains(tab));
             var approvedTabs = assignedTabs.Count(tab => approvedTabSet.Contains(tab));
@@ -982,12 +1178,17 @@ public class FiscalController : ControllerBase
             });
         }
 
+        Console.WriteLine($"[REMINDERS] Total reminders returned: {reminders.Count}");
+        foreach (var r in reminders) {
+            Console.WriteLine($"  - {r.Direction}: {r.EnteredTabs}/{r.TotalTabs} entered, {r.ApprovedTabs} approved");
+        }
+
         return Ok(new { reminders });
     }
 }
 
 // ─── DTO ─────────────────────────────────────────────────────────────────────
-public class FiscalDeclarationRequest
+public class DeclarationRequest
 {
     public string TabKey    { get; set; } = "";
     public string Mois      { get; set; } = "";

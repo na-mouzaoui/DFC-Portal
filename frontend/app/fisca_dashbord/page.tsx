@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { HubConnectionBuilder } from "@microsoft/signalr"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
 import { useRouter } from "next/navigation"
@@ -11,8 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
-import { canManageFiscalTab } from "@/lib/fiscal-tab-access"
+import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { getFiscalReminders, type ReminderData } from "@/lib/fiscal-reminders"
 import { RemindersCard } from "@/components/fiscal-reminders-card"
@@ -92,10 +92,41 @@ interface ApiFiscalDeclaration {
   createdAt: string
 }
 
+interface ApiFiscalRecap {
+  id: number
+  key: string
+  title: string
+  mois: string
+  annee: string
+  rowsJson: string
+  formulasJson: string
+  isGenerated: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface SavedRecap {
+  id: string
+  key: string
+  title: string
+  mois: string
+  annee: string
+  createdAt: string
+  rows: Record<string, string>[]
+}
+
 const toArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
 const toStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map((item) => String(item ?? "")) : []
+
+const getStoredToken = () => {
+  try {
+    return localStorage.getItem("jwt")
+  } catch {
+    return null
+  }
+}
 
 const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration => {
   const parsedData = (() => {
@@ -889,26 +920,38 @@ export default function FiscaDashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [declarations, setDeclarations] = useState<SavedDeclaration[]>([])
+  const [recaps, setRecaps] = useState<SavedRecap[]>([])
   const [viewDecl, setViewDecl] = useState<SavedDeclaration | null>(null)
+  const [viewRecap, setViewRecap] = useState<SavedRecap | null>(null)
   const [printDecl, setPrintDecl] = useState<SavedDeclaration | null>(null)
   const [showDialog, setShowDialog] = useState(false)
+  const [showRecapDialog, setShowRecapDialog] = useState(false)
+  const [showRecapFilters, setShowRecapFilters] = useState(false)
   const [viewTabKey, setViewTabKey] = useState<string>("encaissement")
   const [filterType, setFilterType] = useState("")
   const [filterMois, setFilterMois] = useState("")
   const [filterAnnee, setFilterAnnee] = useState("")
   const [filterDirection, setFilterDirection] = useState("")
+  const [filterStatus, setFilterStatus] = useState("")
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
+  const [recapFilterMois, setRecapFilterMois] = useState("")
+  const [recapFilterAnnee, setRecapFilterAnnee] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
   const [reminders, setReminders] = useState<ReminderData[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
+  const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
+  const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
+  const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [, setFiscalPolicyRevision] = useState(0)
+  const [refreshRevision, setRefreshRevision] = useState(0)
   const normalizedRole = (user?.role ?? "").trim().toLowerCase()
   const normalizedRegion = (user?.region ?? "").trim().toLowerCase()
   const isFinanceRole = normalizedRole === "finance" || normalizedRole === "comptabilite"
+  const isAdminRole = normalizedRole === "admin"
   const canApproveRegionalDeclarations = normalizedRole === "regionale" && !!user?.isRegionalApprover
   const canApproveFinanceDeclarations = isFinanceRole && !!user?.isFinanceApprover
 
@@ -925,6 +968,67 @@ export default function FiscaDashboardPage() {
     }
 
     syncPolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setRecaps([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadRecaps = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal-recaps`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setRecaps([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const nextRecaps: SavedRecap[] = Array.isArray(payload)
+          ? (payload as ApiFiscalRecap[]).map((item) => {
+              let rows: Record<string, string>[] = []
+              try {
+                const parsedRows = JSON.parse(item.rowsJson ?? "[]")
+                rows = Array.isArray(parsedRows) ? (parsedRows as Record<string, string>[]) : []
+              } catch {
+                rows = []
+              }
+
+              return {
+                id: String(item.id),
+                key: String(item.key ?? ""),
+                title: String(item.title ?? ""),
+                mois: String(item.mois ?? ""),
+                annee: String(item.annee ?? ""),
+                createdAt: String(item.updatedAt ?? item.createdAt ?? new Date().toISOString()),
+                rows,
+              }
+            })
+          : []
+
+        if (!cancelled) {
+          setRecaps(nextRecaps)
+        }
+      } catch {
+        if (!cancelled) setRecaps([])
+      }
+    }
+
+    loadRecaps()
 
     return () => {
       cancelled = true
@@ -977,7 +1081,7 @@ export default function FiscaDashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [status, user])
+  }, [refreshRevision, status, user])
 
   useEffect(() => {
     if (!user || status !== "authenticated") {
@@ -991,7 +1095,7 @@ export default function FiscaDashboardPage() {
 
     const loadReminders = async () => {
       try {
-        const data = await getFiscalReminders()
+        const data = await getFiscalReminders(reminderFilterMois, reminderFilterAnnee)
         if (!cancelled) {
           setReminders(data)
         }
@@ -1006,6 +1110,40 @@ export default function FiscaDashboardPage() {
 
     return () => {
       cancelled = true
+    }
+  }, [refreshRevision, reminderFilterAnnee, reminderFilterMois, status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      return
+    }
+
+    const connection = new HubConnectionBuilder()
+      .withUrl(`${API_BASE}/hubs/check-updates`, {
+        withCredentials: true,
+        accessTokenFactory: () => getStoredToken() ?? "",
+      })
+      .withAutomaticReconnect([0, 2000, 5000, 10000])
+      .build()
+
+    const handleFiscalDeclarationChanged = () => {
+      setRefreshRevision((prev) => prev + 1)
+    }
+
+    connection.on("fiscalDeclarationChanged", handleFiscalDeclarationChanged)
+
+    const timeoutId = setTimeout(() => {
+      connection.start().catch((error) => {
+        console.error("SignalR fiscal connection error:", error)
+      })
+    }, 500)
+
+    return () => {
+      clearTimeout(timeoutId)
+      connection.off("fiscalDeclarationChanged", handleFiscalDeclarationChanged)
+      connection
+        .stop()
+        .catch((error) => console.error("SignalR fiscal stop error:", error))
     }
   }, [status, user])
 
@@ -1067,14 +1205,6 @@ export default function FiscaDashboardPage() {
 
   const isDeclarationLocked = (decl: SavedDeclaration) => isFiscalPeriodLocked(decl.mois, decl.annee, user.role)
 
-  const showTabAccessDeniedToast = (tabLabel: string, actionLabel: "modifier" | "supprimer") => {
-    toast({
-      title: "Accès refusé",
-      description: `Votre profil n'est pas autorisé à ${actionLabel} le tableau "${tabLabel}".`,
-      variant: "destructive",
-    })
-  }
-
   const showPeriodLockedToast = (decl: SavedDeclaration, actionLabel: "modifier" | "supprimer") => {
     toast({
       title: "Période clôturée",
@@ -1084,12 +1214,6 @@ export default function FiscaDashboardPage() {
   }
 
   const handleDelete = async (decl: SavedDeclaration) => {
-    const declType = getDeclarationType(decl)
-    if (!canManageFiscalTab(user.role, declType.key)) {
-      showTabAccessDeniedToast(declType.label, "supprimer")
-      return
-    }
-
     if (isDeclarationLocked(decl)) {
       showPeriodLockedToast(decl, "supprimer")
       return
@@ -1123,6 +1247,7 @@ export default function FiscaDashboardPage() {
       } catch {
         // Ignore storage errors.
       }
+      setRefreshRevision((prev) => prev + 1)
 
       toast({ title: "Déclaration supprimée" })
     } catch (error) {
@@ -1155,37 +1280,19 @@ export default function FiscaDashboardPage() {
         ])
 
         const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
-        const pageW = pdf.internal.pageSize.getWidth()
         const periodText = `${MONTHS[decl.mois] ?? decl.mois} ${decl.annee}`
         const tableTitle = DASH_TABS.find((t) => t.key === tabKey)?.title ?? "TABLEAU FISCAL"
         const pdfTableTitle =
           tabKey === "ca_tap"
             ? "ETAT DU CHIFFRE D'AFFAIRES RECHARGEMENT HT (7%) et CHIFFRE D'AFFAIRES GLOBAL HT (1%)"
             : tableTitle
-        const tableLabel = DASH_TABS.find((t) => t.key === tabKey)?.label ?? ""
-        const tableNumberMatch = tableLabel.match(/^(\d+)/)
-        const tableNumber = tableNumberMatch ? tableNumberMatch[1] : ""
-        const tableNumberValue = tableNumber ? Number(tableNumber) : NaN
-        const isTable7To16 = Number.isFinite(tableNumberValue) && tableNumberValue >= 7 && tableNumberValue <= 16
-        const headerTitle = isTable7To16
-          ? `${pdfTableTitle} Mois de ${periodText}`.trim()
-          : `${pdfTableTitle} ${decl.direction || "Direction"} ${periodText}`.trim()
-        const hasCustomEncHeader =
-          tabKey === "encaissement" ||
-          tabKey === "droits_timbre" ||
-          tabKey === "ca_tap" ||
-          tabKey === "etat_tap"
-        const hasCustomTvaHeader = tabKey === "tva_immo" || tabKey === "tva_biens"
-        const customHeaderTableLine = tableNumber
-          ? `TABLEAU N° ${tableNumber} : ${pdfTableTitle}`
-          : pdfTableTitle
+        const headerTitle = `${pdfTableTitle} ${periodText}`.trim()
 
-        const drawUnderlinedText = (text: string, x: number, y: number, align: "left" | "center" | "right" = "left") => {
-          pdf.text(text, x, y, { align })
+        const drawUnderlinedText = (text: string, x: number, y: number) => {
+          pdf.text(text, x, y)
           const width = pdf.getTextWidth(text)
-          const startX = align === "center" ? x - width / 2 : align === "right" ? x - width : x
           pdf.setLineWidth(0.2)
-          pdf.line(startX, y + 0.6, startX + width, y + 0.6)
+          pdf.line(x, y + 0.6, x + width, y + 0.6)
         }
 
         const logo = await new Promise<HTMLImageElement | null>((resolve) => {
@@ -1195,136 +1302,54 @@ export default function FiscaDashboardPage() {
           img.src = "/logo_doc.png"
         })
 
-        let tableStartY = 85
-
-        if (hasCustomEncHeader) {
-          pdf.setFont("times", "bold")
-          pdf.setTextColor(0, 0, 0)
-
-          if (logo) {
-            pdf.addImage(logo, "PNG", 10, 6, 34, 16)
-          }
-
-          const headerTopY = 24
-
-          // Left box: ATM MOBILIS / DR
-          pdf.rect(10, headerTopY, 62, 14)
-          pdf.line(10, headerTopY + 7, 72, headerTopY + 7)
-          pdf.setFontSize(12)
-          pdf.text("ATM MOBILIS", 12, headerTopY + 5)
-          pdf.text(`DR : ${String(decl.direction || "")}`, 12, headerTopY + 12)
-
-          // Right box: month/year declaration
-          const rightBoxX = pageW - 72
-          pdf.rect(rightBoxX, headerTopY, 62, 14)
-          pdf.line(rightBoxX, headerTopY + 7, rightBoxX + 62, headerTopY + 7)
-          pdf.text(`Declaration Mois : ${String(MONTHS[decl.mois] ?? decl.mois ?? "")}`, rightBoxX + 2, headerTopY + 5)
-          pdf.text(`Annee : ${String(decl.annee || "")}`, rightBoxX + 2, headerTopY + 12)
-
-          // Center title box with 2 lines.
-          const baseCenterBoxW = 160
-          const dynamicCenterBoxW = (() => {
-            if (tabKey !== "ca_tap") return baseCenterBoxW
-
-            const topLineWidth = pdf.getTextWidth("ETAT MENSUEL DE DECLATION G50")
-            const bottomLineWidth = pdf.getTextWidth(customHeaderTableLine)
-            const requiredWidth = Math.max(topLineWidth, bottomLineWidth) + 10
-
-            // Keep margins on both sides of the page.
-            return Math.min(pageW - 20, Math.max(baseCenterBoxW, requiredWidth))
-          })()
-          const centerBoxW = dynamicCenterBoxW
-          const centerBoxX = (pageW - centerBoxW) / 2
-          pdf.rect(centerBoxX, 44, centerBoxW, 14)
-          pdf.line(centerBoxX, 51, centerBoxX + centerBoxW, 51)
-          pdf.setFontSize(11)
-          pdf.text("ETAT MENSUEL DE DECLATION G50", pageW / 2, 49, { align: "center" })
-          pdf.text(customHeaderTableLine, pageW / 2, 56, { align: "center" })
-
-          tableStartY = 66
-        } else if (hasCustomTvaHeader) {
-          const staticAddress = "QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR"
-          const staticNifNis = "316096228742"
-          const staticTin = "67547"
-
-          // jsPDF does not embed Georgia by default; Times is used as the closest built-in serif fallback.
-          pdf.setFont("times", "bold")
-          pdf.setTextColor(0, 0, 0)
-
-          // Left info box: year/month/direction.
-          pdf.rect(10, 8, 62, 18)
-          pdf.setFontSize(9)
-          pdf.text("Annee:", 14, 13)
-          pdf.text("Mois de:", 14, 18)
-          pdf.text("Direction:", 14, 23)
-          pdf.text(String(decl.annee || ""), 50, 13)
-          pdf.text(String(MONTHS[decl.mois] ?? decl.mois ?? ""), 50, 18)
-          pdf.text(String(decl.direction || ""), 50, 23)
-
-          // Main company identity box (wider to fully contain address).
-          pdf.rect(80, 10, 140, 26)
-          pdf.setFontSize(8)
-          pdf.text("M:", 86, 15)
-          pdf.text("Activite:", 86, 19)
-          pdf.text("Adresse:", 86, 23)
-          pdf.text("NIF / NIS:", 86, 27)
-          pdf.text("TIN:", 86, 31)
-          pdf.text("AIN:", 86, 35)
-
-          pdf.setFontSize(7.5)
-          pdf.text("ATM MOBILIS", 118, 15)
-          pdf.text("TELEPHONIE MOBILE", 118, 19)
-          pdf.text(staticAddress, 118, 23, { maxWidth: 140 })
-          pdf.text(staticNifNis, 118, 27)
-          pdf.text(staticTin, 118, 31)
-          pdf.text("", 118, 35)
-
-          // Title box for TVA declaration.
-          pdf.rect(10, 44, pageW - 20, 12)
-          pdf.setFontSize(13)
-          pdf.text("Etat de declaration de la TVA", pageW / 2, 49, { align: "center" })
-          pdf.setFont("times", "italic")
-          pdf.setFontSize(8)
-          pdf.text("(Conformement a l'article 92 de la loi de Finances pour 2021)", pageW / 2, 53, { align: "center" })
-          pdf.setFont("times", "bold")
-
-          tableStartY = 64
-        } else {
-          if (logo) {
-            pdf.addImage(logo, "PNG", 10, 8, 38, 20)
-          }
-
-          pdf.setFont("times", "bold")
-          pdf.setFontSize(11)
-          // One visual line break after the logo, then the requested identity lines.
-          drawUnderlinedText("ATM MOBILIS SPA", 10, 36)
-          drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 41)
-          drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 46)
-          // Add a line break before the table title, then place it on the left.
-          pdf.setFontSize(14)
-          drawUnderlinedText(headerTitle, 10, 56, "left")
+        if (logo) {
+          pdf.addImage(logo, "PNG", 10, 8, 38, 20)
         }
 
+        pdf.setFont("times", "bold")
+        pdf.setFontSize(11)
+        drawUnderlinedText("ATM MOBILIS SPA", 10, 36)
+        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 41)
+        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 46)
+        pdf.setFontSize(14)
+        drawUnderlinedText(headerTitle, 10, 56)
+
+        const tableHead = [
+          Array.from(tableElement.querySelectorAll("thead th")).map((cell) =>
+            String(cell.textContent ?? "").trim(),
+          ),
+        ]
+
+        const tableBody = Array.from(tableElement.querySelectorAll("tbody tr, tfoot tr")).map((row) =>
+          Array.from(row.querySelectorAll("td")).map((cell) =>
+            String(cell.textContent ?? "")
+              .replace(/\//g, " ")
+              .replace(/\u00A0/g, " ")
+              .trim(),
+          ),
+        )
+
         autoTable(pdf, {
-          html: tableElement,
-          startY: tableStartY,
+          head: tableHead,
+          body: tableBody,
+          startY: 64,
           theme: "grid",
-          useCss: true,
-          margin: { left: 10, right: 10, top: tableStartY, bottom: 10 },
+          margin: { left: 10, right: 10, top: 64, bottom: 10 },
           styles: {
             font: "times",
             fontSize: 10,
             cellPadding: 0.8,
-            lineColor: [210, 210, 210],
-            lineWidth: 0.1,
+            lineColor: [51, 51, 51],
+            lineWidth: 0.2,
             textColor: [0, 0, 0],
           },
           headStyles: {
-            fillColor: [221, 221, 221],
-            textColor: [0, 0, 0],
+            fillColor: [45, 179, 75],
+            textColor: [255, 255, 255],
             font: "times",
             fontStyle: "bold",
             fontSize: 10,
+            halign: "center",
           },
           bodyStyles: {
             textColor: [0, 0, 0],
@@ -1332,12 +1357,30 @@ export default function FiscaDashboardPage() {
             fontSize: 10,
           },
           didParseCell: (data) => {
-            // Normalize thousand separators for PDF output: use spaces instead of slashes
             data.cell.text = data.cell.text.map((line) =>
               line
                 .replace(/\//g, " ")
                 .replace(/\u00A0/g, " ")
             )
+
+            const rowValues = Array.isArray(data.row.raw)
+              ? data.row.raw.map((value) => String(value ?? "").toLowerCase())
+              : []
+            const isTotalRow = data.section === "body" && rowValues.some((value) => value.includes("total"))
+
+            if (isTotalRow) {
+              data.cell.styles.fillColor = [45, 179, 75]
+              data.cell.styles.textColor = [255, 255, 255]
+              data.cell.styles.fontStyle = "bold"
+            }
+
+            if (data.section === "body") {
+              if (data.column.index === 0) {
+                data.cell.styles.halign = "left"
+              } else {
+                data.cell.styles.halign = "right"
+              }
+            }
           },
           horizontalPageBreak: true,
           horizontalPageBreakRepeat: [0],
@@ -1352,12 +1395,6 @@ export default function FiscaDashboardPage() {
   }
 
   const handleEdit = (decl: SavedDeclaration, tabKey: string) => {
-    const declType = getDeclarationType(decl)
-    if (!canManageFiscalTab(user.role, declType.key)) {
-      showTabAccessDeniedToast(declType.label, "modifier")
-      return
-    }
-
     if (isDeclarationLocked(decl)) {
       showPeriodLockedToast(decl, "modifier")
       return
@@ -1367,10 +1404,10 @@ export default function FiscaDashboardPage() {
   }
 
   const handleApprove = async (decl: SavedDeclaration) => {
-    if (!canApproveRegionalDeclarations && !canApproveFinanceDeclarations) {
+    if (!isAdminRole && !canApproveRegionalDeclarations && !canApproveFinanceDeclarations) {
       toast({
         title: "Accès refusé",
-        description: "Seuls les comptes approbateurs (régional ou finance) peuvent valider les déclarations.",
+        description: "Seuls les comptes admin ou approbateurs (régional/finance) peuvent valider les déclarations.",
         variant: "destructive",
       })
       return
@@ -1416,6 +1453,7 @@ export default function FiscaDashboardPage() {
       } catch {
         // Ignore storage errors.
       }
+      setRefreshRevision((prev) => prev + 1)
 
       toast({ title: "Déclaration approuvée" })
     } catch (error) {
@@ -1447,7 +1485,7 @@ export default function FiscaDashboardPage() {
     return { key: "encaissement", label: "Non défini", color: "#6b7280" }
   }
 
-  const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterDateFrom || filterDateTo)
+  const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterStatus || filterDateFrom || filterDateTo)
 
   const filteredDeclarations = declarations.filter((decl) => {
     const declType = getDeclarationType(decl)
@@ -1455,6 +1493,8 @@ export default function FiscaDashboardPage() {
     if (filterMois && decl.mois !== filterMois) return false
     if (filterAnnee && decl.annee !== filterAnnee) return false
     if (filterDirection && !(decl.direction ?? "").toLowerCase().includes(filterDirection.toLowerCase())) return false
+    if (filterStatus === "approved" && !decl.isApproved) return false
+    if (filterStatus === "pending" && !!decl.isApproved) return false
     if (filterDateFrom && new Date(decl.createdAt) < new Date(filterDateFrom)) return false
     if (filterDateTo && new Date(decl.createdAt) > new Date(filterDateTo + "T23:59:59")) return false
     return true
@@ -1473,6 +1513,143 @@ export default function FiscaDashboardPage() {
     }
     return sortDir === "asc" ? cmp : -cmp
   })
+
+  const recentRecaps = [...recaps].sort((a, b) => {
+    const ta = new Date(a.createdAt).getTime()
+    const tb = new Date(b.createdAt).getTime()
+    return tb - ta
+  })
+
+  const hasActiveRecapFilters = !!(recapFilterMois || recapFilterAnnee)
+
+  const filteredRecaps = recentRecaps.filter((recap) => {
+    if (recapFilterMois && recap.mois !== recapFilterMois) return false
+    if (recapFilterAnnee && recap.annee !== recapFilterAnnee) return false
+    return true
+  })
+
+  const handleViewRecap = (recap: SavedRecap) => {
+    setViewRecap(recap)
+    setShowRecapDialog(true)
+  }
+
+  const handleEditRecap = (recap: SavedRecap) => {
+    router.push(`/recap?editId=${encodeURIComponent(recap.id)}`)
+  }
+
+  const handlePrintRecap = (recap: SavedRecap) => {
+    const columns = Array.from(new Set((recap.rows ?? []).flatMap((row) => Object.keys(row))))
+    const orderedColumns = [
+      ...(columns.includes("designation") ? ["designation"] : []),
+      ...columns.filter((column) => column !== "designation"),
+    ]
+
+    if (orderedColumns.length === 0) return
+
+    void (async () => {
+      try {
+        const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+          import("jspdf"),
+          import("jspdf-autotable"),
+        ])
+
+        const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
+        const period = `${MONTHS[recap.mois] ?? recap.mois} ${recap.annee}`
+
+        const drawUnderlinedText = (text: string, x: number, y: number) => {
+          pdf.text(text, x, y)
+          const width = pdf.getTextWidth(text)
+          pdf.setLineWidth(0.2)
+          pdf.line(x, y + 0.6, x + width, y + 0.6)
+        }
+
+        pdf.setFont("times", "bold")
+        pdf.setFontSize(11)
+        drawUnderlinedText("ATM MOBILIS SPA", 10, 22)
+        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 27)
+        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 32)
+        pdf.setFontSize(14)
+        drawUnderlinedText(`${recap.title} ${period}`.trim(), 10, 42)
+
+        const tableHead = [orderedColumns.map((column) => column)]
+        const tableBody = (recap.rows ?? []).map((row) =>
+          orderedColumns.map((column) => String(row[column] ?? "")),
+        )
+
+        autoTable(pdf, {
+          head: tableHead,
+          body: tableBody,
+          startY: 48,
+          theme: "grid",
+          margin: { left: 10, right: 10, top: 48, bottom: 10 },
+          styles: {
+            font: "times",
+            fontSize: 10,
+            cellPadding: 0.8,
+            lineColor: [51, 51, 51],
+            lineWidth: 0.2,
+            textColor: [0, 0, 0],
+          },
+          headStyles: {
+            fillColor: [45, 179, 75],
+            textColor: [255, 255, 255],
+            fontStyle: "bold",
+            halign: "center",
+          },
+          didParseCell: (data) => {
+            data.cell.text = data.cell.text.map((line) =>
+              line
+                .replace(/\//g, " ")
+                .replace(/\u00A0/g, " "),
+            )
+
+            const rowValues = Array.isArray(data.row.raw)
+              ? data.row.raw.map((value) => String(value ?? "").toLowerCase())
+              : []
+            const isTotalRow = data.section === "body" && rowValues.some((value) => value.includes("total"))
+
+            if (isTotalRow) {
+              data.cell.styles.fillColor = [45, 179, 75]
+              data.cell.styles.textColor = [255, 255, 255]
+              data.cell.styles.fontStyle = "bold"
+            }
+
+            if (data.section === "body") {
+              if (data.column.index === 0) {
+                data.cell.styles.halign = "left"
+              } else {
+                data.cell.styles.halign = "right"
+              }
+            }
+          },
+        })
+
+        const blobUrl = URL.createObjectURL(pdf.output("blob"))
+        window.open(blobUrl, "_blank")
+      } catch (error) {
+        console.error("Recap print failed", error)
+      }
+    })()
+  }
+
+  const handleDeleteRecap = async (recap: SavedRecap) => {
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      await fetch(`${API_BASE}/api/fiscal-recaps/${recap.id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+    } catch {
+      // Ignore API errors and refresh local list anyway.
+    }
+
+    setRecaps((prev) => prev.filter((item) => item.id !== recap.id))
+    if (viewRecap?.id === recap.id) {
+      setShowRecapDialog(false)
+      setViewRecap(null)
+    }
+  }
 
   const handleSort = (col: "type" | "direction" | "periode" | "date") => {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
@@ -1494,16 +1671,21 @@ export default function FiscaDashboardPage() {
       return value.trim()
     }
 
-    const regionNames = regions.map((region) => normalizeDirection(region.name))
+    const declarationDirections = declarations
+      .map((declaration) => normalizeDirection(declaration.direction ?? ""))
+      .filter(Boolean)
 
-    const allDirections = [
-      ...regionNames,
-      ...(regionNames.length === 0 ? declarations.map((d) => normalizeDirection(d.direction ?? "")) : []),
-      ...(regionNames.length === 0 ? reminders.map((r) => normalizeDirection(r.direction ?? "")) : []),
+    if (declarationDirections.length > 0) {
+      return Array.from(new Set(declarationDirections)).sort((a, b) => a.localeCompare(b, "fr"))
+    }
+
+    const fallbackDirections = [
+      ...reminders.map((reminder) => normalizeDirection(reminder.direction ?? "")),
+      ...regions.map((region) => normalizeDirection(region.name)),
       "Siège",
     ].filter(Boolean)
 
-    return Array.from(new Set(allDirections)).sort((a, b) => a.localeCompare(b, "fr"))
+    return Array.from(new Set(fallbackDirections)).sort((a, b) => a.localeCompare(b, "fr"))
   })()
 
   const viewTab = DASH_TABS.find((t) => t.key === viewTabKey)
@@ -1559,14 +1741,21 @@ export default function FiscaDashboardPage() {
         #dash-print-zone tbody tr[style*="font-weight:bold"] td,
         #dash-print-zone tbody tr[style*="font-weight: bold"] td {
           background: #2db34b !important;
-          color: #000 !important;
+          color: #fff !important;
+          font-weight: 800 !important;
+          text-align: center !important;
+        }
+        #dash-print-zone tbody tr.bg-muted td,
+        #dash-print-zone tbody tr[class*="bg-muted"] td {
+          background: #2db34b !important;
+          color: #fff !important;
           font-weight: 800 !important;
           text-align: center !important;
         }
         #dash-print-zone tfoot td {
           font-weight: 700 !important;
           background: #2db34b !important;
-          color: #000 !important;
+          color: #fff !important;
           font-size: 14px !important;
           text-align: center !important;
         }
@@ -1592,6 +1781,10 @@ export default function FiscaDashboardPage() {
           loading={remindersLoading}
           userRole={user.role}
           directionOptions={reminderDirectionOptions}
+          selectedMonth={reminderFilterMois}
+          selectedYear={reminderFilterAnnee}
+          onMonthChange={setReminderFilterMois}
+          onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
         />
 
         {/* Recent declarations */}
@@ -1612,7 +1805,7 @@ export default function FiscaDashboardPage() {
                     size="sm"
                     variant="ghost"
                     className="h-8 text-xs text-muted-foreground hover:text-emerald-600"
-                    onClick={() => { setFilterType(""); setFilterMois(""); setFilterAnnee(""); setFilterDirection(""); setFilterDateFrom(""); setFilterDateTo("") }}
+                    onClick={() => { setFilterType(""); setFilterMois(""); setFilterAnnee(""); setFilterDirection(""); setFilterStatus(""); setFilterDateFrom(""); setFilterDateTo("") }}
                   >
                     <X size={14} className="mr-1" /> Effacer filtres
                   </Button>
@@ -1628,7 +1821,7 @@ export default function FiscaDashboardPage() {
               </div>
             </div>
             {showFilters && (
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 text-sm">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7 text-sm">
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Type</label>
                   <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
@@ -1664,7 +1857,20 @@ export default function FiscaDashboardPage() {
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Direction</label>
-                  <input type="text" placeholder="Rechercher..." value={filterDirection} onChange={e => setFilterDirection(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs" />
+                  <select value={filterDirection} onChange={e => setFilterDirection(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
+                    <option value="">Tous</option>
+                    {reminderDirectionOptions.map((direction) => (
+                      <option key={direction} value={direction}>{direction}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Statut</label>
+                  <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full border rounded px-2 py-1.5 text-xs">
+                    <option value="">Tous</option>
+                    <option value="approved">Approuvée</option>
+                    <option value="pending">En attente</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Du</label>
@@ -1683,7 +1889,7 @@ export default function FiscaDashboardPage() {
                 Aucune déclaration fiscale enregistrée pour le moment.
               </p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="max-h-[540px] overflow-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1707,7 +1913,6 @@ export default function FiscaDashboardPage() {
                     {recentDeclarations.map((decl) => {
                       const declType = getDeclarationType(decl)
                       const isLocked = isDeclarationLocked(decl)
-                      const canManage = canManageFiscalTab(user.role, declType.key)
                       const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
                       const isSiegeDeclaration = declarationDirection === "siège"
                         || declarationDirection === "siege"
@@ -1720,7 +1925,8 @@ export default function FiscaDashboardPage() {
                       const canApproveAsFinance = canApproveFinanceDeclarations
                         && !decl.isApproved
                         && (isOwnDeclaration || isSiegeDeclaration)
-                      const canApproveThisDeclaration = canApproveAsRegional || canApproveAsFinance
+                      const canApproveAsAdmin = isAdminRole && !decl.isApproved
+                      const canApproveThisDeclaration = canApproveAsAdmin || canApproveAsRegional || canApproveAsFinance
                       return (
                         <TableRow
                           key={decl.id}
@@ -1762,7 +1968,7 @@ export default function FiscaDashboardPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-center gap-2">
-                              {(canApproveRegionalDeclarations || canApproveFinanceDeclarations) && (
+                              {(isAdminRole || canApproveRegionalDeclarations || canApproveFinanceDeclarations) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1781,12 +1987,12 @@ export default function FiscaDashboardPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={isLocked || !canManage}
+                                disabled={isLocked}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   handleDelete(decl)
                                 }}
-                                title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
+                                title={isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
                               >
                                 <Trash2 size={16} />
                               </Button>
@@ -1802,11 +2008,138 @@ export default function FiscaDashboardPage() {
 
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base">
+                Etats de sortie
+                {recaps.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({filteredRecaps.length}{hasActiveRecapFilters ? ` / ${recaps.length}` : ""})
+                  </span>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {hasActiveRecapFilters && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs text-muted-foreground hover:text-emerald-600"
+                    onClick={() => {
+                      setRecapFilterMois("")
+                      setRecapFilterAnnee("")
+                    }}
+                  >
+                    <X size={14} className="mr-1" /> Effacer filtres
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={showRecapFilters ? "secondary" : "outline"}
+                  className="h-8 text-xs"
+                  onClick={() => setShowRecapFilters(!showRecapFilters)}
+                >
+                  <Filter size={14} className="mr-1" /> Filtrer
+                </Button>
+              </div>
+            </div>
+            {showRecapFilters && (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Mois</label>
+                  <select
+                    value={recapFilterMois}
+                    onChange={(event) => setRecapFilterMois(event.target.value)}
+                    className="w-full border rounded px-2 py-1.5 text-xs"
+                  >
+                    <option value="">Tous</option>
+                    {Object.entries(MONTHS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Année</label>
+                  <input
+                    type="number"
+                    placeholder="ex: 2026"
+                    value={recapFilterAnnee}
+                    onChange={(event) => setRecapFilterAnnee(event.target.value)}
+                    className="w-full border rounded px-2 py-1.5 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            {recaps.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aucun etat de sortie pour le moment.
+              </p>
+            ) : filteredRecaps.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aucun etat de sortie ne correspond aux filtres.
+              </p>
+            ) : (
+              <div className="max-h-[540px] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type de recap</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Date de sauvegarde</TableHead>
+                      <TableHead className="text-center">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRecaps.map((recap) => (
+                      <TableRow
+                        key={recap.id}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleViewRecap(recap)}
+                        title="Cliquer pour consulter"
+                      >
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">{recap.title}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {MONTHS[recap.mois] || recap.mois} {recap.annee}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(recap.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleDeleteRecap(recap)
+                              }}
+                              title="Supprimer"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* aa Consult Dialog aa */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden">
+        <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden [&_[data-slot=table-head]]:border-r [&_[data-slot=table-head]]:border-border [&_[data-slot=table-head]:last-child]:border-r-0 [&_[data-slot=table-cell]]:border-r [&_[data-slot=table-cell]]:border-border [&_[data-slot=table-cell]:last-child]:border-r-0">
           <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
             <DialogHeader className="space-y-3">
               <DialogTitle className="flex flex-wrap items-start justify-between gap-4">
@@ -1837,17 +2170,15 @@ export default function FiscaDashboardPage() {
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 {(() => {
-                  const currentDeclType = getDeclarationType(viewDecl)
                   const isLocked = isDeclarationLocked(viewDecl)
-                  const canManage = canManageFiscalTab(user.role, currentDeclType.key)
 
                   return (
                     <Button
                       size="sm"
                       variant="outline"
                       className="gap-1.5 text-xs h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={isLocked || !canManage}
-                      title={!canManage ? "Profil non autorisé pour ce tableau" : isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
+                      disabled={isLocked}
+                      title={isLocked ? "Période clôturée (modification impossible)" : "Modifier"}
                       onClick={() => {
                         setShowDialog(false)
                         handleEdit(viewDecl, viewTabKey)
@@ -1864,6 +2195,99 @@ export default function FiscaDashboardPage() {
                   onClick={() => { setShowDialog(false); if (viewDecl) handlePrint(viewDecl, viewTabKey) }}
                 >
                   <Printer size={13} /> Imprimer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showRecapDialog} onOpenChange={setShowRecapDialog}>
+        <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden [&_[data-slot=table-head]]:border-r [&_[data-slot=table-head]]:border-border [&_[data-slot=table-head]:last-child]:border-r-0 [&_[data-slot=table-cell]]:border-r [&_[data-slot=table-cell]]:border-border [&_[data-slot=table-cell]:last-child]:border-r-0">
+          <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+            <DialogHeader className="space-y-3">
+              <DialogTitle className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-base font-semibold leading-tight">
+                    {viewRecap?.title ?? "Recap"}
+                  </p>
+                </div>
+              </DialogTitle>
+              {viewRecap && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="gap-1.5 font-normal">
+                    <CalendarDays size={12} /> {MONTHS[viewRecap.mois] ?? viewRecap.mois} {viewRecap.annee}
+                  </Badge>
+                </div>
+              )}
+            </DialogHeader>
+          </div>
+
+          {viewRecap && (
+            <div className="h-[calc(82vh-140px)] overflow-auto bg-slate-50/60 px-6 py-5">
+              <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="overflow-x-auto">
+                  {(() => {
+                    const columns = Array.from(new Set(viewRecap.rows.flatMap((row) => Object.keys(row))))
+                    const orderedColumns = [
+                      ...(columns.includes("designation") ? ["designation"] : []),
+                      ...columns.filter((column) => column !== "designation"),
+                    ]
+
+                    if (orderedColumns.length === 0) {
+                      return <p className="text-sm text-muted-foreground">Aucune donnée pour ce recap.</p>
+                    }
+
+                    return (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {orderedColumns.map((column) => (
+                              <TableHead key={column} className={column === "designation" ? "text-left" : "text-right"}>
+                                {column}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {viewRecap.rows.map((row, index) => (
+                            <TableRow key={`${viewRecap.id}-${index}`}>
+                              {orderedColumns.map((column) => (
+                                <TableCell key={column} className={column === "designation" ? "text-left" : "text-right font-semibold"}>
+                                  {String(row[column] ?? "")}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => {
+                    setShowRecapDialog(false)
+                    handlePrintRecap(viewRecap)
+                  }}
+                >
+                  <Printer size={13} /> Imprimer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  onClick={() => {
+                    setShowRecapDialog(false)
+                    handleEditRecap(viewRecap)
+                  }}
+                >
+                  <Pencil size={13} /> Modifier
                 </Button>
               </div>
             </div>

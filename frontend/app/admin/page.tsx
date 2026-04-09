@@ -11,6 +11,7 @@ import AdminRegionConfig from "@/components/admin-region-config"
 import AdminAuditLogs from "@/components/admin-audit-logs"
 import { BankManagement } from "@/components/bank-management"
 import { FiscalFournisseursManagement } from "@/components/fiscal-fournisseurs-management"
+import AdminFiscalSettings from "@/components/admin-fiscal-settings"
 import { logout } from "@/lib/auth-client"
 
 export default function AdminPage() {
@@ -89,6 +90,14 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent>
                 <BankManagement />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Paramètres fiscaux</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdminFiscalSettings />
               </CardContent>
             </Card>
             <Card>
