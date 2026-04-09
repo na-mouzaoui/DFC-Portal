@@ -343,22 +343,22 @@ function EncTable({ rows }: { rows: EncRow[] }) {
   )
 }
 
-function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateColumn?: boolean }) {
+function TvaTable({ rows, totalLabel = "TOTAL" }: { rows: TvaRow[]; totalLabel?: string }) {
   const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, showRateColumn), 0)
+  const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
   const tTTC = tHT + tTVA
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          {["Nom/Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
-            <TableHead key={h} className={["Montant HT", "TVA", "Montant TTC", "Taux TVA"].includes(h) ? "text-right" : undefined}>{h}</TableHead>
+          {["Nom et prénoms /Raison sociale","Adresse","NIF","Authentification du NIF","RC n°","Authentification du n°RC","Facture n°","Date","Montant HT", "TVA","Montant TTC"].map((h) => (
+            <TableHead key={h} className={["Montant HT", "TVA", "Montant TTC"].includes(h) ? "text-right" : undefined}>{h}</TableHead>
           ))}
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r, i) => {
-          const rowTva = getTvaAmount(r, showRateColumn)
+          const rowTva = getTvaAmount(r, true)
           return <TableRow key={i}>
             <TableCell className="text-xs">{textForPdf(r.nomRaisonSociale)}</TableCell>
             <TableCell className="text-xs">{textForPdf(r.adresse)}</TableCell>
@@ -369,15 +369,13 @@ function TvaTable({ rows, showRateColumn = false }: { rows: TvaRow[]; showRateCo
             <TableCell className="text-xs">{r.numFacture || "-"}</TableCell>
             <TableCell className="text-xs">{r.dateFacture || "-"}</TableCell>
             <TableCell className="text-right text-xs font-semibold">{fmt(r.montantHT)}</TableCell>
-            {showRateColumn && <TableCell className="text-center text-xs">{getTvaRateLabel(r.tauxTVA)}</TableCell>}
-            <TableCell className="text-right text-xs font-semibold">{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : fmt(r.tva)}</TableCell>
+            <TableCell className="text-right text-xs font-semibold">{fmt(rowTva)}</TableCell>
             <TableCell className="text-right text-xs font-semibold">{fmt(num(r.montantHT) + rowTva)}</TableCell>
           </TableRow>
         })}
         <TableRow className="font-bold bg-muted">
-          <TableCell colSpan={8}>TOTAL</TableCell>
+          <TableCell colSpan={8}>{totalLabel}</TableCell>
           <TableCell className="text-right font-bold">{fmt(tHT)}</TableCell>
-          {showRateColumn && <TableCell></TableCell>}
           <TableCell className="text-right font-bold">{fmt(tTVA)}</TableCell>
           <TableCell className="text-right font-bold">{fmt(tTTC)}</TableCell>
         </TableRow>
@@ -786,8 +784,8 @@ function Tva16Table({ rows }: { rows: Tva16Row[] }) {
 function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDeclaration; color: string }) {
   switch (tabKey) {
     case "encaissement":  return <EncTable rows={decl.encRows ?? []} />
-    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} showRateColumn />
-    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} showRateColumn />
+    case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} totalLabel="TOTAL TVA SUR IMMOBILISATION 445620" />
+    case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} totalLabel="TOTAL TVA SUR BIENS ET SERVICES" />
     case "droits_timbre": return <TimbreTable rows={decl.timbreRows ?? []} />
     case "ca_tap":        return <CATable b12={decl.b12 ?? ""} b13={decl.b13 ?? ""} />
     case "etat_tap":      return <TAPTable rows={decl.tapRows ?? []} />
@@ -1280,6 +1278,166 @@ export default function FiscaDashboardPage() {
             : tableTitle
         const headerTitle = `${pdfTableTitle} ${periodText}`.trim()
 
+        if (tabKey === "tva_immo" || tabKey === "tva_biens") {
+          const rows = tabKey === "tva_immo" ? (decl.tvaImmoRows ?? []) : (decl.tvaBiensRows ?? [])
+          const totalLabel = tabKey === "tva_immo"
+            ? "TOTAL TVA  SUR IMMOBILISATION 445620"
+            : "TOTAL TVA  SUR BIENS ET SERVICES 445660"
+
+          const tHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
+          const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
+          const tTTC = tHT + tTVA
+
+          const drawBox = (x: number, y: number, w: number, h: number) => {
+            pdf.setDrawColor(0, 0, 0)
+            pdf.setLineWidth(0.5)
+            pdf.rect(x, y, w, h)
+          }
+
+          const write = (
+            text: string,
+            x: number,
+            y: number,
+            style: "normal" | "bold" | "italic" | "bolditalic" = "normal",
+            size = 10,
+            align: "left" | "center" | "right" = "left",
+          ) => {
+            pdf.setFont("times", style)
+            pdf.setFontSize(size)
+            pdf.text(text, x, y, { align })
+          }
+
+          // Bloc gauche: Année / Mois / Direction
+          drawBox(10, 10, 60, 22)
+          write("Année:", 14, 16.8, "bold")
+          write("Mois de :", 14, 22.6, "bold")
+          write("Direction :", 14, 29.0, "bold")
+          write(String(decl.annee ?? ""), 40, 16.8)
+          write(String(MONTHS[decl.mois] ?? decl.mois ?? ""), 40, 22.6)
+          write(String(decl.direction ?? ""), 40, 29.0)
+
+          // Bloc droite: Identité entreprise
+          drawBox(90, 15, 135, 40)
+          write("M.", 93, 21.2, "bold")
+          write("Activité:", 93, 26.8, "bold")
+          write("Adresse:", 93, 32.4, "bold")
+          write("NIF / NIS", 93, 38.0, "bold")
+          write("TIN", 93, 43.6, "bold")
+          write("AI", 93, 49.2, "bold")
+
+          write("ATM MOBILIS", 155, 21.2, "bold", 10, "center")
+          write("TELEPHONIE MOBILE", 155, 26.8, "bold", 9, "center")
+          write("QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR", 155, 32.4, "bold", 8, "center")
+          write("316096228742", 155, 38.0, "bold", 9, "center")
+          write("67547", 155, 43.6, "bold", 9, "center")
+
+          // Titre encadré
+          drawBox(8, 72, 281, 20)
+          write("Etat de déduction de la TVA", 148.5, 81.5, "bolditalic", 16, "center")
+          write("(Conformément à l'article 29 tel modifié par l'article 42 de la Loi de Finances pour 2021)", 148.5, 88.5, "italic", 10, "center")
+
+          const head = [[
+            "Nom et prénoms /Raison sociale",
+            "Adresse",
+            "NIF",
+            "Authentification du NIF",
+            "RC n°",
+            "Authentification du n°RC",
+            "Facture n°",
+            "Date",
+            "Montant HT",
+            "TVA",
+            "Montant TTC",
+          ]]
+
+          const bodyRows = rows.map((r) => {
+            const rowTva = getTvaAmount(r, true)
+            return [
+              textForPdf(r.nomRaisonSociale),
+              textForPdf(r.adresse),
+              textForPdf(r.nif),
+              textForPdf(r.authNif),
+              textForPdf(r.numRC),
+              textForPdf(r.authRC),
+              textForPdf(r.numFacture),
+              textForPdf(r.dateFacture),
+              fmt(r.montantHT),
+              fmt(rowTva),
+              fmt(num(r.montantHT) + rowTva),
+            ]
+          })
+
+          const totalRow = [
+            { content: "", colSpan: 6, styles: { fillColor: [227, 186, 186], textColor: [0, 0, 0] } },
+            { content: totalLabel, colSpan: 2, styles: { fillColor: [19, 175, 229], textColor: [0, 0, 0], halign: "center", fontStyle: "bold", fontSize: 6.4 } },
+            { content: fmt(tHT), styles: { fillColor: [255, 0, 0], textColor: [0, 0, 0], halign: "center", fontStyle: "bold" } },
+            { content: fmt(tTVA), styles: { fillColor: [255, 0, 0], textColor: [0, 0, 0], halign: "center", fontStyle: "bold" } },
+            { content: fmt(tTTC), styles: { fillColor: [255, 0, 0], textColor: [0, 0, 0], halign: "center", fontStyle: "bold" } },
+          ]
+
+          autoTable(pdf, {
+            head,
+            body: [...bodyRows, totalRow as unknown as (string | number)[]],
+            startY: 104,
+            theme: "grid",
+            margin: { left: 8, right: 8, top: 104, bottom: 8 },
+            styles: {
+              font: "times",
+              fontSize: 7.4,
+              cellPadding: 0.8,
+              lineColor: [0, 0, 0],
+              lineWidth: 0.2,
+              textColor: [0, 0, 0],
+              overflow: "hidden",
+              valign: "middle",
+            },
+            headStyles: {
+              fillColor: [208, 208, 208],
+              textColor: [0, 0, 0],
+              font: "times",
+              fontStyle: "bold",
+              fontSize: 8.2,
+              cellPadding: 1.3,
+              minCellHeight: 9,
+              halign: "center",
+            },
+            columnStyles: {
+              0: { halign: "left", cellWidth: 44 },
+              1: { halign: "left", cellWidth: 30 },
+              2: { halign: "center", cellWidth: 18 },
+              3: { halign: "center", cellWidth: 31 },
+              4: { halign: "center", cellWidth: 20 },
+              5: { halign: "center", cellWidth: 36 },
+              6: { halign: "center", cellWidth: 23 },
+              7: { halign: "center", cellWidth: 20 },
+              8: { halign: "center", cellWidth: 21 },
+              9: { halign: "center", cellWidth: 18 },
+              10: { halign: "center", cellWidth: 21 },
+            },
+            didParseCell: (data) => {
+              data.cell.text = data.cell.text.map((line) =>
+                line.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim(),
+              )
+
+              // Lignes normales: plus hautes que l'actuel, mais plus basses que l'entête
+              if (data.section === "body" && data.row.index < bodyRows.length) {
+                data.cell.styles.minCellHeight = 8.4
+                data.cell.styles.cellPadding = 1.0
+              }
+
+              // Ligne de total (dernière ligne du body): hauteur renforcée
+              if (data.section === "body" && data.row.index === bodyRows.length) {
+                data.cell.styles.minCellHeight = 12
+                data.cell.styles.cellPadding = 1.4
+              }
+            },
+          })
+
+          const blobUrl = URL.createObjectURL(pdf.output("blob"))
+          window.open(blobUrl, "_blank")
+          return
+        }
+
         const drawUnderlinedText = (text: string, x: number, y: number) => {
           pdf.text(text, x, y)
           const width = pdf.getTextWidth(text)
@@ -1294,8 +1452,10 @@ export default function FiscaDashboardPage() {
           img.src = "/logo_doc.png"
         })
 
+        // Logo en haut à droite
         if (logo) {
-          pdf.addImage(logo, "PNG", 10, 8, 38, 20)
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          pdf.addImage(logo, "PNG", pageWidth - 48, 8, 40, 20)
         }
 
         pdf.setFont("times", "bold")

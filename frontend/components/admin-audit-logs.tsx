@@ -43,37 +43,72 @@ interface User {
 
 const actionLabels: Record<string, string> = {
   // Banques
-  CREATE_BANK: "Banque - Création",
-  UPDATE_BANK: "Banque - Modification",
-  DELETE_BANK: "Banque - Suppression",
+  CREATE_BANK: "Créer une banque",
+  UPDATE_BANK: "Modifier une banque",
+  DELETE_BANK: "Supprimer une banque",
   
   // Chéquiers
-  CREATE_CHECKBOOK: "Chéquier - Création",
-  UPDATE_CHECKBOOK: "Chéquier - Modification",
-  DELETE_CHECKBOOK: "Chéquier - Suppression",
+  CREATE_CHECKBOOK: "Créer un chéquier",
+  UPDATE_CHECKBOOK: "Modifier un chéquier",
+  DELETE_CHECKBOOK: "Supprimer un chéquier",
   
   // Fournisseurs
-  CREATE_SUPPLIER: "Fournisseur - Création",
-  UPDATE_SUPPLIER: "Fournisseur - Modification",
-  DELETE_SUPPLIER: "Fournisseur - Suppression",
-  FISCAL_FOURNISSEUR_CREATE: "Fournisseur fiscal - Création",
-  FISCAL_FOURNISSEUR_UPDATE: "Fournisseur fiscal - Modification",
-  FISCAL_FOURNISSEUR_DELETE: "Fournisseur fiscal - Suppression",
-  FISCAL_FOURNISSEUR_IMPORT: "Fournisseur fiscal - Import",
+  CREATE_SUPPLIER: "Créer un fournisseur",
+  UPDATE_SUPPLIER: "Modifier un fournisseur",
+  DELETE_SUPPLIER: "Supprimer un fournisseur",
+  FISCAL_FOURNISSEUR_CREATE: "Créer un fournisseur fiscal",
+  FISCAL_FOURNISSEUR_UPDATE: "Modifier un fournisseur fiscal",
+  FISCAL_FOURNISSEUR_DELETE: "Supprimer un fournisseur fiscal",
+  FISCAL_FOURNISSEUR_IMPORT: "Importer des fournisseurs fiscaux",
   
   // Régions
-  CREATE_REGION: "Région - Création",
-  UPDATE_REGION: "Région - Modification",
-  DELETE_REGION: "Région - Suppression",
+  CREATE_REGION: "Créer une région",
+  UPDATE_REGION: "Modifier une région",
+  DELETE_REGION: "Supprimer une région",
   
   // Chèques
-  UPDATE_CHECK_STATUS: "Chèque - Changement de statut",
-  PRINT_CHECK: "Chèque - Impression",
+  UPDATE_CHECK_STATUS: "Changer le statut d'un chèque",
+  PRINT_CHECK: "Imprimer un chèque",
   
   // Utilisateurs
-  CREATE_USER: "Utilisateur - Création",
-  UPDATE_USER: "Utilisateur - Modification",
-  DELETE_USER: "Utilisateur - Suppression",
+  CREATE_USER: "Créer un utilisateur",
+  UPDATE_USER: "Modifier un utilisateur",
+  DELETE_USER: "Supprimer un utilisateur",
+  RESET_PASSWORD: "Réinitialiser le mot de passe d'un utilisateur",
+  
+  // Déclarations
+  FISCAL_SAVE: "Enregistrer une déclaration",
+  FISCAL_APPROVE: "Approuver une déclaration",
+  FISCAL_DELETE: "Supprimer une déclaration",
+  FISCAL_PRINT: "Exporter une déclaration en PDF",
+  CREATE_DECLARATION: "Créer une déclaration",
+  UPDATE_DECLARATION: "Modifier une déclaration",
+  DELETE_DECLARATION: "Supprimer une déclaration",
+  SUBMIT_DECLARATION: "Soumettre une déclaration",
+  APPROVE_DECLARATION: "Approuver une déclaration",
+  REJECT_DECLARATION: "Rejeter une déclaration",
+  EXPORT_DECLARATION: "Exporter une déclaration en PDF",
+  
+  // Récapitulatifs
+  FISCAL_RECAP_SAVE: "Enregistrer un récapitulatif TVA",
+  FISCAL_RECAP_DELETE: "Supprimer un récapitulatif TVA",
+  CREATE_RECAP: "Créer un récapitulatif TVA",
+  UPDATE_RECAP: "Modifier un récapitulatif TVA",
+  DELETE_RECAP: "Supprimer un récapitulatif TVA",
+  SUBMIT_RECAP: "Soumettre un récapitulatif TVA",
+  APPROVE_RECAP: "Approuver un récapitulatif TVA",
+  REJECT_RECAP: "Rejeter un récapitulatif TVA",
+  EXPORT_RECAP: "Exporter un récapitulatif TVA en PDF",
+  
+  // Déclarations fiscales
+  CREATE_FISCAL_DECLARATION: "Créer une déclaration fiscale",
+  UPDATE_FISCAL_DECLARATION: "Modifier une déclaration fiscale",
+  DELETE_FISCAL_DECLARATION: "Supprimer une déclaration fiscale",
+  LOCK_PERIOD: "Verrouiller une période",
+  UNLOCK_PERIOD: "Déverrouiller une période",
+
+  // Paramètres fiscaux
+  UPDATE_FISCAL_SETTING: "Activer / désactiver le Tableau 6",
   
   // Génériques (fallback)
   CREATE: "Création",
@@ -88,7 +123,9 @@ const actionGroups: Record<string, string[]> = {
   "Fournisseurs fiscaux": ["FISCAL_FOURNISSEUR_CREATE", "FISCAL_FOURNISSEUR_UPDATE", "FISCAL_FOURNISSEUR_DELETE", "FISCAL_FOURNISSEUR_IMPORT"],
   "Régions": ["CREATE_REGION", "UPDATE_REGION", "DELETE_REGION"],
   "Chèques": ["UPDATE_CHECK_STATUS", "PRINT_CHECK"],
-  "Utilisateurs": ["CREATE_USER", "UPDATE_USER", "DELETE_USER"]
+  "Utilisateurs": ["CREATE_USER", "UPDATE_USER", "DELETE_USER", "RESET_PASSWORD"],
+  "Déclarations": ["FISCAL_SAVE", "FISCAL_APPROVE", "FISCAL_DELETE"],
+  "Paramètres fiscaux": ["UPDATE_FISCAL_SETTING"]
 };
 
 const fieldLabels: Record<string, string> = {
@@ -151,6 +188,32 @@ const fieldLabels: Record<string, string> = {
   issuedDate: "Date d'émission",
   printedDate: "Date d'impression",
   
+  // Déclarations
+  declarationId: "Déclaration",
+  direction: "Direction",
+  mois: "Mois",
+  annee: "Année",
+  period: "Période",
+  declarationStatus: "Statut de la déclaration",
+  settingName: "Paramètre",
+  oldValue: "Ancienne valeur",
+  newValue: "Nouvelle valeur",
+  
+  // Récapitulatifs TVA
+  recapId: "Récapitulatif",
+  tvaType: "Type de TVA",
+  totalBase: "Base totale",
+  totalAmount: "Montant total",
+  
+  // Déclarations fiscales
+  fiscalDeclarationId: "Déclaration fiscale",
+  fiscalYear: "Année fiscale",
+  fiscalStatus: "Statut fiscal",
+  
+  // Fournisseurs fiscaux
+  fiscalSupplierId: "Fournisseur fiscal",
+  fiscalSupplierName: "Nom du fournisseur fiscal",
+  
   // Calibrage
   x: "Position X",
   y: "Position Y",
@@ -163,6 +226,8 @@ const fieldLabels: Record<string, string> = {
   fullName: "Nom complet",
   role: "Rôle",
   password: "Mot de passe",
+  UserEmail: "Email utilisateur",
+  NewPassword: "Nouveau mot de passe",
   oldValues: "Anciennes valeurs",
   newValues: "Nouvelles valeurs",
   

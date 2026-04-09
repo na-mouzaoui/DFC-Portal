@@ -1131,6 +1131,29 @@ const getCellFormula = (itemKey: string, designation: string, columnKey: string)
   return "Saisie manuelle"
 }
 
+const applyManualDefaults = (
+  itemKey: string,
+  definition: RecapDefinition,
+  rows: Record<string, string>[],
+): Record<string, string>[] => {
+  return rows.map((row) => {
+    const nextRow: Record<string, string> = { ...row }
+    const designation = String(row.designation ?? "")
+
+    for (const column of definition.columns) {
+      if (column.key === "designation") continue
+
+      const formula = getCellFormula(itemKey, designation, column.key)
+      if (formula !== "Saisie manuelle") continue
+
+      const rawValue = String(row[column.key] ?? "").trim()
+      nextRow[column.key] = rawValue === "" ? "0" : String(row[column.key])
+    }
+
+    return nextRow
+  })
+}
+
 const buildFormulaMap = (
   itemKey: string,
   definition: RecapDefinition,
@@ -1154,34 +1177,34 @@ const getRecapRows = (
   declarations: ApiFiscalDeclaration[],
 ): Record<string, string>[] => {
   if (item.source === "saved" && item.rows && item.rows.length > 0) {
-    return item.rows
+    return applyManualDefaults(item.key, definition, item.rows)
   }
 
   if (item.key === "g50") {
-    return buildG50Rows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildG50Rows(item.mois, item.annee, declarations))
   }
 
   if (item.key === "tva_a_payer") {
-    return buildTvaRecapRows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildTvaRecapRows(item.mois, item.annee, declarations))
   }
 
   if (item.key === "tva_collectee") {
-    return buildTvaCollecteeRows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildTvaCollecteeRows(item.mois, item.annee, declarations))
   }
 
   if (item.key === "tva_situation") {
-    return buildTvaSituationRows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildTvaSituationRows(item.mois, item.annee, declarations))
   }
 
   if (item.key === "droits_timbre") {
-    return buildDroitsTimbreRows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildDroitsTimbreRows(item.mois, item.annee, declarations))
   }
 
   if (item.key === "tnfdal1" || item.key === "tap15") {
-    return buildTap15Rows(item.mois, item.annee, declarations)
+    return applyManualDefaults(item.key, definition, buildTap15Rows(item.mois, item.annee, declarations))
   }
 
-  return item.rows ?? definition.rows
+  return applyManualDefaults(item.key, definition, item.rows ?? definition.rows)
 }
 
 export default function RecapPage() {
@@ -1461,6 +1484,18 @@ export default function RecapPage() {
     setEditingRows((prev) =>
       prev.map((row, index) => {
         if (index !== rowIndex) return row
+
+        if (columnKey !== "designation" && editingRecap && editingDefinition) {
+          const designation = String(row.designation ?? "")
+          const formula = getCellFormula(editingRecap.key, designation, columnKey)
+          if (formula === "Saisie manuelle" && value.trim() === "") {
+            return {
+              ...row,
+              [columnKey]: "0",
+            }
+          }
+        }
+
         return {
           ...row,
           [columnKey]: value,
@@ -1582,8 +1617,10 @@ export default function RecapPage() {
           img.src = "/logo_doc.png"
         })
 
+        // Logo en haut à droite
         if (logo) {
-          pdf.addImage(logo, "PNG", 10, 8, 38, 20)
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          pdf.addImage(logo, "PNG", pageWidth - 48, 8, 40, 20)
         }
 
         pdf.setFont("times", "bold")
@@ -1626,13 +1663,14 @@ export default function RecapPage() {
             font: "helvetica",
             fontSize: 9,
           },
-          columnStyles: Array(tableHead[0]?.length ?? 0)
-            .fill(null)
-            .map((_, i) =>
+          columnStyles: Object.fromEntries(
+            Array.from({ length: tableHead[0]?.length ?? 0 }, (_, i) => [
+              i,
               i === 0
                 ? { halign: "left", cellWidth: "auto" }
-                : { halign: "right", cellWidth: "auto" }
-            ),
+                : { halign: "right", cellWidth: "auto" },
+            ]),
+          ),
           didParseCell: (data) => {
             data.cell.text = data.cell.text.map((line) =>
               line

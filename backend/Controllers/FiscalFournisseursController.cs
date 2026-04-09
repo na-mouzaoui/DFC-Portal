@@ -28,6 +28,13 @@ public class FiscalFournisseursController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
+    private async Task<User?> GetCurrentUserAsync()
+    {
+        var userId = GetCurrentUserId();
+        if (userId <= 0) return null;
+        return await _context.Users.FindAsync(userId);
+    }
+
     // GET api/fiscal-fournisseurs
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -57,6 +64,10 @@ public class FiscalFournisseursController : ControllerBase
             return BadRequest(new { message = "La raison sociale est obligatoire." });
 
         var userId = GetCurrentUserId();
+        if (userId <= 0)
+            return Unauthorized();
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
 
         var fournisseur = new FiscalFournisseur
         {
@@ -74,20 +85,30 @@ public class FiscalFournisseursController : ControllerBase
         _context.FiscalFournisseurs.Add(fournisseur);
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(
-            userId,
-            "FISCAL_FOURNISSEUR_CREATE",
-            "FiscalFournisseur",
-            fournisseur.Id,
-            new
-            {
-                fournisseur.RaisonSociale,
-                fournisseur.NIF,
-                fournisseur.AuthNIF,
-                fournisseur.RC,
-                fournisseur.AuthRC
-            }
-        );
+        try
+        {
+            await _auditService.LogAction(
+                userId,
+                "FISCAL_FOURNISSEUR_CREATE",
+                "FiscalFournisseur",
+                fournisseur.Id,
+                new
+                {
+                    fournisseur.RaisonSociale,
+                    fournisseur.NIF,
+                    fournisseur.AuthNIF,
+                    fournisseur.RC,
+                    fournisseur.AuthRC
+                }
+            );
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
+        }
 
         return CreatedAtAction(nameof(GetAll), new { id = fournisseur.Id }, new {
             id = fournisseur.Id,
@@ -110,11 +131,21 @@ public class FiscalFournisseursController : ControllerBase
             return BadRequest(new { message = "La raison sociale est obligatoire." });
 
         var userId = GetCurrentUserId();
+        var currentUser = await GetCurrentUserAsync();
+        if (currentUser == null)
+            return Unauthorized();
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
         var fournisseur = await _context.FiscalFournisseurs
-            .FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == id);
 
         if (fournisseur == null)
             return NotFound(new { message = "Fournisseur introuvable." });
+
+        // L'admin peut gérer tous les fournisseurs fiscaux, sinon uniquement ses propres entrées.
+        if (currentUser.Role != "admin" && fournisseur.UserId != userId)
+            return Forbid();
 
         var oldValues = new
         {
@@ -150,13 +181,23 @@ public class FiscalFournisseursController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(
-            userId,
-            "FISCAL_FOURNISSEUR_UPDATE",
-            "FiscalFournisseur",
-            fournisseur.Id,
-            auditPayload
-        );
+        try
+        {
+            await _auditService.LogAction(
+                userId,
+                "FISCAL_FOURNISSEUR_UPDATE",
+                "FiscalFournisseur",
+                fournisseur.Id,
+                auditPayload
+            );
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
+        }
 
         return Ok(new {
             id = fournisseur.Id,
@@ -176,11 +217,21 @@ public class FiscalFournisseursController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var userId = GetCurrentUserId();
+        var currentUser = await GetCurrentUserAsync();
+        if (currentUser == null)
+            return Unauthorized();
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
         var fournisseur = await _context.FiscalFournisseurs
-            .FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == id);
 
         if (fournisseur == null)
             return NotFound(new { message = "Fournisseur introuvable." });
+
+        // L'admin peut gérer tous les fournisseurs fiscaux, sinon uniquement ses propres entrées.
+        if (currentUser.Role != "admin" && fournisseur.UserId != userId)
+            return Forbid();
 
         var auditPayload = new
         {
@@ -195,13 +246,23 @@ public class FiscalFournisseursController : ControllerBase
         _context.FiscalFournisseurs.Remove(fournisseur);
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(
-            userId,
-            "FISCAL_FOURNISSEUR_DELETE",
-            "FiscalFournisseur",
-            id,
-            auditPayload
-        );
+        try
+        {
+            await _auditService.LogAction(
+                userId,
+                "FISCAL_FOURNISSEUR_DELETE",
+                "FiscalFournisseur",
+                id,
+                auditPayload
+            );
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
+        }
 
         return NoContent();
     }

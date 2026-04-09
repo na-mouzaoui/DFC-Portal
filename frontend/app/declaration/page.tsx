@@ -74,11 +74,12 @@ const num = (v: string) => {
 
 type AmountInputProps = Omit<React.ComponentProps<typeof Input>, "type" | "value" | "onChange"> & {
   value: string
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
 function AmountInput({ value, onChange, ...props }: AmountInputProps) {
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!onChange) return
     const normalizedValue = normalizeAmountInput(event.target.value)
     onChange({
       ...event,
@@ -1918,23 +1919,24 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
 
       {(activeTab === "tva_immo" || activeTab === "tva_biens") && (() => {
         const rows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
-        const showRateColumn = activeTab === "tva_immo" || activeTab === "tva_biens"
         const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-        const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, showRateColumn), 0)
+        const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
         const tTTC = tHT + tTVA
+        const totalLabel = activeTab === "tva_immo"
+          ? "TOTAL TVA SUR IMMOBILISATION 445620"
+          : "TOTAL TVA SUR BIENS ET SERVICES"
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
-              {["#","Nom Prenom / Raison Sociale","Adresse","NIF","Auth. NIF","N° RC","Auth. N° RC","N° Facture","Date","Montant HT", ...(showRateColumn ? ["Taux TVA"] : []), "TVA","Montant TTC"].map((h) => (
+              {["Nom et prénoms /Raison sociale","Adresse","NIF","Authentification du NIF","RC n°","Authentification du n°RC","Facture n°","Date","Montant HT", "TVA", "Montant TTC"].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {rows.map((r, i) => {
-                const rowTva = getTvaAmount(r, showRateColumn)
+                const rowTva = getTvaAmount(r, true)
                 const rowTTC = num(r.montantHT) + rowTva
                 return <tr key={i} style={{ background: "#fff", color: "#000" }}>
-                  <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.nomRaisonSociale)}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.adresse)}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{printNullableText(r.nif)}</td>
@@ -1944,16 +1946,14 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.numFacture}</td>
                   <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.dateFacture}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT ? fmt(num(r.montantHT)) : ""}</td>
-                  {showRateColumn && <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{getTvaRateLabel(r.tauxTVA)}</td>}
-                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{showRateColumn && r.montantHT && normalizeTvaRate(r.tauxTVA) ? fmt(rowTva) : r.tva ? fmt(num(r.tva)) : ""}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{fmt(rowTva)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{r.montantHT || rowTva ? fmt(rowTTC) : ""}</td>
                 </tr>
               })}
             </tbody>
             <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
-              <td colSpan={9} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
+              <td colSpan={8} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{totalLabel}</td>
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tHT)}</td>
-              {showRateColumn && <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#ddd", color: "#000" }}>-</td>}
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTVA)}</td>
               <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(tTTC)}</td>
             </tr></tfoot>

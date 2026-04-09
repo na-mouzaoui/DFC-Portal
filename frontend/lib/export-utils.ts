@@ -94,146 +94,186 @@ export function exportStatsToPDF(
 ) {
   const doc = new jsPDF()
 
-  // Titre
-  doc.setFontSize(18)
-  doc.text("Tableau de Bord - Statistiques des Chèques", 14, 22)
-
-  // Date
-  doc.setFontSize(10)
-  doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 30)
-
-  // Statistiques générales
-  doc.setFontSize(14)
-  doc.text("Statistiques Générales", 14, 42)
-
-  const statsTable = [
-    ["Montant Total", `${stats.totalAmount.toFixed(2)} DZD`],
-    ["Nombre de Chèques", stats.totalChecks.toString()],
-    ["Montant Moyen", stats.totalChecks > 0 ? `${(stats.totalAmount / stats.totalChecks).toFixed(2)} DZD` : "0 DZD"],
-    ["Nombre de Banques", Object.keys(stats.checksByBank).length.toString()],
-  ]
-
-  autoTable(doc, {
-    startY: 46,
-    head: [["Statistique", "Valeur"]],
-    body: statsTable,
-    theme: "grid",
+  // Charger le logo
+  const logo = new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = "/logo_doc.png"
   })
 
-  // Chèques par banque
-  doc.addPage()
-  doc.setFontSize(14)
-  doc.text("Répartition par Banque", 14, 22)
+  logo.then((logoImg) => {
+    // Logo en haut à droite
+    if (logoImg) {
+      const pageWidth = doc.internal.pageSize.getWidth()
+      doc.addImage(logoImg, "PNG", pageWidth - 48, 8, 40, 20)
+    }
 
-  const bankTable = Object.entries(stats.checksByBank).map(([bank, count]) => [bank, count.toString()])
+    // Titre
+    doc.setFontSize(18)
+    doc.text("Tableau de Bord - Statistiques des Chèques", 14, 22)
 
-  autoTable(doc, {
-    startY: 28,
-    head: [["Banque", "Nombre de Chèques"]],
-    body: bankTable,
-    theme: "grid",
-  })
+    // Date
+    doc.setFontSize(10)
+    doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 30)
 
-  // Montant par utilisateur
-  doc.addPage()
-  doc.setFontSize(14)
-  doc.text("Montant par Utilisateur", 14, 22)
+    // Statistiques générales
+    doc.setFontSize(14)
+    doc.text("Statistiques Générales", 14, 42)
 
-  const userMap = users.reduce(
-    (acc, user) => {
-      acc[user.id] = user.email
-      return acc
-    },
-    {} as Record<string, string>,
-  )
-
-  const userTable = Object.entries(stats.amountByUser).map(([userId, amount]) => {
-    const userChecks = checks.filter((c) => c.userId === userId)
-    const avgAmount = userChecks.length > 0 ? amount / userChecks.length : 0
-    return [
-      userMap[userId] || "Inconnu",
-      `${amount.toFixed(2)} DZD`,
-      userChecks.length.toString(),
-      `${avgAmount.toFixed(2)} DZD`,
+    const statsTable = [
+      ["Montant Total", `${stats.totalAmount.toFixed(2)} DZD`],
+      ["Nombre de Chèques", stats.totalChecks.toString()],
+      ["Montant Moyen", stats.totalChecks > 0 ? `${(stats.totalAmount / stats.totalChecks).toFixed(2)} DZD` : "0 DZD"],
+      ["Nombre de Banques", Object.keys(stats.checksByBank).length.toString()],
     ]
-  })
 
-  autoTable(doc, {
-    startY: 28,
-    head: [["Utilisateur", "Montant Total", "Nombre", "Montant Moyen"]],
-    body: userTable,
-    theme: "grid",
-  })
+    autoTable(doc, {
+      startY: 46,
+      head: [["Statistique", "Valeur"]],
+      body: statsTable,
+      theme: "grid",
+    })
 
-  doc.save(`statistiques_cheques_${timestampSuffix()}.pdf`)
+    // Chèques par banque
+    doc.addPage()
+    if (logoImg) {
+      const pageWidth = doc.internal.pageSize.getWidth()
+      doc.addImage(logoImg, "PNG", pageWidth - 48, 8, 40, 20)
+    }
+    doc.setFontSize(14)
+    doc.text("Répartition par Banque", 14, 22)
+
+    const bankTable = Object.entries(stats.checksByBank).map(([bank, count]) => [bank, count.toString()])
+
+    autoTable(doc, {
+      startY: 28,
+      head: [["Banque", "Nombre de Chèques"]],
+      body: bankTable,
+      theme: "grid",
+    })
+
+    // Montant par utilisateur
+    doc.addPage()
+    if (logoImg) {
+      const pageWidth = doc.internal.pageSize.getWidth()
+      doc.addImage(logoImg, "PNG", pageWidth - 48, 8, 40, 20)
+    }
+    doc.setFontSize(14)
+    doc.text("Montant par Utilisateur", 14, 22)
+
+    const userMap = users.reduce(
+      (acc, user) => {
+        acc[user.id] = user.email
+        return acc
+      },
+      {} as Record<string, string>,
+    )
+
+    const userTable = Object.entries(stats.amountByUser).map(([userId, amount]) => {
+      const userChecks = checks.filter((c) => c.userId === userId)
+      const avgAmount = userChecks.length > 0 ? amount / userChecks.length : 0
+      return [
+        userMap[userId] || "Inconnu",
+        `${amount.toFixed(2)} DZD`,
+        userChecks.length.toString(),
+        `${avgAmount.toFixed(2)} DZD`,
+      ]
+    })
+
+    autoTable(doc, {
+      startY: 28,
+      head: [["Utilisateur", "Montant Total", "Nombre", "Montant Moyen"]],
+      body: userTable,
+      theme: "grid",
+    })
+
+    doc.save(`statistiques_cheques_${timestampSuffix()}.pdf`)
+  })
 }
 
 export function exportHistoryToPDF(checks: Check[], users: User[], banks: Bank[] = []) {
   const doc = new jsPDF({ orientation: "landscape" })
 
-  // Titre
-  doc.setFontSize(18)
-  doc.text("Historique des Chèques", 14, 22)
-
-  // Date
-  doc.setFontSize(10)
-  doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 30)
-
-  const userMap = users.reduce(
-    (acc, user) => {
-      acc[user.id] = user.email
-      return acc
-    },
-    {} as Record<string, string>,
-  )
-
-  // Aligner avec les colonnes Excel (même ordre)
-  const sortedChecks = [...checks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-
-  const checksData = sortedChecks.map((check, index) => {
-    const createdDate = new Date(check.createdAt)
-    const emissionDate = parseFlexibleDate(check.date)
-    const bankCode = getBankCode(check.bank, banks)
-    return [
-      index + 1,
-      check.reference || "—",
-      createdDate.toLocaleDateString("fr-FR", { year: "2-digit", month: "2-digit", day: "2-digit" }),
-      createdDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      emissionDate ? emissionDate.toLocaleDateString("fr-FR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : "",
-      userMap[check.userId] || "Inconnu",
-      bankCode,
-      check.payee,
-      check.city,
-      `${check.amount.toFixed(2)} DZD`,
-      check.status || "emit",
-      check.motif || "",
-    ]
+  // Charger le logo
+  const logo = new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = "/logo_doc.png"
   })
 
-  autoTable(doc, {
-    startY: 38,
-    head: [[
-      "N°",
-      "Référence",
-      "Date Création",
-      "Heure Création",
-      "Date",
-      "Utilisateur",
-      "Banque",
-      "Bénéficiaire",
-      "Ville",
-      "Montant",
-      "Statut",
-      "Motif"
-    ]],
-    body: checksData,
-    theme: "grid",
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [232, 44, 42], textColor: 255 },
-    alternateRowStyles: { fillColor: [249, 250, 251] },
-  })
+  logo.then((logoImg) => {
+    // Logo en haut à droite
+    if (logoImg) {
+      const pageWidth = doc.internal.pageSize.getWidth()
+      doc.addImage(logoImg, "PNG", pageWidth - 48, 8, 40, 20)
+    }
 
-  doc.save(`historique_cheques_${timestampSuffix()}.pdf`)
+    // Titre
+    doc.setFontSize(18)
+    doc.text("Historique des Chèques", 14, 22)
+
+    // Date
+    doc.setFontSize(10)
+    doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 30)
+
+    const userMap = users.reduce(
+      (acc, user) => {
+        acc[user.id] = user.email
+        return acc
+      },
+      {} as Record<string, string>,
+    )
+
+    // Aligner avec les colonnes Excel (même ordre)
+    const sortedChecks = [...checks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    const checksData = sortedChecks.map((check, index) => {
+      const createdDate = new Date(check.createdAt)
+      const emissionDate = parseFlexibleDate(check.date)
+      const bankCode = getBankCode(check.bank, banks)
+      return [
+        index + 1,
+        check.reference || "—",
+        createdDate.toLocaleDateString("fr-FR", { year: "2-digit", month: "2-digit", day: "2-digit" }),
+        createdDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        emissionDate ? emissionDate.toLocaleDateString("fr-FR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : "",
+        userMap[check.userId] || "Inconnu",
+        bankCode,
+        check.payee,
+        check.city,
+        `${check.amount.toFixed(2)} DZD`,
+        check.status || "emit",
+        check.motif || "",
+      ]
+    })
+
+    autoTable(doc, {
+      startY: 38,
+      head: [[
+        "N°",
+        "Référence",
+        "Date Création",
+        "Heure Création",
+        "Date",
+        "Utilisateur",
+        "Banque",
+        "Bénéficiaire",
+        "Ville",
+        "Montant",
+        "Statut",
+        "Motif"
+      ]],
+      body: checksData,
+      theme: "grid",
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [232, 44, 42], textColor: 255 },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+    })
+
+    doc.save(`historique_cheques_${timestampSuffix()}.pdf`)
+  })
 }
 
 export function exportHistoryToExcel(checks: Check[], users: User[], banks: Bank[] = []) {
