@@ -251,19 +251,11 @@ const DASH_TABS = [
 
 // aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const fmt = (v: number | string) => {
-  const cleaned = String(v).replace(/\//g, " ").replace(/\u00A0/g, " ").trim()
-  const parsed = Number(cleaned)
-  if (isNaN(parsed) || v === "") return "a"
-  
-  // Manual formatting: integer part with space separators, decimal part
-  const parts = parsed.toFixed(2).split(".")
-  const intPart = parts[0]
-  const decPart = parts[1]
-  
-  // Add space separators to integer part (from right to left)
-  const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
-  
-  return `${intFormatted},${decPart}`
+  if (v === "" || isNaN(Number(v))) return ""
+  const num = Number(v)
+  const [intPart, decPart] = num.toFixed(2).split(".")
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  return `${formattedInt},${decPart}`
 }
 const num = (v: string | number | null | undefined) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0
@@ -1321,12 +1313,12 @@ export default function FiscaDashboardPage() {
         ]
 
         const tableBody = Array.from(tableElement.querySelectorAll("tbody tr, tfoot tr")).map((row) =>
-          Array.from(row.querySelectorAll("td")).map((cell) =>
-            String(cell.textContent ?? "")
-              .replace(/\//g, " ")
-              .replace(/\u00A0/g, " ")
-              .trim(),
-          ),
+          Array.from(row.querySelectorAll("td")).map((cell) => {
+            let text = String(cell.textContent ?? "").trim()
+            text = text.replace(/\u00A0/g, " ")
+            text = text.replace(/\s+/g, " ")
+            return text
+          }),
         )
 
         autoTable(pdf, {
@@ -1336,31 +1328,40 @@ export default function FiscaDashboardPage() {
           theme: "grid",
           margin: { left: 10, right: 10, top: 64, bottom: 10 },
           styles: {
-            font: "times",
-            fontSize: 10,
+            font: "helvetica",
+            fontSize: 9,
             cellPadding: 0.8,
             lineColor: [51, 51, 51],
             lineWidth: 0.2,
             textColor: [0, 0, 0],
+            overflow: "linebreak",
           },
           headStyles: {
             fillColor: [45, 179, 75],
             textColor: [255, 255, 255],
-            font: "times",
+            font: "helvetica",
             fontStyle: "bold",
-            fontSize: 10,
+            fontSize: 9,
             halign: "center",
           },
           bodyStyles: {
             textColor: [0, 0, 0],
-            font: "times",
-            fontSize: 10,
+            font: "helvetica",
+            fontSize: 9,
           },
+          columnStyles: Array(tableHead[0]?.length ?? 0)
+            .fill(null)
+            .map((_, i) =>
+              i === 0
+                ? { halign: "left", cellWidth: "auto" }
+                : { halign: "right", cellWidth: "auto" }
+            ),
           didParseCell: (data) => {
             data.cell.text = data.cell.text.map((line) =>
               line
-                .replace(/\//g, " ")
                 .replace(/\u00A0/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
             )
 
             const rowValues = Array.isArray(data.row.raw)
@@ -1372,14 +1373,6 @@ export default function FiscaDashboardPage() {
               data.cell.styles.fillColor = [45, 179, 75]
               data.cell.styles.textColor = [255, 255, 255]
               data.cell.styles.fontStyle = "bold"
-            }
-
-            if (data.section === "body") {
-              if (data.column.index === 0) {
-                data.cell.styles.halign = "left"
-              } else {
-                data.cell.styles.halign = "right"
-              }
             }
           },
           horizontalPageBreak: true,
@@ -1733,7 +1726,7 @@ export default function FiscaDashboardPage() {
           white-space: nowrap !important;
           font-size: 13px !important;
         }
-        #dash-print-zone td { white-space: nowrap !important; text-align: left !important; }
+        #dash-print-zone td { text-align: left !important; }
         #dash-print-zone tbody td { background: #fff !important; text-align: left !important; }
         #dash-print-zone tbody td:not(:first-child) { text-align: center !important; }
         #dash-print-zone tbody tr[style*="font-weight:700"] td,

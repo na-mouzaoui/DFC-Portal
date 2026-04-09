@@ -23,8 +23,13 @@ const PRIMARY_COLOR = "#2db34b"
 // 
 // HELPERS
 // 
-const fmt = (v: number | string) =>
-  isNaN(Number(v)) || v === "" ? "" : Number(v).toLocaleString("fr-DZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = (v: number | string) => {
+  if (v === "" || isNaN(Number(v))) return ""
+  const num = Number(v)
+  const [intPart, decPart] = num.toFixed(2).split(".")
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  return `${formattedInt},${decPart}`
+}
 
 const normalizeAmountInput = (value: string) => {
   const raw = value.replace(/\u00A0/g, " ").trim()

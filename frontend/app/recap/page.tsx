@@ -157,9 +157,9 @@ const TVA_SITUATION_ROWS = [
 ]
 
 const TVA_RECAP_ROWS = [
-  "PrÃ©compte",
+  "Précompte",
   "Reversement",
-  "Direction GÃ©nÃ©rale",
+  "Direction Générale",
   "TVA AutoLiquidation",
   "DR Alger",
   "DR Setif",
@@ -289,22 +289,22 @@ const RECAP_DEFINITIONS: RecapDefinition[] = [
   },
   {
     key: "tva_a_payer",
-    title: "TVA Ã€ PAYER",
+    title: "TVA À PAYER",
     columns: [
-      { key: "designation", label: "DÃ©signation" },
-      { key: "collectee", label: "TVA CollectÃ©e", right: true },
-      { key: "immo", label: "TVA DÃ©ductible sur Immobilisation", right: true },
-      { key: "biens", label: "TVA DÃ©ductible sur Biens et Services", right: true },
-      { key: "totalDed", label: "Total de la TVA DÃ©ductible", right: true },
-      { key: "payer", label: "TVA Ã  Payer", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "collectee", label: "TVA Collectée", right: true },
+      { key: "immo", label: "TVA Déductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA Déductible sur Biens et Services", right: true },
+      { key: "totalDed", label: "Total de la TVA Déductible", right: true },
+      { key: "payer", label: "TVA à Payer", right: true },
     ],
     rows: TVA_RECAP_ROWS.map((designation) => ({
       designation,
-      collectee: designation === "Direction GÃ©nÃ©rale" || designation === "Total" ? "0" : "0,00",
+      collectee: designation === "Direction Générale" || designation === "Total" ? "0" : "0,00",
       immo: "0,00",
       biens: "0,00",
       totalDed: "0,00",
-      payer: designation === "Direction GÃ©nÃ©rale" || designation === "Total" ? "0" : "0,00",
+      payer: designation === "Direction Générale" || designation === "Total" ? "0" : "0,00",
     })),
   },
   {
@@ -409,18 +409,20 @@ const parseAmount = (value: unknown): number => {
 const isHeadOfficeDirectionValue = (direction: string): boolean => {
   const normalized = (direction ?? "").trim().toLowerCase()
   return (
-    normalized === "siÃ¨ge"
+    normalized === "siège"
     || normalized === "siege"
-    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siège")
     || normalized.includes("siege")
     || normalized.includes("direction generale")
-    || normalized.includes("direction gÃ©nÃ©rale")
+    || normalized.includes("direction générale")
   )
 }
 
 const formatDzd = (value: number): string => {
   const safe = Number.isFinite(value) ? value : 0
-  return safe.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const [intPart, decPart] = safe.toFixed(2).split(".")
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  return `${formattedInt},${decPart}`
 }
 
 const normalizeRate = (value?: string): 19 | 9 | null => {
@@ -445,12 +447,12 @@ const resolveTvaSituationRowByDirection = (direction: string): string | null => 
   if (!normalized) return null
 
   if (
-    normalized === "siÃ¨ge"
+    normalized === "siège"
     || normalized === "siege"
-    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siège")
     || normalized.includes("siege")
     || normalized.includes("direction generale")
-    || normalized.includes("direction gÃ©nÃ©rale")
+    || normalized.includes("direction générale")
   ) {
     return "Direction Generale"
   }
@@ -460,12 +462,12 @@ const resolveTvaSituationRowByDirection = (direction: string): string | null => 
   }
 
   if (normalized.includes("alger")) return "DR Alger"
-  if (normalized.includes("setif") || normalized.includes("sÃ©tif")) return "DR Setif"
+  if (normalized.includes("setif") || normalized.includes("sétif")) return "DR Setif"
   if (normalized.includes("constantine")) return "DR Constantine"
   if (normalized.includes("annaba")) return "DR Annaba"
   if (normalized.includes("chlef")) return "DR Chlef"
   if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
-  if (normalized.includes("bechar") || normalized.includes("bÃ©char")) return "DR Bechar"
+  if (normalized.includes("bechar") || normalized.includes("béchar")) return "DR Bechar"
   if (normalized.includes("ouargla")) return "DR Ouargla"
 
   return null
@@ -476,12 +478,12 @@ const resolveRegionalRowByDirection = (direction: string): string | null => {
   if (!normalized) return null
 
   if (
-    normalized === "siÃ¨ge"
+    normalized === "siège"
     || normalized === "siege"
-    || normalized.includes("siÃ¨ge")
+    || normalized.includes("siège")
     || normalized.includes("siege")
     || normalized.includes("direction generale")
-    || normalized.includes("direction gÃ©nÃ©rale")
+    || normalized.includes("direction générale")
     || normalized.includes("autoliquidation")
     || normalized.includes("auto liquidation")
   ) {
@@ -489,12 +491,12 @@ const resolveRegionalRowByDirection = (direction: string): string | null => {
   }
 
   if (normalized.includes("alger")) return "DR Alger"
-  if (normalized.includes("setif") || normalized.includes("sÃ©tif")) return "DR Setif"
+  if (normalized.includes("setif") || normalized.includes("sétif")) return "DR Setif"
   if (normalized.includes("constantine")) return "DR Constantine"
   if (normalized.includes("annaba")) return "DR Annaba"
   if (normalized.includes("chlef")) return "DR Chlef"
   if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
-  if (normalized.includes("bechar") || normalized.includes("bÃ©char")) return "DR Bechar"
+  if (normalized.includes("bechar") || normalized.includes("béchar")) return "DR Bechar"
   if (normalized.includes("ouargla")) return "DR Ouargla"
 
   return null
@@ -1603,31 +1605,40 @@ export default function RecapPage() {
           theme: "grid",
           margin: { left: 10, right: 10, top: 64, bottom: 10 },
           styles: {
-            font: "times",
-            fontSize: 10,
+            font: "helvetica",
+            fontSize: 9,
             cellPadding: 0.8,
             lineColor: [51, 51, 51],
             lineWidth: 0.2,
             textColor: [0, 0, 0],
+            overflow: "linebreak",
           },
           headStyles: {
             fillColor: [45, 179, 75],
             textColor: [255, 255, 255],
-            font: "times",
+            font: "helvetica",
             fontStyle: "bold",
-            fontSize: 10,
+            fontSize: 9,
             halign: "center",
           },
           bodyStyles: {
             textColor: [0, 0, 0],
-            font: "times",
-            fontSize: 10,
+            font: "helvetica",
+            fontSize: 9,
           },
+          columnStyles: Array(tableHead[0]?.length ?? 0)
+            .fill(null)
+            .map((_, i) =>
+              i === 0
+                ? { halign: "left", cellWidth: "auto" }
+                : { halign: "right", cellWidth: "auto" }
+            ),
           didParseCell: (data) => {
             data.cell.text = data.cell.text.map((line) =>
               line
-                .replace(/\//g, " ")
-                .replace(/\u00A0/g, " "),
+                .replace(/\u00A0/g, " ")
+                .replace(/\s+/g, " ")
+                .trim(),
             )
 
             const rowValues = Array.isArray(data.row.raw)
@@ -1639,14 +1650,6 @@ export default function RecapPage() {
               data.cell.styles.fillColor = [45, 179, 75]
               data.cell.styles.textColor = [255, 255, 255]
               data.cell.styles.fontStyle = "bold"
-            }
-
-            if (data.section === "body") {
-              if (data.column.index === 0) {
-                data.cell.styles.halign = "left"
-              } else {
-                data.cell.styles.halign = definition.columns[data.column.index]?.right ? "right" : "center"
-              }
             }
           },
           horizontalPageBreak: true,
@@ -1674,8 +1677,8 @@ export default function RecapPage() {
     return (
       <LayoutWrapper user={user}>
         <AccessDeniedDialog 
-          title="AccÃ¨s refusÃ©" 
-          message="Les utilisateurs rÃ©gionaux ne peuvent pas accÃ©der aux recaps fiscaux. Seuls les utilisateurs admin, finance et comptabilitÃ© peuvent consulter cette page."
+          title="Accès refusé" 
+          message="Les utilisateurs régionaux ne peuvent pas accéder aux recaps fiscaux. Seuls les utilisateurs admin, finance et comptabilité peuvent consulter cette page."
           redirectTo="/"
         />
       </LayoutWrapper>
@@ -1731,7 +1734,7 @@ export default function RecapPage() {
               <Button
                 onClick={handleGenerate}
                 disabled={!selectedMonth || !selectedYear || !canGenerate}
-                title={!canGenerate ? "Seuls les administrateurs et les utilisateurs finance/comptabilitÃ© peuvent gÃ©nÃ©rer des recaps. Les utilisateurs de direction peuvent consulter les recaps existants." : ""}
+                title={!canGenerate ? "Seuls les administrateurs et les utilisateurs finance/comptabilité peuvent générer des recaps. Les utilisateurs de direction peuvent consulter les recaps existants." : ""}
                 className="h-10 bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Generer
