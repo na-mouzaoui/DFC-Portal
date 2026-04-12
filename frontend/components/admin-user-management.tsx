@@ -603,7 +603,7 @@ export default function AdminUserManagement() {
       </div>
 
       <div className="border rounded-lg">
-        <Table>
+        <Table className="[&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
           <TableHeader>
             <TableRow>
               <TableHead>Nom</TableHead>
@@ -631,20 +631,15 @@ export default function AdminUserManagement() {
                 </TableCell>
                 <TableCell>{user.region || "-"}</TableCell>
                 <TableCell>
-                  {user.role === "regionale" ? (
-                    user.isRegionalApprover ? (
+                  {user.role === "regionale" || user.role === "finance" || user.role === "comptabilite" ? (
+                    ((user.role === "regionale" && user.isRegionalApprover) ||
+                    ((user.role === "finance" || user.role === "comptabilite") && user.isFinanceApprover)) ? (
                       <Badge className="bg-emerald-100 text-emerald-800">Oui</Badge>
                     ) : (
-                      <Badge variant="outline">Non</Badge>
-                    )
-                  ) : (user.role === "finance" || user.role === "comptabilite") ? (
-                    user.isFinanceApprover ? (
-                      <Badge className="bg-blue-100 text-blue-800">Oui</Badge>
-                    ) : (
-                      <Badge variant="outline">Non</Badge>
+                      <Badge className="bg-slate-100 text-slate-700">Non</Badge>
                     )
                   ) : (
-                    "-"
+                    <Badge className="bg-slate-100 text-slate-700">-</Badge>
                   )}
                 </TableCell>
                 <TableCell>

@@ -75,24 +75,10 @@ public class AdminController : ControllerBase
             return Forbid();
 
         var setting = await GetOrCreateFiscalSettingAsync();
-        var oldValue = setting.IsTable6Enabled;
 
         setting.IsTable6Enabled = request.IsEnabled;
         setting.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
-
-        await _auditService.LogAction(
-            GetCurrentUserId(),
-            "UPDATE_FISCAL_SETTING",
-            "AdminFiscalSetting",
-            setting.Id,
-            new
-            {
-                settingName = "table6",
-                oldValue,
-                newValue = setting.IsTable6Enabled
-            }
-        );
 
         return Ok(new
         {

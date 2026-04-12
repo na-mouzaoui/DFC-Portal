@@ -43,67 +43,65 @@ interface User {
 
 const actionLabels: Record<string, string> = {
   // Banques
-  CREATE_BANK: "Créer une banque",
-  UPDATE_BANK: "Modifier une banque",
-  DELETE_BANK: "Supprimer une banque",
+  CREATE_BANK: "Ajout d'une banque",
+  UPDATE_BANK: "Modification d'une banque",
+  DELETE_BANK: "Suppression d'une banque",
   
   // Chéquiers
-  CREATE_CHECKBOOK: "Créer un chéquier",
-  UPDATE_CHECKBOOK: "Modifier un chéquier",
-  DELETE_CHECKBOOK: "Supprimer un chéquier",
+  CREATE_CHECKBOOK: "Ajout d'un chéquier",
+  UPDATE_CHECKBOOK: "Modification d'un chéquier",
+  DELETE_CHECKBOOK: "Suppression d'un chéquier",
   
   // Fournisseurs
-  CREATE_SUPPLIER: "Créer un fournisseur",
-  UPDATE_SUPPLIER: "Modifier un fournisseur",
-  DELETE_SUPPLIER: "Supprimer un fournisseur",
-  FISCAL_FOURNISSEUR_CREATE: "Créer un fournisseur fiscal",
-  FISCAL_FOURNISSEUR_UPDATE: "Modifier un fournisseur fiscal",
-  FISCAL_FOURNISSEUR_DELETE: "Supprimer un fournisseur fiscal",
+  CREATE_SUPPLIER: "Ajout d'un fournisseur",
+  UPDATE_SUPPLIER: "Modification d'un fournisseur",
+  DELETE_SUPPLIER: "Suppression d'un fournisseur",
+  FISCAL_FOURNISSEUR_CREATE: "Ajout d'un fournisseur fiscal",
+  FISCAL_FOURNISSEUR_UPDATE: "Modification d'un fournisseur fiscal",
+  FISCAL_FOURNISSEUR_DELETE: "Suppression d'un fournisseur fiscal",
   FISCAL_FOURNISSEUR_IMPORT: "Importer des fournisseurs fiscaux",
   
   // Régions
-  CREATE_REGION: "Créer une région",
-  UPDATE_REGION: "Modifier une région",
-  DELETE_REGION: "Supprimer une région",
+  CREATE_REGION: "Ajout d'une région",
+  UPDATE_REGION: "Modification d'une région",
+  DELETE_REGION: "Suppression d'une région",
   
   // Chèques
   UPDATE_CHECK_STATUS: "Changer le statut d'un chèque",
   PRINT_CHECK: "Imprimer un chèque",
   
   // Utilisateurs
-  CREATE_USER: "Créer un utilisateur",
-  UPDATE_USER: "Modifier un utilisateur",
-  DELETE_USER: "Supprimer un utilisateur",
+  CREATE_USER: "Ajout d'un utilisateur",
+  UPDATE_USER: "Modification d'un utilisateur",
+  DELETE_USER: "Suppression d'un utilisateur",
   RESET_PASSWORD: "Réinitialiser le mot de passe d'un utilisateur",
   
   // Déclarations
-  FISCAL_SAVE: "Enregistrer une déclaration",
+  FISCAL_SAVE: "Enregistrement d'une déclaration",
   FISCAL_APPROVE: "Approuver une déclaration",
-  FISCAL_DELETE: "Supprimer une déclaration",
+  FISCAL_DELETE: "Suppression d'une déclaration",
   FISCAL_PRINT: "Exporter une déclaration en PDF",
-  CREATE_DECLARATION: "Créer une déclaration",
-  UPDATE_DECLARATION: "Modifier une déclaration",
-  DELETE_DECLARATION: "Supprimer une déclaration",
+  CREATE_DECLARATION: "Ajout d'une déclaration",
+  UPDATE_DECLARATION: "Modification d'une déclaration",
+  DELETE_DECLARATION: "Suppression d'une déclaration",
   SUBMIT_DECLARATION: "Soumettre une déclaration",
   APPROVE_DECLARATION: "Approuver une déclaration",
   REJECT_DECLARATION: "Rejeter une déclaration",
   EXPORT_DECLARATION: "Exporter une déclaration en PDF",
+
+  // Historique (anciens logs recap)
+  FISCAL_RECAP_SAVE: "Enregistrement d'un état de sortie",
+  FISCAL_RECAP_DELETE: "Suppression de recap",
   
-  // Récapitulatifs
-  FISCAL_RECAP_SAVE: "Enregistrer un récapitulatif TVA",
-  FISCAL_RECAP_DELETE: "Supprimer un récapitulatif TVA",
-  CREATE_RECAP: "Créer un récapitulatif TVA",
-  UPDATE_RECAP: "Modifier un récapitulatif TVA",
-  DELETE_RECAP: "Supprimer un récapitulatif TVA",
-  SUBMIT_RECAP: "Soumettre un récapitulatif TVA",
-  APPROVE_RECAP: "Approuver un récapitulatif TVA",
-  REJECT_RECAP: "Rejeter un récapitulatif TVA",
-  EXPORT_RECAP: "Exporter un récapitulatif TVA en PDF",
+  // États de sortie
+  ETATS_SORTIE_SAVE: "Enregistrement d'un état de sortie",
+  ETATS_SORTIE_DELETE: "Suppression d'un état de sortie",
+  ETATS_SORTIE_PRINT: "Exporter un état de sortie en PDF",
   
   // Déclarations fiscales
-  CREATE_FISCAL_DECLARATION: "Créer une déclaration fiscale",
-  UPDATE_FISCAL_DECLARATION: "Modifier une déclaration fiscale",
-  DELETE_FISCAL_DECLARATION: "Supprimer une déclaration fiscale",
+  CREATE_FISCAL_DECLARATION: "Ajout d'une déclaration fiscale",
+  UPDATE_FISCAL_DECLARATION: "Modification d'une déclaration fiscale",
+  DELETE_FISCAL_DECLARATION: "Suppression d'une déclaration fiscale",
   LOCK_PERIOD: "Verrouiller une période",
   UNLOCK_PERIOD: "Déverrouiller une période",
 
@@ -124,7 +122,8 @@ const actionGroups: Record<string, string[]> = {
   "Régions": ["CREATE_REGION", "UPDATE_REGION", "DELETE_REGION"],
   "Chèques": ["UPDATE_CHECK_STATUS", "PRINT_CHECK"],
   "Utilisateurs": ["CREATE_USER", "UPDATE_USER", "DELETE_USER", "RESET_PASSWORD"],
-  "Déclarations": ["FISCAL_SAVE", "FISCAL_APPROVE", "FISCAL_DELETE"],
+  "Déclarations": ["FISCAL_SAVE", "FISCAL_APPROVE", "FISCAL_DELETE", "FISCAL_PRINT"],
+  "États de sortie": ["ETATS_SORTIE_SAVE", "ETATS_SORTIE_DELETE", "ETATS_SORTIE_PRINT"],
   "Paramètres fiscaux": ["UPDATE_FISCAL_SETTING"]
 };
 
@@ -238,6 +237,36 @@ const fieldLabels: Record<string, string> = {
   comment: "Commentaire"
 };
 
+const getActionLabel = (action: string): string => {
+  const explicit = actionLabels[action];
+  if (explicit) return explicit;
+
+  // Fallback lisible en français pour les actions non mappées
+  return action
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .join(" ");
+};
+
+const getActionBadgeClass = (action: string) => {
+  const normalized = action.toUpperCase();
+
+  if (normalized.includes("DELETE") || normalized.includes("REMOVE") || normalized.includes("SUPPR")) {
+    return "bg-red-100 text-red-800";
+  }
+
+  if (normalized.includes("CREATE") || normalized.includes("ADD") || normalized.includes("AJOUT") || normalized.includes("SAVE") || normalized.includes("ENREG")) {
+    return "bg-green-100 text-green-800";
+  }
+
+  if (normalized.includes("UPDATE") || normalized.includes("EDIT") || normalized.includes("MODIF")) {
+    return "bg-blue-100 text-blue-800";
+  }
+
+  return "bg-gray-100 text-gray-800";
+};
+
 type SortField = 'action' | 'userName' | 'createdAt' | 'details';
 type SortOrder = 'asc' | 'desc';
 
@@ -332,8 +361,8 @@ export default function AdminAuditLogs() {
 
     switch (sortField) {
       case 'action':
-        aValue = actionLabels[a.action] || a.action;
-        bValue = actionLabels[b.action] || b.action;
+        aValue = getActionLabel(a.action);
+        bValue = getActionLabel(b.action);
         break;
       case 'userName':
         aValue = a.userName || '';
@@ -366,7 +395,7 @@ export default function AdminAuditLogs() {
   const filteredLogs = sortedLogs.filter((log) => {
     const matchesSearch =
       log.userName.toLowerCase().includes(search.toLowerCase()) ||
-      (actionLabels[log.action] || log.action).toLowerCase().includes(search.toLowerCase()) ||
+      getActionLabel(log.action).toLowerCase().includes(search.toLowerCase()) ||
       (log.details || '').toLowerCase().includes(search.toLowerCase());
 
     return matchesSearch;
@@ -453,7 +482,7 @@ export default function AdminAuditLogs() {
                       </div>
                       {groupActions.map(action => (
                         <SelectItem key={action} value={action} className="pl-6">
-                          {actionLabels[action] || action}
+                          {getActionLabel(action)}
                         </SelectItem>
                       ))}
                     </div>
@@ -546,14 +575,8 @@ export default function AdminAuditLogs() {
                   className="cursor-pointer hover:bg-muted/50"
                 >
                   <TableCell>
-                    <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
-                      log.action.includes('CREATE') ? "bg-green-100 text-green-800" :
-                      log.action.includes('UPDATE') ? "bg-slate-100 text-slate-800" :
-                      log.action.includes('DELETE') ? "bg-emerald-100 text-emerald-800" :
-                      log.action.includes('EXPORT') ? "bg-purple-100 text-purple-800" :
-                      "bg-gray-100 text-gray-800"
-                    }`}>
-                      {actionLabels[log.action] || log.action}
+                    <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getActionBadgeClass(log.action)}`}>
+                      {getActionLabel(log.action)}
                     </span>
                   </TableCell>
                   <TableCell>{log.userName}</TableCell>
@@ -608,14 +631,8 @@ export default function AdminAuditLogs() {
                 <div>
                   <Label className="text-sm font-semibold text-muted-foreground">Action</Label>
                   <div className="mt-1">
-                    <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
-                      selectedLog.action.includes('CREATE') ? "bg-green-100 text-green-800" :
-                      selectedLog.action.includes('UPDATE') ? "bg-slate-100 text-slate-800" :
-                      selectedLog.action.includes('DELETE') ? "bg-emerald-100 text-emerald-800" :
-                      selectedLog.action.includes('EXPORT') ? "bg-purple-100 text-purple-800" :
-                      "bg-gray-100 text-gray-800"
-                    }`}>
-                      {actionLabels[selectedLog.action] || selectedLog.action}
+                    <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getActionBadgeClass(selectedLog.action)}`}>
+                      {getActionLabel(selectedLog.action)}
                     </span>
                   </div>
                 </div>

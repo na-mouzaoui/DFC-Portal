@@ -29,7 +29,16 @@ type IrgRow    = { assietteImposable: string; montant: string }
 type Taxe2Row  = { base: string; montant: string }
 type MasterRow = { date: string; nomMaster: string; numFacture: string; dateFacture: string; montantHT: string; taxe15: string; mois: string; observation: string }
 type Taxe12Row = { montant: string }
-type Ibs14Row  = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; montantNetDevise: string; montantIBS: string; montantNetDinars: string }
+type Ibs14Row  = {
+  numFacture: string
+  montantBrutDevise: string
+  tauxChange: string
+  dateContrat?: string
+  montantBrutDinars: string
+  montantNetDevise: string
+  montantIBS: string
+  montantNetDinars: string
+}
 type Taxe15Row = { numFacture: string; dateFacture: string; raisonSociale: string; montantNetDevise: string; monnaie: string; tauxChange: string; montantDinars: string; tauxTaxe: string; montantAPayer: string }
 type Tva16Row  = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; tva19: string }
 
@@ -521,6 +530,7 @@ function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
 
 function IrgTable({ rows }: { rows: IrgRow[] }) {
   if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
+  const totalAssiette = rows.reduce((s, r) => s + num(r.assietteImposable), 0)
   const total = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
     <Table>
@@ -538,7 +548,8 @@ function IrgTable({ rows }: { rows: IrgRow[] }) {
           </TableRow>
         ))}
         <TableRow className="font-bold bg-muted">
-          <TableCell colSpan={2}>TOTAL</TableCell>
+          <TableCell>TOTAL</TableCell>
+          <TableCell className="text-right font-bold">{fmt(totalAssiette)}</TableCell>
           <TableCell className="text-right font-bold">{fmt(total)}</TableCell>
         </TableRow>
       </TableBody>
@@ -682,16 +693,26 @@ function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
     <Table>
       <TableHeader>
         <TableRow>
-          {["#","N° Facture","Mont. Brut Devise","Taux Change","Mont. Brut Dinars","Mont. Net Devise","Mont. IBS","Mont. Net Dinars"].map(h=><TableHead key={h} className={h === "#" || h === "Taux Change" || h === "N° Facture" ? undefined : "text-right"}>{h}</TableHead>)}
+          {[
+            "NUMERO DE FACTURE",
+            "MONTANT BRUT EN DEVISES",
+            "TAUX DE CHANGE\nDATE DU CONTRAT",
+            "MONTANT VRUT EN DINARS",
+            "MONTANT NET\nTRANSFERABLE EN DEVISES",
+            "MONTANT DE L'IBS (Taux ...%)",
+            "MONTANT NET\nTRANSFERABLE EN DINARS",
+          ].map(h => (
+            <TableHead key={h} className={h.includes("MONTANT") ? "text-right" : undefined}>{h}</TableHead>
+          ))}
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r,i)=>(
           <TableRow key={i}>
-            <TableCell className="text-center">{i+1}</TableCell>
             <TableCell>{r.numFacture}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantBrutDevise)}</TableCell>
             <TableCell>{r.tauxChange}</TableCell>
+            <TableCell>{r.dateContrat ?? ""}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantBrutDinars)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantNetDevise)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantIBS)}</TableCell>
@@ -699,7 +720,7 @@ function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
           </TableRow>
         ))}
         <TableRow className="font-bold bg-muted">
-          <TableCell colSpan={2}>TOTAL</TableCell>
+          <TableCell>TOTAL</TableCell>
           <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</TableCell>
           <TableCell/>
           <TableCell className="text-right font-bold">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</TableCell>
@@ -1277,12 +1298,13 @@ export default function FiscaDashboardPage() {
             ? "ETAT DU CHIFFRE D'AFFAIRES RECHARGEMENT HT (7%) et CHIFFRE D'AFFAIRES GLOBAL HT (1%)"
             : tableTitle
         const headerTitle = `${pdfTableTitle} ${periodText}`.trim()
+        const layoutShiftY = tabKey === "ca_siege" ? -10 : 0
 
         if (tabKey === "tva_immo" || tabKey === "tva_biens") {
           const rows = tabKey === "tva_immo" ? (decl.tvaImmoRows ?? []) : (decl.tvaBiensRows ?? [])
           const totalLabel = tabKey === "tva_immo"
-            ? "TOTAL TVA  SUR IMMOBILISATION 445620"
-            : "TOTAL TVA  SUR BIENS ET SERVICES 445660"
+            ? "TOTAL TVA SUR\nIMMOBILISATION 445620"
+            : "TOTAL TVA SUR\nBIENS ET SERVICES 445660"
 
           const tHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
           const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
@@ -1327,7 +1349,7 @@ export default function FiscaDashboardPage() {
 
           write("ATM MOBILIS", 155, 21.2, "bold", 10, "center")
           write("TELEPHONIE MOBILE", 155, 26.8, "bold", 9, "center")
-          write("QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR", 155, 32.4, "bold", 8, "center")
+          write("QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR", 162, 32.4, "bold", 8, "center")
           write("316096228742", 155, 38.0, "bold", 9, "center")
           write("67547", 155, 43.6, "bold", 9, "center")
 
@@ -1388,7 +1410,7 @@ export default function FiscaDashboardPage() {
               lineColor: [0, 0, 0],
               lineWidth: 0.2,
               textColor: [0, 0, 0],
-              overflow: "hidden",
+              overflow: "linebreak",
               valign: "middle",
             },
             headStyles: {
@@ -1452,77 +1474,154 @@ export default function FiscaDashboardPage() {
           img.src = "/logo_doc.png"
         })
 
-        // Logo en haut à droite
+        // Logo en haut à gauche
         if (logo) {
-          const pageWidth = pdf.internal.pageSize.getWidth()
-          pdf.addImage(logo, "PNG", pageWidth - 48, 8, 40, 20)
+          pdf.addImage(logo, "PNG", 10, 12 + layoutShiftY, 40, 15)
         }
 
         pdf.setFont("times", "bold")
         pdf.setFontSize(11)
-        drawUnderlinedText("ATM MOBILIS SPA", 10, 36)
-        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 41)
-        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 46)
+        drawUnderlinedText("ATM MOBILIS SPA", 10, 33 + layoutShiftY)
+        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 38 + layoutShiftY)
+        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 43 + layoutShiftY)
         pdf.setFontSize(14)
-        drawUnderlinedText(headerTitle, 10, 56)
+        drawUnderlinedText(headerTitle, 10, 64 + layoutShiftY)
 
-        const tableHead = [
-          Array.from(tableElement.querySelectorAll("thead th")).map((cell) =>
-            String(cell.textContent ?? "").trim(),
-          ),
-        ]
+        const rawHeaders = Array.from(tableElement.querySelectorAll("thead th")).map((cell) =>
+          String(cell.textContent ?? "").trim(),
+        )
+        const hideIndexColumn = rawHeaders[0] === "#"
+        const tableHead = [hideIndexColumn ? rawHeaders.slice(1) : rawHeaders]
 
-        const tableBody = Array.from(tableElement.querySelectorAll("tbody tr, tfoot tr")).map((row) =>
-          Array.from(row.querySelectorAll("td")).map((cell) => {
+        // Tableau 14 (IBS): headers multilignes pour améliorer la lisibilité et tenir sur une seule feuille.
+        if (tabKey === "ibs") {
+          tableHead[0] = [
+            "NUMERO DE\nFACTURE",
+            "MONTANT BRUT\nEN DEVISES",
+            "TAUX DE CHANGE\nDATE DU CONTRAT",
+            "MONTANT BRUT\nEN DINARS",
+            "MONTANT NET\nTRANSFERABLE\nEN DEVISES",
+            "MONTANT DE L'IBS\n(Taux ...%)",
+            "MONTANT NET\nTRANSFERABLE\nEN DINARS",
+          ]
+        }
+
+        const tableBody = Array.from(tableElement.querySelectorAll("tbody tr, tfoot tr")).map((row) => {
+          const rowCells = Array.from(row.querySelectorAll("td")).map((cell) => {
             let text = String(cell.textContent ?? "").trim()
             text = text.replace(/\u00A0/g, " ")
             text = text.replace(/\s+/g, " ")
+            const colSpan = Number(cell.getAttribute("colspan") ?? "1")
+
+            if (colSpan > 1) {
+              return { content: text, colSpan }
+            }
+
             return text
-          }),
-        )
+          })
+
+          if (!hideIndexColumn) return rowCells
+
+          const adjusted: Array<string | { content: string; colSpan: number }> = []
+          let logicalCol = 0
+
+          for (const cell of rowCells) {
+            const span = typeof cell === "string" ? 1 : Math.max(1, cell.colSpan)
+            const startsAtFirstCol = logicalCol === 0
+
+            if (startsAtFirstCol) {
+              if (span === 1) {
+                // Drop the leading "#" cell.
+              } else {
+                const reducedSpan = span - 1
+                if (reducedSpan > 1) {
+                  adjusted.push({ content: typeof cell === "string" ? cell : cell.content, colSpan: reducedSpan })
+                } else if (reducedSpan === 1) {
+                  adjusted.push(typeof cell === "string" ? cell : cell.content)
+                }
+              }
+            } else {
+              adjusted.push(cell)
+            }
+
+            logicalCol += span
+          }
+
+          return adjusted
+        })
 
         autoTable(pdf, {
           head: tableHead,
           body: tableBody,
-          startY: 64,
+          startY: 74 + layoutShiftY,
           theme: "grid",
-          margin: { left: 10, right: 10, top: 64, bottom: 10 },
+          margin: { left: 10, right: 10, top: 74 + layoutShiftY, bottom: 10 },
           styles: {
             font: "helvetica",
             fontSize: 9,
-            cellPadding: 0.8,
+            cellPadding: 1.2,
+            minCellHeight: 8.5,
             lineColor: [51, 51, 51],
             lineWidth: 0.2,
             textColor: [0, 0, 0],
             overflow: "linebreak",
+            valign: "middle",
           },
           headStyles: {
             fillColor: [45, 179, 75],
             textColor: [255, 255, 255],
             font: "helvetica",
             fontStyle: "bold",
-            fontSize: 9,
+            fontSize: tabKey === "ibs" ? 8 : 9,
             halign: "center",
+            valign: "middle",
+            cellPadding: tabKey === "ibs" ? 1.8 : 1.2,
+            minCellHeight: tabKey === "ibs" ? 15 : 9,
           },
           bodyStyles: {
             textColor: [0, 0, 0],
             font: "helvetica",
             fontSize: 9,
           },
-          columnStyles: Array(tableHead[0]?.length ?? 0)
-            .fill(null)
-            .map((_, i) =>
-              i === 0
-                ? { halign: "left", cellWidth: "auto" }
-                : { halign: "right", cellWidth: "auto" }
-            ),
+          columnStyles:
+            tabKey === "ibs"
+              ? {
+                  0: { halign: "left", cellWidth: 33 },
+                  1: { halign: "center", cellWidth: 35 },
+                  2: { halign: "center", cellWidth: 40 },
+                  3: { halign: "center", cellWidth: 34 },
+                  4: { halign: "center", cellWidth: 45 },
+                  5: { halign: "center", cellWidth: 38 },
+                  6: { halign: "center", cellWidth: 42 },
+                }
+              : Array(tableHead[0]?.length ?? 0)
+                  .fill(null)
+                  .map((_, i) =>
+                    i === 0
+                      ? { halign: "left", cellWidth: "auto" }
+                      : { halign: "center", cellWidth: "auto" }
+                  ),
           didParseCell: (data) => {
-            data.cell.text = data.cell.text.map((line) =>
-              line
+            if (!(tabKey === "ibs" && data.section === "head")) {
+              data.cell.text = data.cell.text.map((line) =>
+                line
+                  .replace(/\u00A0/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim()
+              )
+            }
+
+            if (data.section === "body") {
+              const rawText = String(data.cell.text?.[0] ?? data.cell.raw ?? "")
+              const numericCandidate = rawText
                 .replace(/\u00A0/g, " ")
-                .replace(/\s+/g, " ")
                 .trim()
-            )
+                .replace(/\s+/g, "")
+                .replace(/,/g, ".")
+              const isAmount = /^-?\d+(\.\d+)?$/.test(numericCandidate)
+              data.cell.styles.halign = isAmount ? "center" : "left"
+              data.cell.styles.valign = "middle"
+            }
 
             const rowValues = Array.isArray(data.row.raw)
               ? data.row.raw.map((value) => String(value ?? "").toLowerCase())
@@ -1687,7 +1786,13 @@ export default function FiscaDashboardPage() {
   }
 
   const handleEditRecap = (recap: SavedRecap) => {
-    router.push(`/recap?editId=${encodeURIComponent(recap.id)}`)
+    const params = new URLSearchParams({
+      entryMode: "etats_sortie",
+      recapTab: recap.key,
+      mois: recap.mois,
+      annee: recap.annee,
+    })
+    router.push(`/declaration?${params.toString()}`)
   }
 
   const handlePrintRecap = (recap: SavedRecap) => {
@@ -1701,6 +1806,13 @@ export default function FiscaDashboardPage() {
 
     void (async () => {
       try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        await fetch(`${API_BASE}/api/fiscal-recaps/${recap.id}/print`, {
+          method: "POST",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }).catch(() => null)
+
         const [{ jsPDF }, { default: autoTable }] = await Promise.all([
           import("jspdf"),
           import("jspdf-autotable"),
@@ -1708,6 +1820,12 @@ export default function FiscaDashboardPage() {
 
         const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
         const period = `${MONTHS[recap.mois] ?? recap.mois} ${recap.annee}`
+        const logo = await new Promise<HTMLImageElement | null>((resolve) => {
+          const img = new Image()
+          img.onload = () => resolve(img)
+          img.onerror = () => resolve(null)
+          img.src = "/logo_doc.png"
+        })
 
         const drawUnderlinedText = (text: string, x: number, y: number) => {
           pdf.text(text, x, y)
@@ -1716,13 +1834,18 @@ export default function FiscaDashboardPage() {
           pdf.line(x, y + 0.6, x + width, y + 0.6)
         }
 
+        // Logo en haut à gauche
+        if (logo) {
+          pdf.addImage(logo, "PNG", 10, 12, 40, 15)
+        }
+
         pdf.setFont("times", "bold")
         pdf.setFontSize(11)
-        drawUnderlinedText("ATM MOBILIS SPA", 10, 22)
-        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 27)
-        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 32)
+        drawUnderlinedText("ATM MOBILIS SPA", 10, 33)
+        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 38)
+        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 43)
         pdf.setFontSize(14)
-        drawUnderlinedText(`${recap.title} ${period}`.trim(), 10, 42)
+        drawUnderlinedText(`${recap.title} ${period}`.trim(), 10, 64)
 
         const tableHead = [orderedColumns.map((column) => column)]
         const tableBody = (recap.rows ?? []).map((row) =>
@@ -1732,16 +1855,18 @@ export default function FiscaDashboardPage() {
         autoTable(pdf, {
           head: tableHead,
           body: tableBody,
-          startY: 48,
+          startY: 74,
           theme: "grid",
-          margin: { left: 10, right: 10, top: 48, bottom: 10 },
+          margin: { left: 10, right: 10, top: 74, bottom: 22 },
           styles: {
             font: "times",
             fontSize: 10,
-            cellPadding: 0.8,
+            cellPadding: 1.2,
+            minCellHeight: 8.5,
             lineColor: [51, 51, 51],
             lineWidth: 0.2,
             textColor: [0, 0, 0],
+            valign: "middle",
           },
           headStyles: {
             fillColor: [45, 179, 75],
@@ -1756,6 +1881,18 @@ export default function FiscaDashboardPage() {
                 .replace(/\u00A0/g, " "),
             )
 
+            if (data.section === "body") {
+              const rawText = String(data.cell.text?.[0] ?? data.cell.raw ?? "")
+              const numericCandidate = rawText
+                .replace(/\u00A0/g, " ")
+                .trim()
+                .replace(/\s+/g, "")
+                .replace(/,/g, ".")
+              const isAmount = /^-?\d+(\.\d+)?$/.test(numericCandidate)
+              data.cell.styles.halign = isAmount ? "center" : "left"
+              data.cell.styles.valign = "middle"
+            }
+
             const rowValues = Array.isArray(data.row.raw)
               ? data.row.raw.map((value) => String(value ?? "").toLowerCase())
               : []
@@ -1767,13 +1904,6 @@ export default function FiscaDashboardPage() {
               data.cell.styles.fontStyle = "bold"
             }
 
-            if (data.section === "body") {
-              if (data.column.index === 0) {
-                data.cell.styles.halign = "left"
-              } else {
-                data.cell.styles.halign = "right"
-              }
-            }
           },
         })
 

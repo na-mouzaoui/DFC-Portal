@@ -6,7 +6,9 @@ import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Save } from "lucide-react"
@@ -1423,6 +1425,1116 @@ interface SavedDeclaration {
   tva16Rows?: Tva16Row[]
 }
 
+type ApiFiscalDeclaration = {
+  id: number
+  tabKey: string
+  mois: string
+  annee: string
+  direction: string
+  dataJson: string
+}
+
+type RecapMode = "declaration" | "etats_sortie"
+
+type RecapKey = "tva_collectee" | "tva_a_payer" | "tva_situation" | "droits_timbre" | "tacp7" | "tnfdal1" | "tap15" | "masters15" | "g50"
+
+type RecapColumn = {
+  key: string
+  label: string
+  right?: boolean
+}
+
+type RecapDefinition = {
+  key: RecapKey
+  title: string
+  columns: RecapColumn[]
+}
+
+const RECAP_TABS: RecapDefinition[] = [
+  {
+    key: "tva_collectee",
+    title: "TVA collectee",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "ttc", label: "Montant des Encaissements TTC", right: true },
+      { key: "exonere", label: "Montant Exonere", right: true },
+      { key: "ht", label: "Montant des Encaissements HT", right: true },
+      { key: "tva", label: "Montant de la TVA", right: true },
+    ],
+  },
+  {
+    key: "tva_a_payer",
+    title: "TVA a payer",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "collectee", label: "TVA Collectee", right: true },
+      { key: "immo", label: "TVA Deductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA Deductible sur Biens et Services", right: true },
+      { key: "totalDed", label: "Total TVA Deductible", right: true },
+      { key: "payer", label: "TVA a Payer", right: true },
+    ],
+  },
+  {
+    key: "tva_situation",
+    title: "TVA deductible",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "immo", label: "TVA Deductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA Deductible sur Biens et services", right: true },
+      { key: "totalDed", label: "Total TVA Deductible", right: true },
+    ],
+  },
+  {
+    key: "masters15",
+    title: "TAXE MASTERS 1.5%",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "base", label: "Montant de la Base", right: true },
+      { key: "taxe", label: "Montant de la Taxe 1,5%", right: true },
+    ],
+  },
+  {
+    key: "tap15",
+    title: "TAP 1.5%",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "caHt", label: "Chiffres d'Affaires E HT", right: true },
+      { key: "taxe", label: "Montant du TAP 1,5%", right: true },
+    ],
+  },
+  {
+    key: "tnfdal1",
+    title: "Situation de la Taxe TNFDAL 1%",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "caHt", label: "Chiffres d'Affaires E HT", right: true },
+      { key: "taxe", label: "Montant du TNFFDAL 1%", right: true },
+    ],
+  },
+  {
+    key: "tacp7",
+    title: "Situation de la Taxe TACP 7%",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "base", label: "Montant des Recharges HT", right: true },
+      { key: "taxe", label: "Montant du TACP 7%", right: true },
+    ],
+  },
+  {
+    key: "droits_timbre",
+    title: "Situation des Droits de Timbre",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "caHt", label: "Chiffres d'Affaires Encaisse HT", right: true },
+      { key: "montant", label: "Montant des Droits de Timbre", right: true },
+    ],
+  },
+  {
+    key: "g50",
+    title: "RECAP DECLARATION G50",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "montant", label: "Montant", right: true },
+    ],
+  },
+]
+
+const TVA_SITUATION_RECAP_ROWS = [
+  "Direction Generale",
+  "Direction AutoLiquidation",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+]
+
+const TVA_A_PAYER_RECAP_ROWS = [
+  "Precompte",
+  "Reversement",
+  "Direction Generale",
+  "TVA AutoLiquidation",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+]
+
+const TVA_COLLECTEE_RECAP_ROWS = [
+  "BNA EXPLOITATION (Siege)",
+  "CCP POST PAID (Siege)",
+  "CCP MOBIPOSTE (Siege)",
+  "CCP RACIMO (Siege)",
+  "SOFIA CCP",
+  "CCP DME",
+  "ALGERIE POSTE",
+  "VENTE TERMINAUX",
+  "CCP RECOUVREMENT A",
+  "CCP RECOUVREMENT B",
+  "ENCAISSEMENT TPE CCP",
+  "ENCAISSEMENT TPE BNA",
+  "Total (1)",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total (2)",
+  "Total (1)+(2)",
+]
+
+const TVA_COLLECTEE_RECAP_DR_ROWS = [
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+] as const
+
+const DROITS_TIMBRE_RECAP_ROWS = [
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+] as const
+
+const TACP7_RECAP_ROWS = [
+  "Masters",
+  "Mobiposte",
+  "Racimo",
+  "Algerie Poste",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+] as const
+
+const TNFDAL1_RECAP_ROWS = [
+  "Direction Generale",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Regul CA du Janvier 2025 a Juin 2025",
+  "Total",
+] as const
+
+const MASTERS15_RECAP_ROWS = [
+  "Masters",
+  "ASSILOU COM",
+  "GTS PHONE",
+  "ALGERIE POSTE",
+  "Total",
+] as const
+
+const G50_RECAP_ROWS = [
+  "ACOMPTE PROVISIONEL",
+  "TVA COLLECTEE",
+  "TVA DEDUCTIBLE",
+  "Total TVA a Payer (Voir la Piece)",
+  "DROIT DE TIMBRE",
+  "TACP 7%",
+  "TNFPDAL 1%",
+  "IRG SALAIRE",
+  "AUTRE IRG",
+  "TAXE DE FORMATION",
+  "TAXE VEHICULE",
+  "LA TAP",
+  "TAXE 2%",
+  "Total Declaration G 50 (Voir la Piece)",
+  "TAXE 1,5% SUR MASTERS (Voir la Piece)",
+  "Total",
+] as const
+
+const parseRecapAmount = (value: unknown): number => {
+  const raw = String(value ?? "").replace(/\u00A0/g, " ").trim()
+  if (!raw) return 0
+  const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+  const normalizedDots = standardized.replace(/\.(?=.*\.)/g, "")
+  const parsed = Number.parseFloat(normalizedDots)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const formatRecapAmount = (value: number): string => {
+  const safe = Number.isFinite(value) ? value : 0
+  const [intPart, decPart] = safe.toFixed(2).split(".")
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  return `${formattedInt},${decPart}`
+}
+
+const normalizeRecapDesignation = (value: string): string => {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
+
+const isTvaCollecteeRecapDrRow = (designation: string): boolean => {
+  return (TVA_COLLECTEE_RECAP_DR_ROWS as readonly string[]).includes(designation)
+}
+
+const isTvaCollecteeRecapManualRow = (designation: string): boolean => {
+  return TVA_COLLECTEE_RECAP_ROWS.slice(0, 12).includes(designation)
+}
+
+const isTvaCollecteeRecapTotalRow = (designation: string): boolean => {
+  return designation === "Total (1)" || designation === "Total (2)" || designation === "Total (1)+(2)"
+}
+
+const resolveRegionalRecapRowByDirection = (direction: string): string | null => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    normalized === "siege"
+    || normalized === "siège"
+    || normalized.includes("siege")
+    || normalized.includes("siège")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction générale")
+    || normalized.includes("autoliquidation")
+    || normalized.includes("auto liquidation")
+  ) {
+    return null
+  }
+
+  if (normalized.includes("alger")) return "DR Alger"
+  if (normalized.includes("setif") || normalized.includes("sétif")) return "DR Setif"
+  if (normalized.includes("constantine")) return "DR Constantine"
+  if (normalized.includes("annaba")) return "DR Annaba"
+  if (normalized.includes("chlef")) return "DR Chlef"
+  if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
+  if (normalized.includes("bechar") || normalized.includes("béchar")) return "DR Bechar"
+  if (normalized.includes("ouargla")) return "DR Ouargla"
+
+  return null
+}
+
+const resolveTvaSituationRecapRowByDirection = (direction: string): string | null => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    normalized === "siege"
+    || normalized === "siège"
+    || normalized.includes("siege")
+    || normalized.includes("siège")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction générale")
+  ) {
+    return "Direction Generale"
+  }
+
+  if (normalized.includes("autoliquidation") || normalized.includes("auto liquidation")) {
+    return "Direction AutoLiquidation"
+  }
+
+  return resolveRegionalRecapRowByDirection(direction)
+}
+
+const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
+  try {
+    const parsed = JSON.parse(dataJson ?? "{}")
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    return {}
+  }
+
+  return {}
+}
+
+const getTvaAmountForRecap = (row: TvaRow): number => {
+  const explicitTva = parseRecapAmount(row.tva)
+  if (explicitTva > 0) return explicitTva
+
+  const ht = parseRecapAmount(row.montantHT)
+  const rate = row.tauxTVA === "9" ? 0.09 : 0.19
+  return ht * rate
+}
+
+const recalcTvaCollecteeRecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+
+  let total1Ttc = 0
+  let total1Exonere = 0
+  let total1Ht = 0
+  let total2Ttc = 0
+  let total2Exonere = 0
+  let total2Ht = 0
+
+  for (const row of nextRows) {
+    const designation = String(row.designation ?? "")
+    if (isTvaCollecteeRecapTotalRow(designation)) continue
+
+    const ttc = parseRecapAmount(row.ttc)
+    const exonere = parseRecapAmount(row.exonere)
+    const ht = parseRecapAmount(row.ht)
+    row.tva = formatRecapAmount((ht - exonere) * 0.19)
+
+    if (isTvaCollecteeRecapManualRow(designation)) {
+      total1Ttc += ttc
+      total1Exonere += exonere
+      total1Ht += ht
+    } else if (isTvaCollecteeRecapDrRow(designation)) {
+      total2Ttc += ttc
+      total2Exonere += exonere
+      total2Ht += ht
+    }
+  }
+
+  const total1 = nextRows.find((row) => String(row.designation ?? "") === "Total (1)")
+  if (total1) {
+    total1.ttc = formatRecapAmount(total1Ttc)
+    total1.exonere = formatRecapAmount(total1Exonere)
+    total1.ht = formatRecapAmount(total1Ht)
+    total1.tva = formatRecapAmount((total1Ht - total1Exonere) * 0.19)
+  }
+
+  const total2 = nextRows.find((row) => String(row.designation ?? "") === "Total (2)")
+  if (total2) {
+    total2.ttc = formatRecapAmount(total2Ttc)
+    total2.exonere = formatRecapAmount(total2Exonere)
+    total2.ht = formatRecapAmount(total2Ht)
+    total2.tva = formatRecapAmount((total2Ht - total2Exonere) * 0.19)
+  }
+
+  const total12 = nextRows.find((row) => String(row.designation ?? "") === "Total (1)+(2)")
+  if (total12) {
+    const ttc = total1Ttc + total2Ttc
+    const exonere = total1Exonere + total2Exonere
+    const ht = total1Ht + total2Ht
+    total12.ttc = formatRecapAmount(ttc)
+    total12.exonere = formatRecapAmount(exonere)
+    total12.ht = formatRecapAmount(ht)
+    total12.tva = formatRecapAmount((ht - exonere) * 0.19)
+  }
+
+  return nextRows
+}
+
+const recalcTvaSituationRecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+
+  let totalImmo = 0
+  let totalBiens = 0
+
+  for (const row of nextRows) {
+    const designation = String(row.designation ?? "")
+    if (designation === "Total") continue
+
+    const immo = parseRecapAmount(row.immo)
+    const biens = parseRecapAmount(row.biens)
+
+    row.totalDed = formatRecapAmount(immo + biens)
+    totalImmo += immo
+    totalBiens += biens
+  }
+
+  const totalRow = nextRows.find((row) => String(row.designation ?? "") === "Total")
+  if (totalRow) {
+    totalRow.immo = formatRecapAmount(totalImmo)
+    totalRow.biens = formatRecapAmount(totalBiens)
+    totalRow.totalDed = formatRecapAmount(totalImmo + totalBiens)
+  }
+
+  return nextRows
+}
+
+const recalcTvaAPayerRecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+
+  let totalCollectee = 0
+  let totalImmo = 0
+  let totalBiens = 0
+
+  for (const row of nextRows) {
+    const designation = normalizeRecapDesignation(String(row.designation ?? ""))
+    if (designation === "total") continue
+
+    const collectee = parseRecapAmount(row.collectee)
+    const immo = parseRecapAmount(row.immo)
+    const biens = parseRecapAmount(row.biens)
+    const totalDed = immo + biens
+
+    row.totalDed = formatRecapAmount(totalDed)
+    row.payer = formatRecapAmount(collectee - totalDed)
+
+    totalCollectee += collectee
+    totalImmo += immo
+    totalBiens += biens
+  }
+
+  const totalRow = nextRows.find((row) => normalizeRecapDesignation(String(row.designation ?? "")) === "total")
+  if (totalRow) {
+    const totalDed = totalImmo + totalBiens
+    totalRow.collectee = formatRecapAmount(totalCollectee)
+    totalRow.immo = formatRecapAmount(totalImmo)
+    totalRow.biens = formatRecapAmount(totalBiens)
+    totalRow.totalDed = formatRecapAmount(totalDed)
+    totalRow.payer = formatRecapAmount(totalCollectee - totalDed)
+  }
+
+  return nextRows
+}
+
+const buildTvaCollecteeRecapRows = (mois: string, annee: string, declarations: ApiFiscalDeclaration[]): Record<string, string>[] => {
+  const drTtcByRow = new Map<string, number>()
+  const drHtByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "encaissement") continue
+
+    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const rows = Array.isArray(payload.encRows) ? (payload.encRows as EncRow[]) : []
+    const totalTtc = rows.reduce((sum, row) => sum + parseRecapAmount(row.ht) * 1.19, 0)
+    const totalHt = rows.reduce((sum, row) => sum + parseRecapAmount(row.ht), 0)
+
+    drTtcByRow.set(rowLabel, (drTtcByRow.get(rowLabel) ?? 0) + totalTtc)
+    drHtByRow.set(rowLabel, (drHtByRow.get(rowLabel) ?? 0) + totalHt)
+  }
+
+  const rows = TVA_COLLECTEE_RECAP_ROWS.map((designation) => {
+    if (isTvaCollecteeRecapDrRow(designation)) {
+      return {
+        designation,
+        ttc: formatRecapAmount(drTtcByRow.get(designation) ?? 0),
+        exonere: "0,00",
+        ht: formatRecapAmount(drHtByRow.get(designation) ?? 0),
+        tva: "0,00",
+      }
+    }
+
+    return {
+      designation,
+      ttc: "0,00",
+      exonere: "0,00",
+      ht: "0,00",
+      tva: "0,00",
+    }
+  })
+
+  return recalcTvaCollecteeRecapRows(rows)
+}
+
+const buildTvaSituationRecapRows = (mois: string, annee: string, declarations: ApiFiscalDeclaration[]): Record<string, string>[] => {
+  const immoByRow = new Map<string, number>()
+  const biensByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "tva_immo" && declaration.tabKey !== "tva_biens") continue
+
+    const rowLabel = resolveTvaSituationRecapRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const sourceRows = declaration.tabKey === "tva_immo"
+      ? (Array.isArray(payload.tvaImmoRows) ? (payload.tvaImmoRows as TvaRow[]) : [])
+      : (Array.isArray(payload.tvaBiensRows) ? (payload.tvaBiensRows as TvaRow[]) : [])
+    const totalTva = sourceRows.reduce((sum, row) => sum + getTvaAmountForRecap(row), 0)
+
+    if (declaration.tabKey === "tva_immo") {
+      immoByRow.set(rowLabel, (immoByRow.get(rowLabel) ?? 0) + totalTva)
+    } else {
+      biensByRow.set(rowLabel, (biensByRow.get(rowLabel) ?? 0) + totalTva)
+    }
+  }
+
+  let totalImmo = 0
+  let totalBiens = 0
+
+  return TVA_SITUATION_RECAP_ROWS.map((designation) => {
+    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+      return {
+        designation,
+        immo: "0,00",
+        biens: "0,00",
+        totalDed: "0,00",
+      }
+    }
+
+    if (designation === "Total") {
+      const totalDed = totalImmo + totalBiens
+      return {
+        designation,
+        immo: formatRecapAmount(totalImmo),
+        biens: formatRecapAmount(totalBiens),
+        totalDed: formatRecapAmount(totalDed),
+      }
+    }
+
+    const immo = immoByRow.get(designation) ?? 0
+    const biens = biensByRow.get(designation) ?? 0
+    const totalDed = immo + biens
+
+    totalImmo += immo
+    totalBiens += biens
+
+    return {
+      designation,
+      immo: formatRecapAmount(immo),
+      biens: formatRecapAmount(biens),
+      totalDed: formatRecapAmount(totalDed),
+    }
+  })
+}
+
+const buildTvaAPayerRecapRows = (
+  tvaCollecteeRows: Record<string, string>[],
+  tvaSituationRows: Record<string, string>[],
+): Record<string, string>[] => {
+  const collecteeByDesignation = new Map<string, number>()
+  for (const row of tvaCollecteeRows) {
+    collecteeByDesignation.set(normalizeRecapDesignation(String(row.designation ?? "")), parseRecapAmount(row.tva))
+  }
+
+  const deductibleImmoByDesignation = new Map<string, number>()
+  const deductibleBiensByDesignation = new Map<string, number>()
+  for (const row of tvaSituationRows) {
+    const key = normalizeRecapDesignation(String(row.designation ?? ""))
+    deductibleImmoByDesignation.set(key, parseRecapAmount(row.immo))
+    deductibleBiensByDesignation.set(key, parseRecapAmount(row.biens))
+  }
+
+  const rows = TVA_A_PAYER_RECAP_ROWS.map((designation) => {
+    const normalized = normalizeRecapDesignation(designation)
+
+    let collectee = 0
+    if (normalized === "direction generale") {
+      collectee = collecteeByDesignation.get(normalizeRecapDesignation("Total (1)")) ?? 0
+    } else if (normalized.startsWith("dr ")) {
+      collectee = collecteeByDesignation.get(normalized) ?? 0
+    }
+
+    let immo = 0
+    let biens = 0
+    if (normalized === "direction generale") {
+      immo = deductibleImmoByDesignation.get(normalizeRecapDesignation("Direction Generale")) ?? 0
+      biens = deductibleBiensByDesignation.get(normalizeRecapDesignation("Direction Generale")) ?? 0
+    } else if (normalized === "tva autoliquidation") {
+      immo = deductibleImmoByDesignation.get(normalizeRecapDesignation("Direction AutoLiquidation")) ?? 0
+      biens = deductibleBiensByDesignation.get(normalizeRecapDesignation("Direction AutoLiquidation")) ?? 0
+    } else if (normalized.startsWith("dr ")) {
+      immo = deductibleImmoByDesignation.get(normalized) ?? 0
+      biens = deductibleBiensByDesignation.get(normalized) ?? 0
+    }
+
+    const totalDed = immo + biens
+    return {
+      designation,
+      collectee: formatRecapAmount(collectee),
+      immo: formatRecapAmount(immo),
+      biens: formatRecapAmount(biens),
+      totalDed: formatRecapAmount(totalDed),
+      payer: formatRecapAmount(collectee - totalDed),
+    }
+  })
+
+  return recalcTvaAPayerRecapRows(rows)
+}
+
+const buildDroitsTimbreRecapRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const caByRow = new Map<string, number>()
+  const montantByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "droits_timbre") continue
+
+    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const rows = Array.isArray(payload.timbreRows) ? (payload.timbreRows as TimbreRow[]) : []
+    const totalCa = rows.reduce((sum, row) => sum + parseRecapAmount(row.caTTCEsp), 0)
+    const totalMontant = rows.reduce((sum, row) => sum + parseRecapAmount(row.droitTimbre), 0)
+
+    caByRow.set(rowLabel, (caByRow.get(rowLabel) ?? 0) + totalCa)
+    montantByRow.set(rowLabel, (montantByRow.get(rowLabel) ?? 0) + totalMontant)
+  }
+
+  let totalCa = 0
+  let totalMontant = 0
+
+  return DROITS_TIMBRE_RECAP_ROWS.map((designation) => {
+    if (designation === "Total") {
+      return {
+        designation,
+        caHt: formatRecapAmount(totalCa),
+        montant: formatRecapAmount(totalMontant),
+      }
+    }
+
+    const ca = caByRow.get(designation) ?? 0
+    const montant = montantByRow.get(designation) ?? 0
+    totalCa += ca
+    totalMontant += montant
+
+    return {
+      designation,
+      caHt: formatRecapAmount(ca),
+      montant: formatRecapAmount(montant),
+    }
+  })
+}
+
+const buildTap15RecapRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const baseByRow = new Map<string, number>()
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    if (declaration.tabKey !== "etat_tap") continue
+
+    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+    if (!rowLabel) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const rows = Array.isArray(payload.tapRows) ? (payload.tapRows as TAPRow[]) : []
+    const totalBase = rows.reduce((sum, row) => sum + parseRecapAmount(row.tap2), 0)
+
+    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + totalBase)
+  }
+
+  let totalBase = 0
+  let totalTaxe = 0
+
+  return TNFDAL1_RECAP_ROWS.map((designation, index) => {
+    if (index === 0) {
+      return {
+        designation,
+        caHt: "0,00",
+        taxe: "0,00",
+      }
+    }
+
+    if (designation === "Total") {
+      return {
+        designation,
+        caHt: formatRecapAmount(totalBase),
+        taxe: formatRecapAmount(totalTaxe),
+      }
+    }
+
+    const base = baseByRow.get(designation) ?? 0
+    const taxe = base * 0.015
+    totalBase += base
+    totalTaxe += taxe
+
+    return {
+      designation,
+      caHt: formatRecapAmount(base),
+      taxe: formatRecapAmount(taxe),
+    }
+  })
+}
+
+const buildTacp7RecapRows = (): Record<string, string>[] => {
+  return TACP7_RECAP_ROWS.map((designation) => ({
+    designation,
+    base: "0,00",
+    taxe: "0,00",
+  }))
+}
+
+const buildMasters15RecapRows = (): Record<string, string>[] => {
+  return MASTERS15_RECAP_ROWS.map((designation) => ({
+    designation,
+    base: "0",
+    taxe: "0",
+  }))
+}
+
+const recalcTacp7RecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+  let totalBase = 0
+  let totalTaxe = 0
+
+  for (const row of nextRows) {
+    const designation = String(row.designation ?? "")
+    if (designation === "Total") continue
+    totalBase += parseRecapAmount(row.base)
+    totalTaxe += parseRecapAmount(row.taxe)
+  }
+
+  const totalRow = nextRows.find((row) => String(row.designation ?? "") === "Total")
+  if (totalRow) {
+    totalRow.base = formatRecapAmount(totalBase)
+    totalRow.taxe = formatRecapAmount(totalTaxe)
+  }
+
+  return nextRows
+}
+
+const recalcMasters15RecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+  let totalBase = 0
+  let totalTaxe = 0
+
+  for (const row of nextRows) {
+    const designation = String(row.designation ?? "")
+    if (designation === "Total") continue
+
+    const base = parseRecapAmount(row.base)
+    const taxe = parseRecapAmount(row.taxe)
+    const resolvedTaxe = taxe > 0 ? taxe : base * 0.015
+
+    row.taxe = formatRecapAmount(resolvedTaxe)
+    totalBase += base
+    totalTaxe += resolvedTaxe
+  }
+
+  const totalRow = nextRows.find((row) => String(row.designation ?? "") === "Total")
+  if (totalRow) {
+    totalRow.base = formatRecapAmount(totalBase)
+    totalRow.taxe = formatRecapAmount(totalTaxe)
+  }
+
+  return nextRows
+}
+
+const getRecapRowAmount = (rows: Record<string, string>[], designation: string, key: string): number => {
+  const normalized = normalizeRecapDesignation(designation)
+  const row = rows.find((item) => normalizeRecapDesignation(String(item.designation ?? "")) === normalized)
+  return parseRecapAmount(row?.[key])
+}
+
+const buildG50RecapRows = (
+  mois: string,
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+): Record<string, string>[] => {
+  const tvaAPayerRows = buildTvaAPayerRecapRows(
+    buildTvaCollecteeRecapRows(mois, annee, declarations),
+    buildTvaSituationRecapRows(mois, annee, declarations),
+  )
+  const tvaSituationRows = buildTvaSituationRecapRows(mois, annee, declarations)
+  const droitsTimbreRows = buildDroitsTimbreRecapRows(mois, annee, declarations)
+  const tapRows = buildTap15RecapRows(mois, annee, declarations)
+
+  const values = {
+    acompte: 0,
+    tvaCollectee: getRecapRowAmount(tvaAPayerRows, "Total", "collectee"),
+    tvaDeductible: getRecapRowAmount(tvaSituationRows, "Total", "totalDed"),
+    tvaAPayer: getRecapRowAmount(tvaAPayerRows, "Total", "payer"),
+    droitsTimbre: getRecapRowAmount(droitsTimbreRows, "Total", "montant"),
+    tacp7: 0,
+    tnfpdal1: 0,
+    irgSalaire: 0,
+    autreIrg: 0,
+    taxeFormation: 0,
+    taxeVehicule: 0,
+    tap: getRecapRowAmount(tapRows, "Total", "taxe"),
+    taxe2: 0,
+    masters15: 0,
+  }
+
+  for (const declaration of declarations) {
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+
+    if (declaration.tabKey === "acompte") {
+      const months = Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : []
+      values.acompte += months.reduce((sum, value) => sum + parseRecapAmount(value), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "ca_tap") {
+      const b12 = parseRecapAmount(payload.b12)
+      const b13 = parseRecapAmount(payload.b13)
+      values.tacp7 += b12 * 0.07
+      values.tnfpdal1 += b13 * 0.01
+      continue
+    }
+
+    if (declaration.tabKey === "irg") {
+      const rows = Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : []
+      values.irgSalaire += parseRecapAmount(rows[0]?.montant)
+      values.autreIrg += rows.slice(1).reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_formation") {
+      const rows = Array.isArray(payload.taxe12Rows) ? (payload.taxe12Rows as Taxe12Row[]) : []
+      values.taxeFormation += rows.reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_vehicule") {
+      values.taxeVehicule += parseRecapAmount(payload.taxe11Montant)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe2") {
+      const rows = Array.isArray(payload.taxe2Rows) ? (payload.taxe2Rows as Taxe2Row[]) : []
+      values.taxe2 += rows.reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_masters") {
+      const rows = Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : []
+      values.masters15 += rows.reduce((sum, row) => {
+        const taxe = parseRecapAmount(row.taxe15)
+        if (taxe > 0) return sum + taxe
+        return sum + (parseRecapAmount(row.montantHT) * 0.015)
+      }, 0)
+      continue
+    }
+  }
+
+  const totalDeclarationG50 = values.acompte
+    + values.tvaCollectee
+    + values.tvaDeductible
+    + values.tvaAPayer
+    + values.droitsTimbre
+    + values.tacp7
+    + values.tnfpdal1
+    + values.irgSalaire
+    + values.autreIrg
+    + values.taxeFormation
+    + values.taxeVehicule
+    + values.tap
+    + values.taxe2
+
+  const totalGeneral = totalDeclarationG50 + values.masters15
+
+  const amountByDesignation = new Map<string, number>([
+    ["acompte provisionel", values.acompte],
+    ["tva collectee", values.tvaCollectee],
+    ["tva deductible", values.tvaDeductible],
+    ["total tva a payer (voir la piece)", values.tvaAPayer],
+    ["droit de timbre", values.droitsTimbre],
+    ["tacp 7%", values.tacp7],
+    ["tnfpdal 1%", values.tnfpdal1],
+    ["irg salaire", values.irgSalaire],
+    ["autre irg", values.autreIrg],
+    ["taxe de formation", values.taxeFormation],
+    ["taxe vehicule", values.taxeVehicule],
+    ["la tap", values.tap],
+    ["taxe 2%", values.taxe2],
+    ["total declaration g 50 (voir la piece)", totalDeclarationG50],
+    ["taxe 1,5% sur masters (voir la piece)", values.masters15],
+    ["total", totalGeneral],
+  ])
+
+  return G50_RECAP_ROWS.map((designation) => ({
+    designation,
+    montant: formatRecapAmount(amountByDesignation.get(normalizeRecapDesignation(designation)) ?? 0),
+  }))
+}
+
+const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
+  if (columnKey === "designation") return false
+
+  if (recapKey === "tva_collectee") {
+    if (isTvaCollecteeRecapTotalRow(designation)) return false
+    if (columnKey === "tva") return false
+    if (isTvaCollecteeRecapDrRow(designation) && (columnKey === "ttc" || columnKey === "ht")) return false
+    return true
+  }
+
+  if (recapKey === "tva_situation") {
+    if (designation === "Total") return false
+    if (columnKey === "totalDed") return false
+    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+      return columnKey === "immo" || columnKey === "biens"
+    }
+    return false
+  }
+
+  if (recapKey === "masters15") {
+    return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
+  }
+
+  if (recapKey === "tacp7") {
+    return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
+  }
+
+  if (recapKey === "tap15" || recapKey === "tnfdal1" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50") return false
+
+  return false
+}
+
+const isRecapCellMandatory = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
+  if (!isRecapCellEditable(recapKey, designation, columnKey)) return false
+
+  if (recapKey === "tva_collectee") {
+    return columnKey === "ttc" || columnKey === "exonere" || columnKey === "ht"
+  }
+
+  if (recapKey === "tva_situation") {
+    return columnKey === "immo" || columnKey === "biens"
+  }
+
+  return false
+}
+
+const blankZeroManualRecapCells = (recapKey: RecapKey, rows: Record<string, string>[]): Record<string, string>[] => {
+  const definition = RECAP_TABS.find((item) => item.key === recapKey)
+  if (!definition) return rows
+
+  return rows.map((row) => {
+    const designation = String(row.designation ?? "")
+    const nextRow: Record<string, string> = { ...row }
+
+    for (const column of definition.columns) {
+      if (column.key === "designation") continue
+      if (!isRecapCellEditable(recapKey, designation, column.key)) continue
+
+      const rawValue = safeString(nextRow[column.key]).trim()
+      if (!rawValue) continue
+
+      if (parseRecapAmount(rawValue) === 0) {
+        nextRow[column.key] = ""
+      }
+    }
+
+    return nextRow
+  })
+}
+
+const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey: string): string => {
+  const row = normalizeRecapDesignation(designation)
+
+  if (columnKey === "designation") return "Saisie manuelle"
+
+  if (recapKey === "g50" && columnKey === "montant") {
+    if (row === "tva collectee") return "TVA collectee = TVA_a_payer.Total(colonne TVA collectee)"
+    if (row === "tva deductible") return "TVA deductible = TVA_situation.Total = (TVA immo + TVA biens)"
+    if (row === "total tva a payer (voir la piece)") return "TVA a payer = TVA_a_payer.Total(colonne TVA a payer) = (TVA collectee - TVA deductible)"
+    if (row === "droit de timbre") return "Droit de timbre = Droits_timbre.Total"
+    if (row === "tacp 7%") return "TACP 7% = SUM(CA_TAP.B12) * (7 / 100)"
+    if (row === "tnfpdal 1%") return "TNFPDAL 1% = SUM(CA_TAP.B13) * (1 / 100)"
+    if (row === "irg salaire") return "IRG salaire = SUM(IRG.ligne1)"
+    if (row === "autre irg") return "Autre IRG = SUM(IRG.lignes2..n)"
+    if (row === "taxe de formation") return "Taxe formation = (Taxe formation pro) + (Taxe d'apprentissage)"
+    if (row === "taxe vehicule") return "Taxe vehicule = SUM(Tableau taxe vehicule)"
+    if (row === "la tap") return "LA TAP = TAP_1.5%.Total"
+    if (row === "taxe 2%") return "Taxe 2% = SUM(Tableau taxe 2%.montant)"
+    if (row === "total declaration g 50 (voir la piece)") return "Total declaration G50 = (Acompte + TVA collectee + TVA deductible + TVA a payer + Droit de timbre + TACP 7% + TNFPDAL 1% + IRG salaire + Autre IRG + Taxe formation + Taxe vehicule + LA TAP + Taxe 2%)"
+    if (row === "taxe 1,5% sur masters (voir la piece)") return "Taxe masters = SUM( IF(taxe15 > 0, taxe15, montantHT * (1.5 / 100)) )"
+    if (row === "total") return "Total general = (Total declaration G50) + (Taxe 1.5% sur masters)"
+    return "Saisie manuelle"
+  }
+
+  if (recapKey === "tva_a_payer") {
+    if (row === "precompte" || row === "reversement") return "Saisie automatique"
+    if (row === "total") {
+      if (columnKey === "collectee") return "Somme colonne TVA Collectee"
+      if (columnKey === "immo") return "Somme colonne TVA Deductible sur Immobilisation"
+      if (columnKey === "biens") return "Somme colonne TVA Deductible sur Biens et Services"
+      if (columnKey === "totalDed") return "Somme colonne Total de la TVA Deductible"
+      if (columnKey === "payer") return "Somme colonne TVA a Payer"
+    }
+
+    if (columnKey === "collectee") return "Extrait depuis le tableau TVA collectee"
+    if (columnKey === "immo") return "Extrait depuis le tableau TVA deductible"
+    if (columnKey === "biens") return "Extrait depuis le tableau TVA deductible"
+    if (columnKey === "totalDed") return "Total TVA deductible = (TVA immo + TVA biens)"
+    if (columnKey === "payer") return "TVA a payer = (TVA collectee - Total TVA deductible)"
+  }
+
+  if (recapKey === "tva_situation") {
+    if (row === "total") {
+      if (columnKey === "immo") return "Somme colonne TVA Deductible sur Immobilisation"
+      if (columnKey === "biens") return "Somme colonne TVA Deductible sur Biens et Services"
+    }
+
+    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+      if (columnKey === "immo") return "Saisie manuelle"
+      if (columnKey === "biens") return "Saisie manuelle"
+    } else {
+      if (columnKey === "immo") return "Extrait depuis les declarations TVA / IMMO"
+      if (columnKey === "biens") return "Extrait depuis les declarations TVA / Biens & Services"
+    }
+
+    if (columnKey === "totalDed") return "Total TVA deductible = (TVA immo + TVA biens)"
+  }
+
+  if (recapKey === "tva_collectee") {
+    if (isTvaCollecteeRecapTotalRow(designation)) {
+      if (columnKey === "ttc") return "Somme automatique"
+      if (columnKey === "exonere") return "Somme automatique"
+      if (columnKey === "ht") return "Somme automatique"
+      if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
+    }
+
+    if (isTvaCollecteeRecapDrRow(designation)) {
+      if (columnKey === "ttc") return "Extrait depuis le tableau 1 (Encaissement TTC)"
+      if (columnKey === "ht") return "Extrait depuis le tableau 1 (Encaissement HT)"
+      if (columnKey === "exonere") return "Saisie manuelle"
+      if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
+    }
+
+    if (isTvaCollecteeRecapManualRow(designation)) {
+      if (columnKey === "ttc") return "Saisie manuelle"
+      if (columnKey === "exonere") return "Saisie manuelle"
+      if (columnKey === "ht") return "Saisie manuelle"
+      if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
+    }
+  }
+
+  if (recapKey === "droits_timbre") {
+    if (columnKey === "caHt") return "Base CA = SUM(Droits de timbre.CA TTC especes)"
+    if (columnKey === "montant") return "Montant = SUM(Droits de timbre.droit timbre)"
+  }
+
+  if (recapKey === "tnfdal1" || recapKey === "tap15") {
+    if (columnKey === "caHt") return "Base = SUM(ETAT_TAP.montant imposable)"
+    if (columnKey === "taxe") return "Taxe = Base * (1.5 / 100)"
+  }
+
+  if (recapKey === "masters15" && columnKey === "taxe") {
+    return "Taxe proposee = Base * (1.5 / 100)"
+  }
+
+  return "Saisie manuelle"
+}
+
 const isFiscalTabKey = (value: string): value is FiscalTabKey => {
   return [
     "encaissement",
@@ -1442,6 +2554,10 @@ const isFiscalTabKey = (value: string): value is FiscalTabKey => {
     "taxe_domicil",
     "tva_autoliq",
   ].includes(value)
+}
+
+const isRecapKey = (value: string): value is RecapKey => {
+  return ["tva_collectee", "tva_a_payer", "tva_situation", "droits_timbre", "tacp7", "tnfdal1", "tap15", "masters15", "g50"].includes(value)
 }
 
 const normalizeMonthValue = (value: string) => {
@@ -2350,6 +3466,27 @@ export default function NouvelleDeclarationPage() {
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
+
+    const requestedMode = safeString(params.get("entryMode")).trim()
+    if (requestedMode === "etats_sortie") {
+      setEntryMode("etats_sortie")
+    }
+
+    const requestedRecapTab = safeString(params.get("recapTab")).trim()
+    if (isRecapKey(requestedRecapTab)) {
+      setActiveRecapTab(requestedRecapTab)
+    }
+
+    const requestedMois = safeString(params.get("mois")).trim()
+    if (requestedMois) {
+      setMois(normalizeMonthValue(requestedMois))
+    }
+
+    const requestedAnnee = safeString(params.get("annee")).trim()
+    if (requestedAnnee) {
+      setAnnee(normalizeYearValue(requestedAnnee))
+    }
+
     setEditQuery({
       editId: safeString(params.get("editId")).trim(),
       tab: safeString(params.get("tab")).trim(),
@@ -2358,6 +3495,8 @@ export default function NouvelleDeclarationPage() {
 
   //  Global meta 
   const [activeTab,  setActiveTab]  = useState("encaissement")
+  const [entryMode, setEntryMode] = useState<RecapMode>("declaration")
+  const [activeRecapTab, setActiveRecapTab] = useState<RecapKey>("tva_collectee")
   const [direction,  setDirection]  = useState("")
   const [mois,       setMois]       = useState(INITIAL_FISCAL_PERIOD.mois)
   const [annee,      setAnnee]      = useState(INITIAL_FISCAL_PERIOD.annee)
@@ -2386,6 +3525,18 @@ export default function NouvelleDeclarationPage() {
   const [ibs14Rows,      setIbs14Rows]      = useState<Ibs14Row[]>([{ ...EMPTY_IBS14 }])
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
+  const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
+  const [recapRowsByKey, setRecapRowsByKey] = useState<Record<RecapKey, Record<string, string>[]>>({
+    tva_collectee: [],
+    tva_situation: [],
+    tva_a_payer: [],
+    masters15: [],
+    tap15: [],
+    tnfdal1: [],
+    tacp7: [],
+    droits_timbre: [],
+    g50: [],
+  })
 
   const userRole = user?.role ?? ""
   const isAdminRole = isAdminFiscalRole(userRole)
@@ -2414,7 +3565,12 @@ export default function NouvelleDeclarationPage() {
     [annee, fiscalPolicyRevision, userRole],
   )
   const hasFiscalTabAccess = availableTabs.length > 0
-  const isActiveTabDisabled = disabledTabKeys.has(activeTab)
+  const isActiveTabDisabled = entryMode === "declaration" ? disabledTabKeys.has(activeTab) : false
+  const activeRecapDefinition = useMemo(
+    () => RECAP_TABS.find((item) => item.key === activeRecapTab) ?? RECAP_TABS[0],
+    [activeRecapTab],
+  )
+  const activeRecapRows = recapRowsByKey[activeRecapTab] ?? []
 
   const resolveDirectionForRole = useCallback(
     (fallbackDirection = "") => {
@@ -2494,6 +3650,80 @@ export default function NouvelleDeclarationPage() {
     if (!user || isAdminRole) return
     setDirection((prev) => resolveDirectionForRole(prev))
   }, [user, isAdminRole, resolveDirectionForRole])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setFiscalDeclarations([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadDeclarations = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setFiscalDeclarations([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const declarations = Array.isArray(payload)
+          ? payload.map((item) => ({
+              id: Number((item as { id?: unknown }).id ?? 0),
+              tabKey: String((item as { tabKey?: unknown }).tabKey ?? "").trim().toLowerCase(),
+              mois: String((item as { mois?: unknown }).mois ?? "").trim(),
+              annee: String((item as { annee?: unknown }).annee ?? "").trim(),
+              direction: String((item as { direction?: unknown }).direction ?? "").trim(),
+              dataJson: String((item as { dataJson?: unknown }).dataJson ?? "{}"),
+            }))
+          : []
+
+        if (!cancelled) {
+          setFiscalDeclarations(declarations)
+        }
+      } catch {
+        if (!cancelled) setFiscalDeclarations([])
+      }
+    }
+
+    loadDeclarations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    const collecteeRows = buildTvaCollecteeRecapRows(mois, annee, fiscalDeclarations)
+    const situationRows = buildTvaSituationRecapRows(mois, annee, fiscalDeclarations)
+    const recapRows = buildTvaAPayerRecapRows(collecteeRows, situationRows)
+    const masters15Rows = recalcMasters15RecapRows(buildMasters15RecapRows())
+    const tap15Rows = buildTap15RecapRows(mois, annee, fiscalDeclarations)
+    const tnfdal1Rows = buildTap15RecapRows(mois, annee, fiscalDeclarations)
+    const tacp7Rows = recalcTacp7RecapRows(buildTacp7RecapRows())
+    const droitsTimbreRows = buildDroitsTimbreRecapRows(mois, annee, fiscalDeclarations)
+    const g50Rows = buildG50RecapRows(mois, annee, fiscalDeclarations)
+
+    setRecapRowsByKey({
+      tva_collectee: blankZeroManualRecapCells("tva_collectee", collecteeRows),
+      tva_situation: blankZeroManualRecapCells("tva_situation", situationRows),
+      tva_a_payer: recapRows,
+      masters15: blankZeroManualRecapCells("masters15", masters15Rows),
+      tap15: tap15Rows,
+      tnfdal1: tnfdal1Rows,
+      tacp7: blankZeroManualRecapCells("tacp7", tacp7Rows),
+      droits_timbre: droitsTimbreRows,
+      g50: g50Rows,
+    })
+  }, [annee, fiscalDeclarations, mois])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {
@@ -2583,6 +3813,152 @@ export default function NouvelleDeclarationPage() {
     user,
   ])
 
+  const handleRecapCellChange = useCallback((rowIndex: number, columnKey: string, value: string) => {
+    setRecapRowsByKey((prev) => {
+      const sourceRows = prev[activeRecapTab] ?? []
+      const updatedRows = sourceRows.map((row, index) => {
+        if (index !== rowIndex) return row
+
+        const designation = String(row.designation ?? "")
+        if (!isRecapCellEditable(activeRecapTab, designation, columnKey)) {
+          return row
+        }
+
+        const normalizedValue = normalizeAmountInput(value)
+        return {
+          ...row,
+          [columnKey]: normalizedValue,
+        }
+      })
+
+      // Recalculate computed recap tables, then keep manual zero values visually empty.
+      if (activeRecapTab === "tva_collectee" || activeRecapTab === "tva_situation" || activeRecapTab === "tva_a_payer") {
+        const nextRows =
+          activeRecapTab === "tva_collectee"
+            ? recalcTvaCollecteeRecapRows(updatedRows)
+            : activeRecapTab === "tva_situation"
+              ? recalcTvaSituationRecapRows(updatedRows)
+              : recalcTvaAPayerRecapRows(updatedRows)
+
+        const nextCollectee = activeRecapTab === "tva_collectee"
+          ? blankZeroManualRecapCells("tva_collectee", nextRows)
+          : prev.tva_collectee
+        const nextSituation = activeRecapTab === "tva_situation"
+          ? blankZeroManualRecapCells("tva_situation", nextRows)
+          : prev.tva_situation
+
+        return {
+          ...prev,
+          tva_collectee: nextCollectee,
+          tva_situation: nextSituation,
+          tva_a_payer: buildTvaAPayerRecapRows(nextCollectee, nextSituation),
+        }
+      }
+
+      if (activeRecapTab === "tacp7") {
+        return {
+          ...prev,
+          tacp7: blankZeroManualRecapCells("tacp7", recalcTacp7RecapRows(updatedRows)),
+        }
+      }
+
+      if (activeRecapTab === "masters15") {
+        return {
+          ...prev,
+          masters15: blankZeroManualRecapCells("masters15", recalcMasters15RecapRows(updatedRows)),
+        }
+      }
+
+      // For other tables, just update the rows without recalculation
+      return {
+        ...prev,
+        [activeRecapTab]: updatedRows,
+      }
+    })
+  }, [activeRecapTab])
+
+  const handleSaveEtatsSortie = useCallback(async () => {
+    const currentRows = recapRowsByKey[activeRecapTab] ?? []
+    const missingRequired = currentRows.some((row) => {
+      const designation = String(row.designation ?? "")
+      return activeRecapDefinition.columns.some((column) => {
+        if (!isRecapCellMandatory(activeRecapTab, designation, column.key)) return false
+        const rawValue = safeString(row[column.key]).trim()
+        return rawValue === ""
+      })
+    })
+
+    if (missingRequired) {
+      toast({
+        title: "Champs obligatoires",
+        description: "Veuillez renseigner tous les champs obligatoires avant d'enregistrer l'etat de sortie.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!mois || !annee) {
+      toast({
+        title: "Periode requise",
+        description: "Le mois et l'annee sont obligatoires.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      const response = await fetch(`${API_BASE}/api/fiscal-recaps/save`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          key: activeRecapTab,
+          title: activeRecapDefinition.title,
+          mois,
+          annee,
+          rows: currentRows,
+          formulas: {},
+          isGenerated: false,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}))
+        const errorMessage = errorPayload && typeof errorPayload === "object" && "message" in errorPayload
+          ? String((errorPayload as { message?: unknown }).message ?? "Erreur lors de l'enregistrement")
+          : "Erreur lors de l'enregistrement"
+
+        toast({
+          title: "Erreur d'enregistrement",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      toast({
+        title: "Etat de sortie enregistre",
+        description: `Le tableau ${activeRecapDefinition.title} a ete enregistre avec succes.`,
+      })
+      setIsSubmitting(false)
+      router.push("/fisca_dashbord")
+    } catch (error) {
+      setIsSubmitting(false)
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Impossible de contacter le serveur",
+        variant: "destructive",
+      })
+    }
+  }, [activeRecapDefinition.columns, activeRecapDefinition.title, activeRecapTab, annee, mois, recapRowsByKey, router, toast])
+
   if (isLoading || !user || status !== "authenticated") {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -2592,6 +3968,11 @@ export default function NouvelleDeclarationPage() {
   }
 
   const handleSave = async () => {
+    if (entryMode === "etats_sortie") {
+      await handleSaveEtatsSortie()
+      return
+    }
+
     const saveDirection = effectiveDirection
 
     const isAdminEditing = isAdminRole && !!editingDeclarationId
@@ -3020,6 +4401,7 @@ export default function NouvelleDeclarationPage() {
 
   const activeColor = TABS.find((t) => t.key === activeTab)?.color ?? "#2db34b"
   const mon = MONTHS.find((m) => m.value === mois)?.label ?? mois
+  const directionSelectValue = entryMode === "etats_sortie" ? "Siege" : effectiveDirection
   const currentPeriodLockMessage = (() => {
     if (editingDeclarationId && editingSourceMois && editingSourceAnnee && isFiscalPeriodLocked(editingSourceMois, editingSourceAnnee, userRole)) {
       return `${getFiscalPeriodLockMessage(editingSourceMois, editingSourceAnnee, userRole)} Aucune modification n'est autorisee.`
@@ -3076,11 +4458,18 @@ export default function NouvelleDeclarationPage() {
         {/*  Global meta card (Direction + Periode)  */}
         <Card className="border border-gray-200">
           <CardContent className="pt-4 pb-3">
+            <div className="mb-4 flex items-center justify-end">
+              <div className="flex items-center gap-2 text-xs font-medium text-emerald-800">
+                <span>Declaration</span>
+                <Switch checked={entryMode === "etats_sortie"} onCheckedChange={(checked) => setEntryMode(checked ? "etats_sortie" : "declaration")} />
+                <span>Etats de sortie</span>
+              </div>
+            </div>
             <div className="flex flex-wrap items-end gap-6">
       {/* Direction */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Direction</label>
-                <Select value={effectiveDirection} onValueChange={setDirection} disabled={isDirectionLocked}>
+                <Select value={directionSelectValue} onValueChange={setDirection} disabled={isDirectionLocked || entryMode === "etats_sortie"}>
                   <SelectTrigger className="h-10 text-sm">
                     <SelectValue placeholder="- Selectionner une direction -" />
                   </SelectTrigger>
@@ -3096,7 +4485,7 @@ export default function NouvelleDeclarationPage() {
               {/* Mois */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Mois</label>
-                <Select value={mois} onValueChange={setMois} disabled={activeTab === "acompte"}>
+                <Select value={mois} onValueChange={setMois} disabled={entryMode === "declaration" && activeTab === "acompte"}>
                   <SelectTrigger className="h-10 text-sm w-[150px]">
                     <SelectValue placeholder="Mois" />
                   </SelectTrigger>
@@ -3123,19 +4512,27 @@ export default function NouvelleDeclarationPage() {
               {/* Tableau */}
               <div className="space-y-1 flex-1 min-w-[220px]">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tableau</label>
-                <Select value={activeTab} onValueChange={(value) => {
-                  if (disabledTabKeys.has(value)) return
-                  setActiveTab(value)
+                <Select value={entryMode === "declaration" ? activeTab : activeRecapTab} onValueChange={(value) => {
+                  if (entryMode === "declaration") {
+                    if (disabledTabKeys.has(value)) return
+                    setActiveTab(value)
+                    return
+                  }
+                  setActiveRecapTab(value as RecapKey)
                 }}>
                   <SelectTrigger className="h-10 text-sm">
                     <SelectValue placeholder="Selectionner un tableau" />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectableTabs.map((t) => (
-                      <SelectItem key={t.key} value={t.key} disabled={t.isDisabled} className={t.isDisabled ? "text-muted-foreground" : ""}>
-                        {t.label}{t.isDisabled ? " (desactive)" : ""}
-                      </SelectItem>
-                    ))}
+                    {entryMode === "declaration"
+                      ? selectableTabs.map((t) => (
+                        <SelectItem key={t.key} value={t.key} disabled={t.isDisabled} className={t.isDisabled ? "text-muted-foreground" : ""}>
+                          {t.label}{t.isDisabled ? " (desactive)" : ""}
+                        </SelectItem>
+                      ))
+                      : RECAP_TABS.map((item) => (
+                        <SelectItem key={item.key} value={item.key}>{item.title}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -3155,6 +4552,85 @@ export default function NouvelleDeclarationPage() {
 
         {/*  Table content  */}
         <div>
+          {entryMode === "etats_sortie" ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
+                  Etats de sortie - {activeRecapDefinition.title}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          {activeRecapDefinition.columns.map((column) => (
+                            <th key={column.key} className={`px-3 py-2 text-xs font-semibold text-gray-700 border-b ${column.right ? "text-right" : "text-left"}`}>
+                              {column.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeRecapRows.map((row, rowIndex) => (
+                          <tr key={`${activeRecapTab}-${rowIndex}`} className={rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                            {activeRecapDefinition.columns.map((column) => {
+                              const designation = String(row.designation ?? "")
+                              const editable = isRecapCellEditable(activeRecapTab, designation, column.key)
+                              const mandatory = isRecapCellMandatory(activeRecapTab, designation, column.key)
+                              const cellValue = safeString(row[column.key])
+                              const formula = getRecapCellFormula(activeRecapTab, designation, column.key)
+
+                              if (column.key === "designation") {
+                                return (
+                                  <td key={column.key} className="px-3 py-2 border-b text-xs">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-block w-full">{cellValue}</span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top">{formula}</TooltipContent>
+                                    </Tooltip>
+                                  </td>
+                                )
+                              }
+
+                              return (
+                                <td key={column.key} className={`px-2 py-1 border-b ${column.right ? "text-right" : "text-left"}`}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <AmountInput
+                                          value={cellValue}
+                                          onChange={editable ? (event) => handleRecapCellChange(rowIndex, column.key, event.target.value) : undefined}
+                                          readOnly={!editable}
+                                          className={`h-7 px-2 text-xs ${editable ? "bg-white" : "bg-gray-100 text-gray-500"}`}
+                                          placeholder="0,00"
+                                        />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">{formula}</TooltipContent>
+                                  </Tooltip>
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+                      <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
           {activeTab === "encaissement" && (
               <Card>
                 <CardHeader className="pb-3">
@@ -3317,6 +4793,8 @@ export default function NouvelleDeclarationPage() {
                 </CardContent>
               </Card>
             )}
+            </>
+          )}
           </div>
       </div>
         </>

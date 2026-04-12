@@ -121,6 +121,7 @@ public class EtatsDeSortieController : ControllerBase
 
         var existing = await _context.EtatsDeSortie
             .FirstOrDefaultAsync(r => r.Key == request.Key && r.Mois == request.Mois && r.Annee == request.Annee);
+        var isCreate = existing is null;
 
         if (existing is null)
         {
@@ -152,14 +153,15 @@ public class EtatsDeSortieController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_RECAP_SAVE", "EtatsDeSortie", existing.Id,
+        await _auditService.LogAction(userId, "ETATS_SORTIE_SAVE", "EtatsDeSortie", existing.Id,
             new
             {
                 existing.Key,
                 existing.Title,
                 existing.Mois,
                 existing.Annee,
-                existing.IsGenerated
+                existing.IsGenerated,
+                action = isCreate ? "create" : "update"
             });
 
         return Ok(new
@@ -199,10 +201,37 @@ public class EtatsDeSortieController : ControllerBase
         _context.EtatsDeSortie.Remove(recap);
         await _context.SaveChangesAsync();
 
-        await _auditService.LogAction(userId, "FISCAL_RECAP_DELETE", "EtatsDeSortie", recap.Id,
+        await _auditService.LogAction(userId, "ETATS_SORTIE_DELETE", "EtatsDeSortie", recap.Id,
             new { recap.Key, recap.Mois, recap.Annee });
 
         return Ok(new { message = "Recap supprimé." });
+    }
+
+    [HttpPost("{id:int}/print")]
+    public async Task<IActionResult> LogPrint(int id)
+    {
+        var userId = GetCurrentUserId();
+        if (userId <= 0) return Unauthorized();
+
+        var recap = await _context.EtatsDeSortie
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (recap is null) return NotFound(new { message = "Recap introuvable." });
+
+        var role = await GetCurrentUserRoleAsync(userId);
+        var canPrint = role == "admin"
+            || role == "finance"
+            || role == "comptabilite"
+            || recap.UserId == userId;
+
+        if (!canPrint)
+            return Forbid();
+
+        await _auditService.LogAction(userId, "ETATS_SORTIE_PRINT", "EtatsDeSortie", recap.Id,
+            new { recap.Key, recap.Mois, recap.Annee });
+
+        return Ok(new { message = "Impression enregistrée dans l'audit." });
     }
 }
 
