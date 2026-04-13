@@ -126,6 +126,78 @@ interface SavedRecap {
 
 const toArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
+type RecapColumnMeta = {
+  key: string
+  label: string
+  right?: boolean
+}
+
+const RECAP_COLUMN_DEFINITIONS: Record<string, RecapColumnMeta[]> = {
+  tva_collectee: [
+    { key: "designation", label: "Désignation" },
+    { key: "ttc", label: "Montant des Encaissements TTC", right: true },
+    { key: "exonere", label: "Montant Exonéré", right: true },
+    { key: "ht", label: "Montant des Encaissements HT", right: true },
+    { key: "tva", label: "Montant de la TVA", right: true },
+  ],
+  tva_a_payer: [
+    { key: "designation", label: "Désignation" },
+    { key: "collectee", label: "TVA Collectée", right: true },
+    { key: "immo", label: "TVA Déductible sur Immobilisation", right: true },
+    { key: "biens", label: "TVA Déductible sur Biens et Services", right: true },
+    { key: "totalDed", label: "Total de la TVA Déductible", right: true },
+    { key: "payer", label: "TVA à Payer", right: true },
+  ],
+  tva_situation: [
+    { key: "designation", label: "Désignation" },
+    { key: "immo", label: "TVA Déductible sur Immobilisation", right: true },
+    { key: "biens", label: "TVA Déductible sur Biens et Services", right: true },
+    { key: "totalDed", label: "Total de la TVA Déductible", right: true },
+  ],
+  droits_timbre: [
+    { key: "designation", label: "Désignation" },
+    { key: "caHt", label: "Chiffres d'Affaires Encaissé HT", right: true },
+    { key: "montant", label: "Montant du Droits de Timbre", right: true },
+  ],
+  tacp7: [
+    { key: "designation", label: "Désignation" },
+    { key: "base", label: "Montant des Recharges HT", right: true },
+    { key: "taxe", label: "Montant du TACP 7%", right: true },
+  ],
+  tnfdal1: [
+    { key: "designation", label: "Désignation" },
+    { key: "caHt", label: "Chiffres d'Affaires HT", right: true },
+    { key: "taxe", label: "Montant du TNFDAL 1%", right: true },
+  ],
+  tap15: [
+    { key: "designation", label: "Désignation" },
+    { key: "caHt", label: "Montant des Encaissements HT", right: true },
+    { key: "taxe", label: "Montant de la TAP", right: true },
+  ],
+  masters15: [
+    { key: "designation", label: "Master" },
+    { key: "base", label: "Montant de la Base", right: true },
+    { key: "taxe", label: "Montant de la Taxe 1.5%", right: true },
+  ],
+  g50: [
+    { key: "designation", label: "Désignation" },
+    { key: "montant", label: "Montant", right: true },
+  ],
+}
+
+const getRecapColumns = (recap: SavedRecap): RecapColumnMeta[] => {
+  const predefined = RECAP_COLUMN_DEFINITIONS[recap.key]
+  if (predefined) return predefined
+
+  const discoveredColumns = Array.from(new Set((recap.rows ?? []).flatMap((row) => Object.keys(row))))
+  return [
+    ...(discoveredColumns.includes("designation") ? [{ key: "designation", label: "Désignation" }] : []),
+    ...discoveredColumns
+      .filter((column) => column !== "designation")
+      .map((key) => ({ key, label: key })),
+  ]
+}
+
 const toStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map((item) => String(item ?? "")) : []
 
@@ -1594,13 +1666,14 @@ export default function FiscaDashboardPage() {
                   5: { halign: "center", cellWidth: 38 },
                   6: { halign: "center", cellWidth: 42 },
                 }
-              : Array(tableHead[0]?.length ?? 0)
-                  .fill(null)
-                  .map((_, i) =>
+              : Object.fromEntries(
+                  Array.from({ length: tableHead[0]?.length ?? 0 }, (_, i) => [
+                    String(i),
                     i === 0
                       ? { halign: "left", cellWidth: "auto" }
-                      : { halign: "center", cellWidth: "auto" }
-                  ),
+                      : { halign: "center", cellWidth: "auto" },
+                  ]),
+                ) as Record<string, { halign: "left" | "center"; cellWidth: "auto" }>,
           didParseCell: (data) => {
             if (!(tabKey === "ibs" && data.section === "head")) {
               data.cell.text = data.cell.text.map((line) =>
@@ -1796,11 +1869,8 @@ export default function FiscaDashboardPage() {
   }
 
   const handlePrintRecap = (recap: SavedRecap) => {
-    const columns = Array.from(new Set((recap.rows ?? []).flatMap((row) => Object.keys(row))))
-    const orderedColumns = [
-      ...(columns.includes("designation") ? ["designation"] : []),
-      ...columns.filter((column) => column !== "designation"),
-    ]
+    const recapColumns = getRecapColumns(recap)
+    const orderedColumns = recapColumns.map((column) => column.key)
 
     if (orderedColumns.length === 0) return
 
@@ -1847,10 +1917,20 @@ export default function FiscaDashboardPage() {
         pdf.setFontSize(14)
         drawUnderlinedText(`${recap.title} ${period}`.trim(), 10, 64)
 
-        const tableHead = [orderedColumns.map((column) => column)]
+        const tableHead = [recapColumns.map((column) => column.label)]
         const tableBody = (recap.rows ?? []).map((row) =>
           orderedColumns.map((column) => String(row[column] ?? "")),
         )
+
+        const recapColumnStyles = Object.fromEntries(
+          recapColumns.map((column, index) => [
+            String(index),
+            {
+              halign: column.right ? "right" : "left",
+              cellWidth: "auto",
+            },
+          ]),
+        ) as Record<string, { halign: "left" | "right"; cellWidth: "auto" }>
 
         autoTable(pdf, {
           head: tableHead,
@@ -1874,6 +1954,7 @@ export default function FiscaDashboardPage() {
             fontStyle: "bold",
             halign: "center",
           },
+          columnStyles: recapColumnStyles,
           didParseCell: (data) => {
             data.cell.text = data.cell.text.map((line) =>
               line
@@ -2511,11 +2592,8 @@ export default function FiscaDashboardPage() {
               <div className="rounded-xl border bg-white p-4 shadow-sm">
                 <div className="overflow-x-auto">
                   {(() => {
-                    const columns = Array.from(new Set(viewRecap.rows.flatMap((row) => Object.keys(row))))
-                    const orderedColumns = [
-                      ...(columns.includes("designation") ? ["designation"] : []),
-                      ...columns.filter((column) => column !== "designation"),
-                    ]
+                    const recapColumns = getRecapColumns(viewRecap)
+                    const orderedColumns = recapColumns.map((column) => column.key)
 
                     if (orderedColumns.length === 0) {
                       return <p className="text-sm text-muted-foreground">Aucune donnée pour ce recap.</p>
@@ -2525,9 +2603,9 @@ export default function FiscaDashboardPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            {orderedColumns.map((column) => (
-                              <TableHead key={column} className={column === "designation" ? "text-left" : "text-right"}>
-                                {column}
+                            {recapColumns.map((column) => (
+                              <TableHead key={column.key} className={column.right ? "text-right" : "text-left"}>
+                                {column.label}
                               </TableHead>
                             ))}
                           </TableRow>
@@ -2535,9 +2613,9 @@ export default function FiscaDashboardPage() {
                         <TableBody>
                           {viewRecap.rows.map((row, index) => (
                             <TableRow key={`${viewRecap.id}-${index}`}>
-                              {orderedColumns.map((column) => (
-                                <TableCell key={column} className={column === "designation" ? "text-left" : "text-right font-semibold"}>
-                                  {String(row[column] ?? "")}
+                              {recapColumns.map((column) => (
+                                <TableCell key={column.key} className={column.right ? "text-right font-semibold" : "text-left"}>
+                                  {String(row[column.key] ?? "")}
                                 </TableCell>
                               ))}
                             </TableRow>

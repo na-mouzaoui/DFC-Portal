@@ -938,10 +938,19 @@ interface Tab10Props { rows: MasterRow[]; setRows: React.Dispatch<React.SetState
 function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
-  const upd = (i: number, f: keyof MasterRow, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const upd = (i: number, f: keyof MasterRow, v: string) => {
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r
+      const updated = { ...r, [f]: v }
+      if (f === "montantHT") {
+        const calculatedTaxe = num(v) * 0.015
+        updated.taxe15 = calculatedTaxe > 0 ? calculatedTaxe.toFixed(2) : ""
+      }
+      return updated
+    }))
+  }
   const totalHT   = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const totalTaxe = rows.reduce((s, r) => s + num(r.taxe15), 0)
+  const totalTaxe = rows.reduce((s, r) => s + (num(r.montantHT) * 0.015), 0)
   const iw = { minWidth: 110 }
   return (
     <div className="space-y-3">
@@ -1453,80 +1462,80 @@ type RecapDefinition = {
 const RECAP_TABS: RecapDefinition[] = [
   {
     key: "tva_collectee",
-    title: "TVA collectee",
+    title: "TVA Collectée",
     columns: [
-      { key: "designation", label: "Designation" },
+      { key: "designation", label: "Désignation" },
       { key: "ttc", label: "Montant des Encaissements TTC", right: true },
-      { key: "exonere", label: "Montant Exonere", right: true },
+      { key: "exonere", label: "Montant Exonéré", right: true },
       { key: "ht", label: "Montant des Encaissements HT", right: true },
       { key: "tva", label: "Montant de la TVA", right: true },
     ],
   },
   {
     key: "tva_a_payer",
-    title: "TVA a payer",
+    title: "TVA à Payer",
     columns: [
-      { key: "designation", label: "Designation" },
-      { key: "collectee", label: "TVA Collectee", right: true },
-      { key: "immo", label: "TVA Deductible sur Immobilisation", right: true },
-      { key: "biens", label: "TVA Deductible sur Biens et Services", right: true },
-      { key: "totalDed", label: "Total TVA Deductible", right: true },
-      { key: "payer", label: "TVA a Payer", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "collectee", label: "TVA Collectée", right: true },
+      { key: "immo", label: "TVA Déductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA Déductible sur Biens et Services", right: true },
+      { key: "totalDed", label: "Total de la TVA Déductible", right: true },
+      { key: "payer", label: "TVA à Payer", right: true },
     ],
   },
   {
     key: "tva_situation",
-    title: "TVA deductible",
+    title: "TVA Déductible",
     columns: [
-      { key: "designation", label: "Designation" },
-      { key: "immo", label: "TVA Deductible sur Immobilisation", right: true },
-      { key: "biens", label: "TVA Deductible sur Biens et services", right: true },
-      { key: "totalDed", label: "Total TVA Deductible", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "immo", label: "TVA Déductible sur Immobilisation", right: true },
+      { key: "biens", label: "TVA Déductible sur Biens et Services", right: true },
+      { key: "totalDed", label: "Total de la TVA Déductible", right: true },
     ],
   },
   {
     key: "masters15",
-    title: "TAXE MASTERS 1.5%",
+    title: "Taxe Master 1.5%",
     columns: [
-      { key: "designation", label: "Designation" },
+      { key: "designation", label: "Master" },
       { key: "base", label: "Montant de la Base", right: true },
-      { key: "taxe", label: "Montant de la Taxe 1,5%", right: true },
+      { key: "taxe", label: "Montant de la Taxe 1.5%", right: true },
     ],
   },
   {
     key: "tap15",
     title: "TAP 1.5%",
     columns: [
-      { key: "designation", label: "Designation" },
-      { key: "caHt", label: "Chiffres d'Affaires E HT", right: true },
-      { key: "taxe", label: "Montant du TAP 1,5%", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "caHt", label: "Montant des Encaissements HT", right: true },
+      { key: "taxe", label: "Montant de la TAP", right: true },
     ],
   },
   {
     key: "tnfdal1",
-    title: "Situation de la Taxe TNFDAL 1%",
+    title: "TNFDAL1%",
     columns: [
-      { key: "designation", label: "Designation" },
-      { key: "caHt", label: "Chiffres d'Affaires E HT", right: true },
-      { key: "taxe", label: "Montant du TNFFDAL 1%", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "caHt", label: "Chiffres d'Affaires HT", right: true },
+      { key: "taxe", label: "Montant du TNFDAL 1%", right: true },
     ],
   },
   {
     key: "tacp7",
-    title: "Situation de la Taxe TACP 7%",
+    title: "TACP 7%",
     columns: [
-      { key: "designation", label: "Designation" },
+      { key: "designation", label: "Désignation" },
       { key: "base", label: "Montant des Recharges HT", right: true },
       { key: "taxe", label: "Montant du TACP 7%", right: true },
     ],
   },
   {
     key: "droits_timbre",
-    title: "Situation des Droits de Timbre",
+    title: "Droit de Timbre",
     columns: [
-      { key: "designation", label: "Designation" },
-      { key: "caHt", label: "Chiffres d'Affaires Encaisse HT", right: true },
-      { key: "montant", label: "Montant des Droits de Timbre", right: true },
+      { key: "designation", label: "Désignation" },
+      { key: "caHt", label: "Chiffres d'Affaires Encaissé HT", right: true },
+      { key: "montant", label: "Montant du Droits de Timbre", right: true },
     ],
   },
   {
@@ -2219,8 +2228,7 @@ const recalcMasters15RecapRows = (rows: Record<string, string>[]): Record<string
     if (designation === "Total") continue
 
     const base = parseRecapAmount(row.base)
-    const taxe = parseRecapAmount(row.taxe)
-    const resolvedTaxe = taxe > 0 ? taxe : base * 0.015
+    const resolvedTaxe = base * 0.015
 
     row.taxe = formatRecapAmount(resolvedTaxe)
     totalBase += base
@@ -2387,7 +2395,7 @@ const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey:
   }
 
   if (recapKey === "masters15") {
-    return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
+    return designation !== "Total" && columnKey === "base"
   }
 
   if (recapKey === "tacp7") {
@@ -2661,14 +2669,15 @@ const normalizeTaxe2Rows = (rows?: Taxe2Row[]) => {
 const normalizeMasterRows = (rows?: MasterRow[]) => {
   const normalized = (rows ?? []).map((row) => {
     const source = row as Partial<MasterRow>
+    const montantHT = safeString(source.montantHT)
     return {
       ...EMPTY_MASTER,
       date: safeString(source.date),
       nomMaster: safeString(source.nomMaster),
       numFacture: safeString(source.numFacture),
       dateFacture: safeString(source.dateFacture),
-      montantHT: safeString(source.montantHT),
-      taxe15: safeString(source.taxe15),
+      montantHT,
+      taxe15: montantHT ? formatRecapAmount(parseRecapAmount(montantHT) * 0.015) : "",
       mois: safeString(source.mois),
       observation: safeString(source.observation),
     }
@@ -3879,6 +3888,9 @@ export default function NouvelleDeclarationPage() {
 
   const handleSaveEtatsSortie = useCallback(async () => {
     const currentRows = recapRowsByKey[activeRecapTab] ?? []
+    const rowsToSave = activeRecapTab === "masters15"
+      ? blankZeroManualRecapCells("masters15", recalcMasters15RecapRows(currentRows))
+      : currentRows
     const missingRequired = currentRows.some((row) => {
       const designation = String(row.designation ?? "")
       return activeRecapDefinition.columns.some((column) => {
@@ -3922,7 +3934,7 @@ export default function NouvelleDeclarationPage() {
           title: activeRecapDefinition.title,
           mois,
           annee,
-          rows: currentRows,
+          rows: rowsToSave,
           formulas: {},
           isGenerated: false,
         }),
@@ -4621,7 +4633,7 @@ export default function NouvelleDeclarationPage() {
                     </table>
                   </div>
 
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="flex justify-end">
                     <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
                       <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
                     </Button>
