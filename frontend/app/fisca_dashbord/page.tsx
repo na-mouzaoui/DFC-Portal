@@ -132,6 +132,15 @@ type RecapColumnMeta = {
   right?: boolean
 }
 
+const RECAP_MISSING_META_KEY = "__missingCells"
+
+type RecapMissingReason = "missing_declaration" | "not_approved"
+
+const RECAP_MISSING_REASON_LABEL: Record<RecapMissingReason, string> = {
+  missing_declaration: "Déclaration non saisie",
+  not_approved: "Déclaration non approuvée",
+}
+
 const RECAP_COLUMN_DEFINITIONS: Record<string, RecapColumnMeta[]> = {
   tva_collectee: [
     { key: "designation", label: "Désignation" },
@@ -196,6 +205,41 @@ const getRecapColumns = (recap: SavedRecap): RecapColumnMeta[] => {
       .filter((column) => column !== "designation")
       .map((key) => ({ key, label: key })),
   ]
+}
+
+const parseRecapMissingMap = (row: Record<string, string>): Record<string, RecapMissingReason> => {
+  const raw = String(row[RECAP_MISSING_META_KEY] ?? "").trim()
+  if (!raw) return {}
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return {}
+
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => value === "missing_declaration" || value === "not_approved")
+      .map(([key, value]) => [key, value as RecapMissingReason])
+
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+const getRecapMissingReason = (row: Record<string, string>, columnKey: string): RecapMissingReason | null => {
+  const map = parseRecapMissingMap(row)
+  return map[columnKey] ?? null
+}
+
+const getRecapMissingLegendItems = (rows: Record<string, string>[]): string[] => {
+  const reasons = new Set<RecapMissingReason>()
+
+  for (const row of rows) {
+    for (const reason of Object.values(parseRecapMissingMap(row))) {
+      reasons.add(reason)
+    }
+  }
+
+  return Array.from(reasons).map((reason) => RECAP_MISSING_REASON_LABEL[reason])
 }
 
 const toStringArray = (value: unknown): string[] =>
@@ -2594,34 +2638,52 @@ export default function FiscaDashboardPage() {
                   {(() => {
                     const recapColumns = getRecapColumns(viewRecap)
                     const orderedColumns = recapColumns.map((column) => column.key)
+                      const missingLegendItems = getRecapMissingLegendItems(viewRecap.rows ?? [])
 
                     if (orderedColumns.length === 0) {
                       return <p className="text-sm text-muted-foreground">Aucune donnée pour ce recap.</p>
                     }
 
                     return (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            {recapColumns.map((column) => (
-                              <TableHead key={column.key} className={column.right ? "text-right" : "text-left"}>
-                                {column.label}
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {viewRecap.rows.map((row, index) => (
-                            <TableRow key={`${viewRecap.id}-${index}`}>
+                      <>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
                               {recapColumns.map((column) => (
-                                <TableCell key={column.key} className={column.right ? "text-right font-semibold" : "text-left"}>
-                                  {String(row[column.key] ?? "")}
-                                </TableCell>
+                                <TableHead key={column.key} className={column.right ? "text-right" : "text-left"}>
+                                  {column.label}
+                                </TableHead>
                               ))}
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {viewRecap.rows.map((row, index) => (
+                              <TableRow key={`${viewRecap.id}-${index}`}>
+                                {recapColumns.map((column) => {
+                                  const missingReason = getRecapMissingReason(row, column.key)
+                                  const reasonHint = missingReason ? RECAP_MISSING_REASON_LABEL[missingReason] : ""
+
+                                  return (
+                                    <TableCell
+                                      key={column.key}
+                                      title={reasonHint}
+                                      className={`${column.right ? "text-right font-semibold" : "text-left"} ${missingReason ? "bg-orange-100" : ""}`.trim()}
+                                    >
+                                      {String(row[column.key] ?? "")}
+                                    </TableCell>
+                                  )
+                                })}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+
+                        {missingLegendItems.length > 0 && (
+                          <div className="mt-3 rounded border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+                            Déclaration non saisie : les données manquantes sont remplacées par 0.
+                          </div>
+                        )}
+                      </>
                     )
                   })()}
                 </div>

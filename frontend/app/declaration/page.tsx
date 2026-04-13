@@ -1441,6 +1441,7 @@ type ApiFiscalDeclaration = {
   annee: string
   direction: string
   dataJson: string
+  isApproved?: boolean
 }
 
 type RecapMode = "declaration" | "etats_sortie"
@@ -1782,6 +1783,356 @@ const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
   }
 
   return {}
+}
+
+const RECAP_MISSING_META_KEY = "__missingCells"
+
+type RecapMissingReason = "missing_declaration" | "not_approved"
+
+const RECAP_MISSING_REASON_LABEL: Record<RecapMissingReason, string> = {
+  missing_declaration: "Déclaration non saisie",
+  not_approved: "Déclaration non approuvée",
+}
+
+const parseRecapMissingMap = (row: Record<string, string>): Record<string, RecapMissingReason> => {
+  const raw = safeString(row[RECAP_MISSING_META_KEY]).trim()
+  if (!raw) return {}
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return {}
+
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => value === "missing_declaration" || value === "not_approved")
+      .map(([key, value]) => [key, value as RecapMissingReason])
+
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+const setRecapMissingCell = (
+  row: Record<string, string>,
+  columnKey: string,
+  reason: RecapMissingReason,
+): Record<string, string> => {
+  const next = { ...row }
+  const map = parseRecapMissingMap(next)
+  map[columnKey] = reason
+  next[RECAP_MISSING_META_KEY] = JSON.stringify(map)
+  return next
+}
+
+const getRecapMissingReason = (row: Record<string, string>, columnKey: string): RecapMissingReason | null => {
+  const map = parseRecapMissingMap(row)
+  return map[columnKey] ?? null
+}
+
+const clearRecapMissingMeta = (rows: Record<string, string>[]): Record<string, string>[] =>
+  rows.map((row) => {
+    const next = { ...row }
+    delete next[RECAP_MISSING_META_KEY]
+    return next
+  })
+
+const chooseAggregateMissingReason = (reasons: RecapMissingReason[]): RecapMissingReason =>
+  reasons.includes("not_approved") ? "not_approved" : "missing_declaration"
+
+const isDirectionMatchingRecapDesignation = (declarationDirection: string, designation: string): boolean => {
+  const normalizedDirection = normalizeRecapDesignation(declarationDirection)
+  const normalizedDesignation = normalizeRecapDesignation(designation)
+
+  if (!normalizedDirection || !normalizedDesignation) return false
+
+  if (normalizedDesignation === "direction generale") {
+    return (
+      normalizedDirection === "siege"
+      || normalizedDirection.includes("siege")
+      || normalizedDirection.includes("direction generale")
+    )
+  }
+
+  if (normalizedDesignation === "direction autoliquidation") {
+    return normalizedDirection.includes("autoliquidation") || normalizedDirection.includes("auto liquidation")
+  }
+
+  if (normalizedDesignation.startsWith("dr ")) {
+    const token = normalizedDesignation.replace(/^dr\s+/, "").trim()
+    return normalizedDirection.includes(token)
+  }
+
+  return normalizedDirection.includes(normalizedDesignation) || normalizedDesignation.includes(normalizedDirection)
+}
+
+const resolveDeclarationStatus = (
+  declarations: ApiFiscalDeclaration[],
+  tabKey: string,
+  mois: string,
+  annee: string,
+  designation?: string,
+): "ok" | RecapMissingReason => {
+  const scoped = declarations.filter((declaration) => {
+    if (declaration.tabKey !== tabKey) return false
+    if (declaration.mois !== mois || declaration.annee !== annee) return false
+    if (!designation) return true
+    return isDirectionMatchingRecapDesignation(declaration.direction, designation)
+  })
+
+  if (scoped.length === 0) return "missing_declaration"
+
+  const hasApprovedDeclaration = scoped.some((declaration) => declaration.isApproved !== false)
+  if (hasApprovedDeclaration) return "ok"
+  return "not_approved"
+}
+
+const annotateTvaCollecteeMissing = (
+  rows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+): Record<string, string>[] => {
+  return clearRecapMissingMeta(rows).map((row) => {
+    const designation = safeString(row.designation)
+    if (!isTvaCollecteeRecapDrRow(designation)) return row
+
+    const status = resolveDeclarationStatus(declarations, "encaissement", mois, annee, designation)
+    if (status === "ok") return row
+
+    let next = setRecapMissingCell(row, "ttc", status)
+    next = setRecapMissingCell(next, "ht", status)
+    next = setRecapMissingCell(next, "tva", status)
+    return next
+  })
+}
+
+const annotateTvaSituationMissing = (
+  rows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+): Record<string, string>[] => {
+  return clearRecapMissingMeta(rows).map((row) => {
+    const designation = safeString(row.designation)
+    if (designation === "Total" || designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+      return row
+    }
+
+    const immoStatus = resolveDeclarationStatus(declarations, "tva_immo", mois, annee, designation)
+    const biensStatus = resolveDeclarationStatus(declarations, "tva_biens", mois, annee, designation)
+
+    let next = row
+    if (immoStatus !== "ok") {
+      next = setRecapMissingCell(next, "immo", immoStatus)
+    }
+    if (biensStatus !== "ok") {
+      next = setRecapMissingCell(next, "biens", biensStatus)
+    }
+    if (immoStatus !== "ok" || biensStatus !== "ok") {
+      const reason = chooseAggregateMissingReason(
+        [immoStatus, biensStatus].filter((item) => item !== "ok") as RecapMissingReason[],
+      )
+      next = setRecapMissingCell(next, "totalDed", reason)
+    }
+
+    return next
+  })
+}
+
+const annotateDroitsTimbreMissing = (
+  rows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+): Record<string, string>[] => {
+  return clearRecapMissingMeta(rows).map((row) => {
+    const designation = safeString(row.designation)
+    if (designation === "Total") return row
+
+    const status = resolveDeclarationStatus(declarations, "droits_timbre", mois, annee, designation)
+    if (status === "ok") return row
+
+    let next = setRecapMissingCell(row, "caHt", status)
+    next = setRecapMissingCell(next, "montant", status)
+    return next
+  })
+}
+
+const annotateTapLikeMissing = (
+  rows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+): Record<string, string>[] => {
+  return clearRecapMissingMeta(rows).map((row) => {
+    const designation = safeString(row.designation)
+    if (designation === "Total" || designation === "Direction Generale" || designation === "Regul CA du Janvier 2025 a Juin 2025") {
+      return row
+    }
+
+    const status = resolveDeclarationStatus(declarations, "etat_tap", mois, annee, designation)
+    if (status === "ok") return row
+
+    let next = setRecapMissingCell(row, "caHt", status)
+    next = setRecapMissingCell(next, "taxe", status)
+    return next
+  })
+}
+
+const normalizePayerSourceKey = (designation: string): string => {
+  const normalized = normalizeRecapDesignation(designation)
+  if (normalized === "tva autoliquidation") return normalizeRecapDesignation("Direction AutoLiquidation")
+  return normalized
+}
+
+const annotateTvaAPayerMissing = (
+  rows: Record<string, string>[],
+  tvaCollecteeRows: Record<string, string>[],
+  tvaSituationRows: Record<string, string>[],
+): Record<string, string>[] => {
+  const collecteeByRow = new Map<string, Record<string, RecapMissingReason>>()
+  for (const row of tvaCollecteeRows) {
+    collecteeByRow.set(normalizeRecapDesignation(safeString(row.designation)), parseRecapMissingMap(row))
+  }
+
+  const situationByRow = new Map<string, Record<string, RecapMissingReason>>()
+  for (const row of tvaSituationRows) {
+    situationByRow.set(normalizeRecapDesignation(safeString(row.designation)), parseRecapMissingMap(row))
+  }
+
+  const nextRows = clearRecapMissingMeta(rows).map((row) => {
+    const designation = safeString(row.designation)
+    const normalized = normalizeRecapDesignation(designation)
+    if (normalized === "precompte" || normalized === "reversement" || normalized === "total") return row
+
+    const collecteeMeta = collecteeByRow.get(normalized) ?? {}
+    const situationMeta = situationByRow.get(normalizePayerSourceKey(designation)) ?? {}
+
+    let next = row
+    const collecteeReason = collecteeMeta.tva ?? collecteeMeta.ht ?? collecteeMeta.ttc
+    if (collecteeReason) {
+      next = setRecapMissingCell(next, "collectee", collecteeReason)
+      next = setRecapMissingCell(next, "payer", collecteeReason)
+    }
+
+    const immoReason = situationMeta.immo
+    const biensReason = situationMeta.biens
+    const aggregateReason = chooseAggregateMissingReason(
+      [immoReason, biensReason].filter(Boolean) as RecapMissingReason[],
+    )
+
+    if (immoReason) next = setRecapMissingCell(next, "immo", immoReason)
+    if (biensReason) next = setRecapMissingCell(next, "biens", biensReason)
+    if (immoReason || biensReason) {
+      next = setRecapMissingCell(next, "totalDed", aggregateReason)
+      next = setRecapMissingCell(next, "payer", aggregateReason)
+    }
+
+    return next
+  })
+
+  const nonTotalReasons = nextRows
+    .filter((row) => normalizeRecapDesignation(safeString(row.designation)) !== "total")
+    .flatMap((row) => Object.values(parseRecapMissingMap(row)))
+
+  if (nonTotalReasons.length === 0) return nextRows
+
+  const totalReason = chooseAggregateMissingReason(nonTotalReasons)
+  return nextRows.map((row) => {
+    if (normalizeRecapDesignation(safeString(row.designation)) !== "total") return row
+
+    let next = setRecapMissingCell(row, "collectee", totalReason)
+    next = setRecapMissingCell(next, "immo", totalReason)
+    next = setRecapMissingCell(next, "biens", totalReason)
+    next = setRecapMissingCell(next, "totalDed", totalReason)
+    next = setRecapMissingCell(next, "payer", totalReason)
+    return next
+  })
+}
+
+const annotateG50Missing = (
+  rows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+  tvaAPayerRows: Record<string, string>[],
+  tvaSituationRows: Record<string, string>[],
+  droitsTimbreRows: Record<string, string>[],
+  tapRows: Record<string, string>[],
+): Record<string, string>[] => {
+  const tvaAPayerTotal = tvaAPayerRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const tvaSituationTotal = tvaSituationRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const droitsTimbreTotal = droitsTimbreRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const tapTotal = tapRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+
+  return clearRecapMissingMeta(rows).map((row) => {
+    const normalized = normalizeRecapDesignation(safeString(row.designation))
+
+    let reason: RecapMissingReason | null = null
+
+    if (normalized === "acompte provisionel") {
+      reason = resolveDeclarationStatus(declarations, "acompte", mois, annee)
+    } else if (normalized === "tva collectee") {
+      reason = tvaAPayerTotal ? (getRecapMissingReason(tvaAPayerTotal, "collectee") ?? "ok") : "missing_declaration"
+    } else if (normalized === "tva deductible") {
+      reason = tvaSituationTotal ? (getRecapMissingReason(tvaSituationTotal, "totalDed") ?? "ok") : "missing_declaration"
+    } else if (normalized === "total tva a payer (voir la piece)") {
+      reason = tvaAPayerTotal ? (getRecapMissingReason(tvaAPayerTotal, "payer") ?? "ok") : "missing_declaration"
+    } else if (normalized === "droit de timbre") {
+      reason = droitsTimbreTotal ? (getRecapMissingReason(droitsTimbreTotal, "montant") ?? "ok") : "missing_declaration"
+    } else if (normalized === "tacp 7%" || normalized === "tnfpdal 1%") {
+      reason = resolveDeclarationStatus(declarations, "ca_tap", mois, annee)
+    } else if (normalized === "irg salaire" || normalized === "autre irg") {
+      reason = resolveDeclarationStatus(declarations, "irg", mois, annee)
+    } else if (normalized === "taxe de formation") {
+      reason = resolveDeclarationStatus(declarations, "taxe_formation", mois, annee)
+    } else if (normalized === "taxe vehicule") {
+      reason = resolveDeclarationStatus(declarations, "taxe_vehicule", mois, annee)
+    } else if (normalized === "la tap") {
+      reason = tapTotal ? (getRecapMissingReason(tapTotal, "taxe") ?? "ok") : "missing_declaration"
+    } else if (normalized === "taxe 2%") {
+      reason = resolveDeclarationStatus(declarations, "taxe2", mois, annee)
+    } else if (normalized === "taxe 1,5% sur masters (voir la piece)") {
+      reason = resolveDeclarationStatus(declarations, "taxe_masters", mois, annee)
+    } else if (normalized === "total declaration g 50 (voir la piece)" || normalized === "total") {
+      const componentReasons = [
+        resolveDeclarationStatus(declarations, "acompte", mois, annee),
+        resolveDeclarationStatus(declarations, "encaissement", mois, annee),
+        resolveDeclarationStatus(declarations, "tva_immo", mois, annee),
+        resolveDeclarationStatus(declarations, "tva_biens", mois, annee),
+        resolveDeclarationStatus(declarations, "droits_timbre", mois, annee),
+        resolveDeclarationStatus(declarations, "ca_tap", mois, annee),
+        resolveDeclarationStatus(declarations, "irg", mois, annee),
+        resolveDeclarationStatus(declarations, "taxe_formation", mois, annee),
+        resolveDeclarationStatus(declarations, "taxe_vehicule", mois, annee),
+        resolveDeclarationStatus(declarations, "etat_tap", mois, annee),
+        resolveDeclarationStatus(declarations, "taxe2", mois, annee),
+        resolveDeclarationStatus(declarations, "taxe_masters", mois, annee),
+      ].filter((status) => status !== "ok") as RecapMissingReason[]
+
+      if (componentReasons.length > 0) {
+        reason = chooseAggregateMissingReason(componentReasons)
+      } else {
+        reason = "ok"
+      }
+    } else {
+      reason = "ok"
+    }
+
+    if (!reason || reason === "ok") return row
+    return setRecapMissingCell(row, "montant", reason)
+  })
+}
+
+const getRecapMissingLegendItems = (rows: Record<string, string>[]): string[] => {
+  const reasons = new Set<RecapMissingReason>()
+  for (const row of rows) {
+    for (const reason of Object.values(parseRecapMissingMap(row))) {
+      reasons.add(reason)
+    }
+  }
+
+  return Array.from(reasons).map((reason) => RECAP_MISSING_REASON_LABEL[reason])
 }
 
 const getTvaAmountForRecap = (row: TvaRow): number => {
@@ -3580,6 +3931,10 @@ export default function NouvelleDeclarationPage() {
     [activeRecapTab],
   )
   const activeRecapRows = recapRowsByKey[activeRecapTab] ?? []
+  const activeRecapMissingLegendItems = useMemo(
+    () => getRecapMissingLegendItems(activeRecapRows),
+    [activeRecapRows],
+  )
 
   const resolveDirectionForRole = useCallback(
     (fallbackDirection = "") => {
@@ -3692,6 +4047,7 @@ export default function NouvelleDeclarationPage() {
               annee: String((item as { annee?: unknown }).annee ?? "").trim(),
               direction: String((item as { direction?: unknown }).direction ?? "").trim(),
               dataJson: String((item as { dataJson?: unknown }).dataJson ?? "{}"),
+              isApproved: (item as { isApproved?: unknown }).isApproved === false ? false : true,
             }))
           : []
 
@@ -3711,15 +4067,51 @@ export default function NouvelleDeclarationPage() {
   }, [status, user])
 
   useEffect(() => {
-    const collecteeRows = buildTvaCollecteeRecapRows(mois, annee, fiscalDeclarations)
-    const situationRows = buildTvaSituationRecapRows(mois, annee, fiscalDeclarations)
-    const recapRows = buildTvaAPayerRecapRows(collecteeRows, situationRows)
+    const approvedDeclarations = fiscalDeclarations.filter((declaration) => declaration.isApproved !== false)
+
+    const collecteeRows = annotateTvaCollecteeMissing(
+      buildTvaCollecteeRecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+    )
+    const situationRows = annotateTvaSituationMissing(
+      buildTvaSituationRecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+    )
+    const recapRows = annotateTvaAPayerMissing(buildTvaAPayerRecapRows(collecteeRows, situationRows), collecteeRows, situationRows)
     const masters15Rows = recalcMasters15RecapRows(buildMasters15RecapRows())
-    const tap15Rows = buildTap15RecapRows(mois, annee, fiscalDeclarations)
-    const tnfdal1Rows = buildTap15RecapRows(mois, annee, fiscalDeclarations)
+    const tap15Rows = annotateTapLikeMissing(
+      buildTap15RecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+    )
+    const tnfdal1Rows = annotateTapLikeMissing(
+      buildTap15RecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+    )
     const tacp7Rows = recalcTacp7RecapRows(buildTacp7RecapRows())
-    const droitsTimbreRows = buildDroitsTimbreRecapRows(mois, annee, fiscalDeclarations)
-    const g50Rows = buildG50RecapRows(mois, annee, fiscalDeclarations)
+    const droitsTimbreRows = annotateDroitsTimbreMissing(
+      buildDroitsTimbreRecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+    )
+    const g50Rows = annotateG50Missing(
+      buildG50RecapRows(mois, annee, approvedDeclarations),
+      fiscalDeclarations,
+      mois,
+      annee,
+      recapRows,
+      situationRows,
+      droitsTimbreRows,
+      tap15Rows,
+    )
 
     setRecapRowsByKey({
       tva_collectee: blankZeroManualRecapCells("tva_collectee", collecteeRows),
@@ -3860,7 +4252,7 @@ export default function NouvelleDeclarationPage() {
           ...prev,
           tva_collectee: nextCollectee,
           tva_situation: nextSituation,
-          tva_a_payer: buildTvaAPayerRecapRows(nextCollectee, nextSituation),
+          tva_a_payer: annotateTvaAPayerMissing(buildTvaAPayerRecapRows(nextCollectee, nextSituation), nextCollectee, nextSituation),
         }
       }
 
@@ -4594,6 +4986,8 @@ export default function NouvelleDeclarationPage() {
                               const mandatory = isRecapCellMandatory(activeRecapTab, designation, column.key)
                               const cellValue = safeString(row[column.key])
                               const formula = getRecapCellFormula(activeRecapTab, designation, column.key)
+                              const missingReason = getRecapMissingReason(row, column.key)
+                              const missingHint = missingReason ? ` - ${RECAP_MISSING_REASON_LABEL[missingReason]} (valeur forcée à 0)` : ""
 
                               if (column.key === "designation") {
                                 return (
@@ -4617,12 +5011,12 @@ export default function NouvelleDeclarationPage() {
                                           value={cellValue}
                                           onChange={editable ? (event) => handleRecapCellChange(rowIndex, column.key, event.target.value) : undefined}
                                           readOnly={!editable}
-                                          className={`h-7 px-2 text-xs ${editable ? "bg-white" : "bg-gray-100 text-gray-500"}`}
+                                          className={`h-7 px-2 text-xs ${missingReason ? "bg-orange-100" : editable ? "bg-white" : "bg-gray-100 text-gray-500"}`}
                                           placeholder="0,00"
                                         />
                                       </div>
                                     </TooltipTrigger>
-                                    <TooltipContent side="top">{formula}</TooltipContent>
+                                    <TooltipContent side="top">{`${formula}${missingHint}`}</TooltipContent>
                                   </Tooltip>
                                 </td>
                               )
@@ -4632,6 +5026,12 @@ export default function NouvelleDeclarationPage() {
                       </tbody>
                     </table>
                   </div>
+
+                  {activeRecapMissingLegendItems.length > 0 && (
+                    <div className="rounded border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+                      Déclaration non saisie : les données manquantes sont remplacées par 0.
+                    </div>
+                  )}
 
                   <div className="flex justify-end">
                     <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
