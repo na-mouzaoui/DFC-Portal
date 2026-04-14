@@ -10,6 +10,8 @@ export const REGIONAL_FISCAL_TAB_KEYS = [
 ] as const
 
 export const FINANCE_FISCAL_TAB_KEYS = [
+  "tva_immo",
+  "tva_biens",
   "ca_siege",
   "irg",
   "taxe2",
@@ -26,11 +28,20 @@ const normalizeRole = (role?: string | null) => (role ?? "").trim().toLowerCase(
 const normalizeDirection = (direction?: string | null) => (direction ?? "").trim().toLowerCase()
 const normalizeTabKey = (tabKey?: string | null) => (tabKey ?? "").trim().toLowerCase()
 
-export const isAdminFiscalRole = (role?: string | null) => normalizeRole(role) === "admin"
-export const isRegionalFiscalRole = (role?: string | null) => normalizeRole(role) === "regionale"
+const canonicalRole = (role?: string | null) => {
+  const normalized = normalizeRole(role)
+
+  if (["admin", "administrateur", "administrator"].includes(normalized)) return "admin"
+  if (["regionale", "régionale", "regional", "region"].includes(normalized)) return "regionale"
+  if (["comptabilite", "comptabilité", "finance", "direction"].includes(normalized)) return "finance"
+
+  return normalized
+}
+
+export const isAdminFiscalRole = (role?: string | null) => canonicalRole(role) === "admin"
+export const isRegionalFiscalRole = (role?: string | null) => canonicalRole(role) === "regionale"
 export const isFinanceFiscalRole = (role?: string | null) => {
-  const normalizedRole = normalizeRole(role)
-  return normalizedRole === "comptabilite" || normalizedRole === "finance"
+  return canonicalRole(role) === "finance"
 }
 
 export const isHeadOfficeDirection = (direction?: string | null) => {
@@ -41,7 +52,7 @@ export const isHeadOfficeDirection = (direction?: string | null) => {
 const getPolicyForRole = (role?: string | null) => {
   const policy = getCachedFiscalPolicy()
   if (!policy) return null
-  if (normalizeRole(policy.role) !== normalizeRole(role)) return null
+  if (canonicalRole(policy.role) !== canonicalRole(role)) return null
   return policy
 }
 

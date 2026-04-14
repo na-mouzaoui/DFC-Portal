@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         {children}
         <Toaster />
-        {/* Vercel Analytics supprimé */}
+        {}
       </body>
     </html>
   )

@@ -1401,6 +1401,13 @@ export default function FiscaDashboardPage() {
       if (!printZone || !tableElement) return
 
       try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        await fetch(`${API_BASE}/api/fiscal/${decl.id}/print`, {
+          method: "POST",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }).catch(() => null)
+
         const [{ jsPDF }, { default: autoTable }] = await Promise.all([
           import("jspdf"),
           import("jspdf-autotable"),
@@ -2421,7 +2428,7 @@ export default function FiscaDashboardPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-base">
-                Etats de sortie
+                Recap
                 {recaps.length > 0 && (
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
                     ({filteredRecaps.length}{hasActiveRecapFilters ? ` / ${recaps.length}` : ""})
@@ -2483,11 +2490,11 @@ export default function FiscaDashboardPage() {
           <CardContent>
             {recaps.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucun etat de sortie pour le moment.
+                Aucun recap pour le moment.
               </p>
             ) : filteredRecaps.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucun etat de sortie ne correspond aux filtres.
+                Aucun recap ne correspond aux filtres.
               </p>
             ) : (
               <div className="max-h-[540px] overflow-auto">

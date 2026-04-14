@@ -35,6 +35,34 @@ public class FiscalFournisseursController : ControllerBase
         return await _context.Users.FindAsync(userId);
     }
 
+    private static string NormalizeNif(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        return string.Concat(value.Where(c => !char.IsWhiteSpace(c))).Trim().ToUpperInvariant();
+    }
+
+    private async Task<bool> FiscalFournisseurNifExistsAsync(string nif, int? excludedId = null)
+    {
+        var normalizedNif = NormalizeNif(nif);
+        if (string.IsNullOrWhiteSpace(normalizedNif)) return false;
+
+        var candidates = await _context.FiscalFournisseurs
+            .AsNoTracking()
+            .Select(f => new { f.Id, f.NIF })
+            .ToListAsync();
+
+        foreach (var item in candidates)
+        {
+            if (excludedId.HasValue && item.Id == excludedId.Value)
+                continue;
+
+            if (NormalizeNif(item.NIF) == normalizedNif)
+                return true;
+        }
+
+        return false;
+    }
+
     // GET api/fiscal-fournisseurs
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -62,6 +90,12 @@ public class FiscalFournisseursController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.RaisonSociale))
             return BadRequest(new { message = "La raison sociale est obligatoire." });
+
+        if (string.IsNullOrWhiteSpace(dto.NIF))
+            return BadRequest(new { message = "Le NIF est obligatoire." });
+
+        if (await FiscalFournisseurNifExistsAsync(dto.NIF))
+            return Conflict(new { message = "Un fournisseur fiscal avec ce NIF existe déjà." });
 
         var userId = GetCurrentUserId();
         if (userId <= 0)
@@ -129,6 +163,12 @@ public class FiscalFournisseursController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.RaisonSociale))
             return BadRequest(new { message = "La raison sociale est obligatoire." });
+
+        if (string.IsNullOrWhiteSpace(dto.NIF))
+            return BadRequest(new { message = "Le NIF est obligatoire." });
+
+        if (await FiscalFournisseurNifExistsAsync(dto.NIF, id))
+            return Conflict(new { message = "Un fournisseur fiscal avec ce NIF existe déjà." });
 
         var userId = GetCurrentUserId();
         var currentUser = await GetCurrentUserAsync();

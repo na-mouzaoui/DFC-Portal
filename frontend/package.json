@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build && node copy-worker.js",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "lint": "eslint .",
     "start": "next start"
   },

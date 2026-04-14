@@ -4,14 +4,17 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
-import { Plus, Trash2, Save } from "lucide-react"
+import { Building2, CalendarDays, Plus, Trash2, Save } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
@@ -33,43 +36,60 @@ const fmt = (v: number | string) => {
   return `${formattedInt},${decPart}`
 }
 
-const normalizeAmountInput = (value: string) => {
+const normalizeAmountInput = (value: string, allowNegative = false) => {
   const raw = value.replace(/\u00A0/g, " ").trim()
   if (!raw) return ""
 
-  const hasTrailingSeparator = /[.,]$/.test(raw)
   const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
-  const cleaned = standardized.replace(/[^0-9.]/g, "")
-  if (!cleaned) return ""
+  const hasLeadingMinus = allowNegative && standardized.startsWith("-")
+  const unsigned = standardized.replace(/-/g, "")
+  const hasTrailingSeparator = /\.$/.test(unsigned)
+  const cleaned = unsigned.replace(/[^0-9.]/g, "")
+
+  // Preserve in-progress negative typing states so users can start with "-".
+  if (!cleaned) {
+    if (hasLeadingMinus && (standardized === "-" || standardized === "-.")) {
+      return standardized
+    }
+    return ""
+  }
 
   const parts = cleaned.split(".")
   const integerPart = (parts[0] || "0").replace(/^0+(?=\d)/, "")
   const decimalPart = parts.slice(1).join("").slice(0, 2)
 
+  const signedIntegerPart = hasLeadingMinus ? `-${integerPart}` : integerPart
+
   if (hasTrailingSeparator && decimalPart.length === 0) {
-    return `${integerPart}.`
+    return `${signedIntegerPart}.`
   }
 
-  return decimalPart ? `${integerPart}.${decimalPart}` : integerPart
+  return decimalPart ? `${signedIntegerPart}.${decimalPart}` : signedIntegerPart
 }
 
-const formatAmountInput = (value: string) => {
-  const normalized = normalizeAmountInput(value)
+const formatAmountInput = (value: string, allowNegative = false) => {
+  const normalized = normalizeAmountInput(value, allowNegative)
   if (!normalized) return ""
+  if (normalized === "-") return "-"
+  if (normalized === "-.") return "-,"
 
-  const hasTrailingDot = normalized.endsWith(".")
-  const [integerPart, decimalPart = ""] = normalized.split(".")
+  const isNegative = normalized.startsWith("-")
+  const normalizedAbsolute = isNegative ? normalized.slice(1) : normalized
+  const hasTrailingDot = normalizedAbsolute.endsWith(".")
+  const [integerPart, decimalPart = ""] = normalizedAbsolute.split(".")
   const groupedIntegerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  const signedGroupedIntegerPart = isNegative ? `-${groupedIntegerPart}` : groupedIntegerPart
 
   if (hasTrailingDot) {
-    return `${groupedIntegerPart},`
+    return `${signedGroupedIntegerPart},`
   }
 
-  return decimalPart ? `${groupedIntegerPart},${decimalPart}` : groupedIntegerPart
+  return decimalPart ? `${signedGroupedIntegerPart},${decimalPart}` : signedGroupedIntegerPart
 }
 
-const num = (v: string) => {
-  const normalized = normalizeAmountInput(v)
+const num = (v: string, allowNegative = true) => {
+  const normalized = normalizeAmountInput(v, allowNegative)
+  if (!normalized || normalized === "-" || normalized === "-.") return 0
   const parseReady = normalized.endsWith(".") ? normalized.slice(0, -1) : normalized
   return parseFloat(parseReady) || 0
 }
@@ -77,12 +97,13 @@ const num = (v: string) => {
 type AmountInputProps = Omit<React.ComponentProps<typeof Input>, "type" | "value" | "onChange"> & {
   value: string
   onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void
+  allowNegative?: boolean
 }
 
-function AmountInput({ value, onChange, ...props }: AmountInputProps) {
+function AmountInput({ value, onChange, allowNegative = false, ...props }: AmountInputProps) {
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!onChange) return
-    const normalizedValue = normalizeAmountInput(event.target.value)
+    const normalizedValue = normalizeAmountInput(event.target.value, allowNegative)
     onChange({
       ...event,
       target: { ...event.target, value: normalizedValue },
@@ -95,7 +116,7 @@ function AmountInput({ value, onChange, ...props }: AmountInputProps) {
       {...props}
       type="text"
       inputMode="decimal"
-      value={formatAmountInput(value)}
+      value={formatAmountInput(value, allowNegative)}
       onChange={handleChange}
     />
   )
@@ -107,14 +128,22 @@ function AmountInput({ value, onChange, ...props }: AmountInputProps) {
 // 
 type EncRow = { designation: string; ht: string }
 
+const FIXED_ENCAISSEMENT_DESIGNATIONS = [
+  "POST/PRE PAID VI/VD 19%",
+  "CHIFFRE D'AFFAIRES EXONERE",
+] as const
+
+const FIXED_ENCAISSEMENT_ROWS: EncRow[] = FIXED_ENCAISSEMENT_DESIGNATIONS.map((designation) => ({
+  designation,
+  ht: "",
+}))
+
 interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateAction<EncRow[]>>
   onSave: () => void;
   isSubmitting: boolean;
 }
 
 function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
-  const addRow    = () => setRows((p) => [...p, { designation: "", ht: "" }])
-  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof EncRow, val: string) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
 
@@ -147,8 +176,8 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                   <td className="px-1 py-1 border-b">
-                    <Input value={row.designation} onChange={(e) => update(i, "designation", e.target.value)}
-                      className="h-7 px-2 text-xs" placeholder="Designation" style={{ minWidth: 200 }} />
+                    <Input value={row.designation} readOnly
+                      className="h-7 px-2 text-xs bg-gray-50" placeholder="Designation" style={{ minWidth: 200 }} />
                   </td>
                   <td className="px-1 py-1 border-b">
                     <AmountInput value={row.ht}
@@ -161,10 +190,7 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
                   <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
                     {row.ht ? fmt(ttc) : "-"}
                   </td>
-                  <td className="px-2 py-1 text-center border-b">
-                    <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                      className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                  </td>
+                  <td className="px-2 py-1 text-center border-b text-gray-300">-</td>
                 </tr>
               )
             })}
@@ -172,19 +198,16 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totals.ht)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(totals.tva)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(totals.ttc)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totals.ht)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{fmt(totals.tva)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{fmt(totals.ttc)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
         </table>
       </div>
       <div className="flex justify-between items-center">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}
-          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-          <Plus size={13} /> Ajouter une ligne
-        </Button>
+        <p className="text-xs text-muted-foreground">Lignes fixes: la designation n'est pas modifiable.</p>
         <Button size="sm" onClick={onSave} disabled={isSubmitting}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
@@ -398,7 +421,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                   <td className="px-1 py-1 border-b"><Input value={currentRow.authRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.numFacture ?? ""} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
                   <td className="px-1 py-1 border-b"><Input type="date" value={currentRow.dateFacture ?? ""} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
-                  <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                  <td className="px-1 py-1 border-b"><AmountInput allowNegative step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
                   {withSelectableRate && (
                     <td className="px-1 py-1 border-b">
                       <select
@@ -419,9 +442,9 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                       {currentRow.montantHT && normalizeTvaRate(currentRow.tauxTVA) ? fmt(rowTva) : "-"}
                     </td>
                   ) : (
-                    <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={currentRow.tva ?? ""} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
+                    <td className="px-1 py-1 border-b"><AmountInput allowNegative step="0.01" value={currentRow.tva ?? ""} onChange={(e) => update(i, "tva", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
                   )}
-                  <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{ttc > 0 ? fmt(ttc) : "-"}</td>
+                  <td className="px-1 py-1 border-b text-xs text-right pr-3 text-gray-600" style={{ minWidth: 110 }}>{currentRow.montantHT || currentRow.tva ? fmt(ttc) : "-"}</td>
                   <td className="px-2 py-1 text-center border-b">
                     <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                       className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
@@ -433,10 +456,10 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={9} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalHT)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalHT)}</td>
               {withSelectableRate && <td className="px-3 py-2 text-xs text-center border-t text-gray-500"></td>}
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTVA)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTTC)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalTVA)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalTTC)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -461,14 +484,18 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
 // 
 type TimbreRow = { designation: string; caTTCEsp: string; droitTimbre: string }
 
+const FIXED_TIMBRE_ROW: TimbreRow = {
+  designation: "VENTES DIRECTES / INDIRECTES",
+  caTTCEsp: "",
+  droitTimbre: "",
+}
+
 interface Tab4Props { rows: TimbreRow[]; setRows: React.Dispatch<React.SetStateAction<TimbreRow[]>>;
   onSave: () => void;
   isSubmitting: boolean;
 }
 
 function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
-  const addRow    = () => setRows((p) => [...p, { designation: "", caTTCEsp: "", droitTimbre: "" }])
-  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const update    = (i: number, field: keyof TimbreRow, val: string) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
 
@@ -492,31 +519,25 @@ function TabDroitsTimbre({ rows, setRows, onSave, isSubmitting }: Tab4Props) {
             {rows.map((row, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input value={row.designation} onChange={(e) => update(i, "designation", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 220 }} placeholder="Designation" /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.designation} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 220 }} placeholder="Designation" /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.caTTCEsp} onChange={(e) => update(i, "caTTCEsp", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 150 }} placeholder="0.00" /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.droitTimbre} onChange={(e) => update(i, "droitTimbre", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 140 }} placeholder="0.00" /></td>
-                <td className="px-2 py-1 text-center border-b">
-                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                </td>
+                <td className="px-2 py-1 text-center border-b text-gray-300">-</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalCA)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalDroit)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalCA)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalDroit)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
         </table>
       </div>
       <div className="flex justify-between items-center">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}
-          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-          <Plus size={13} /> Ajouter une ligne
-        </Button>
+        <p className="text-xs text-muted-foreground">Ligne fixe: VENTES DIRECTES / INDIRECTES.</p>
         <Button size="sm" onClick={onSave} disabled={isSubmitting}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
@@ -580,8 +601,8 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(num(b12) + num(b13))}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right [direction:rtl]">{fmt(c12 + c13)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(num(b12) + num(b13))}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{fmt(c12 + c13)}</td>
             </tr>
           </tfoot>
         </table>
@@ -712,7 +733,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                   </td>
 
                   {/* TAP 1,5% (calcule) */}
-                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50 text-right [direction:rtl]">
+                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50 text-right">
                     {row.tap2 ? fmt(num(row.tap2) * 0.015) : "-"}
                   </td>
 
@@ -727,8 +748,8 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={3} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t text-right [direction:rtl]">{fmt(totalImposable)} DZD</td>
-              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t text-right [direction:rtl]">{fmt(totalTAP)} DZD</td>
+              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t text-right">{fmt(totalImposable)} DZD</td>
+              <td className="px-3 py-2 text-sm font-bold text-green-700 border-t text-right">{fmt(totalTAP)} DZD</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -794,8 +815,8 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             ))}
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 1</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t1ttc)}</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t1ht)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ht)}</td>
             </tr>
             {SIEGE_G2_LABELS.map((lbl, i) => (
               <tr key={i + 2} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
@@ -806,13 +827,13 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             ))}
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 2</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t2ttc)}</td>
-              <td className="px-3 py-2 text-xs border-b text-right font-bold [direction:rtl]">{fmt(t2ht)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ttc)}</td>
+              <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ht)}</td>
             </tr>
             <tr style={grandRow}>
               <td className="px-4 py-2 text-xs font-bold text-green-800">TOTAL GENERAL</td>
-              <td className="px-3 py-2 text-xs text-right font-bold text-green-800 [direction:rtl]">{fmt(t1ttc + t2ttc)}</td>
-              <td className="px-3 py-2 text-xs text-right font-bold text-green-800 [direction:rtl]">{fmt(t1ht + t2ht)}</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ttc + t2ttc)}</td>
+              <td className="px-3 py-2 text-xs text-right font-bold text-green-800">{fmt(t1ht + t2ht)}</td>
             </tr>
           </tbody>
         </table>
@@ -864,8 +885,8 @@ function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalAssiet)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(total)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalAssiet)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -914,8 +935,8 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalBase)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalMont)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalBase)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalMont)}</td>
             </tr>
           </tfoot>
         </table>
@@ -999,8 +1020,8 @@ function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={5} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalHT)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(totalTaxe)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalHT)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalTaxe)}</td>
               <td colSpan={3} className="border-t" />
             </tr>
           </tfoot>
@@ -1084,7 +1105,7 @@ function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(total)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1130,7 +1151,7 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
                   <AmountInput min={0} step="0.01" value={v} onChange={(e) => upd(i, e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 80 }} />
                 </td>
               ))}
-              <td className="px-3 py-1 text-xs border-b font-semibold text-green-700 bg-green-50 text-right [direction:rtl]">{fmt(total)}</td>
+              <td className="px-3 py-1 text-xs border-b font-semibold text-green-700 bg-green-50 text-right">{fmt(total)}</td>
             </tr>
           </tbody>
         </table>
@@ -1196,12 +1217,12 @@ function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantBrutDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("tauxChange"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantBrutDinars"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantNetDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantIBS"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(s("montantNetDinars"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantBrutDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("tauxChange"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantBrutDinars"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantNetDevise"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantIBS"))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantNetDinars"))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1275,12 +1296,12 @@ function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
               <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
               <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1346,10 +1367,10 @@ function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right [direction:rtl]">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
@@ -1442,6 +1463,15 @@ type ApiFiscalDeclaration = {
   direction: string
   dataJson: string
   isApproved?: boolean
+}
+
+type ExistingDeclarationPreview = {
+  id: string
+  tabKey: string
+  direction: string
+  mois: string
+  annee: string
+  data: Record<string, unknown>
 }
 
 type RecapMode = "declaration" | "etats_sortie"
@@ -2068,7 +2098,7 @@ const annotateG50Missing = (
   return clearRecapMissingMeta(rows).map((row) => {
     const normalized = normalizeRecapDesignation(safeString(row.designation))
 
-    let reason: RecapMissingReason | null = null
+    let reason: RecapMissingReason | "ok" | null = null
 
     if (normalized === "acompte provisionel") {
       reason = resolveDeclarationStatus(declarations, "acompte", mois, annee)
@@ -2938,19 +2968,19 @@ const fillRows = <T,>(rows: T[], size: number, makeDefault: () => T) => {
 }
 
 const normalizeEncRows = (rows?: EncRow[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<EncRow> & { ttc?: string }
+  const sourceRows = rows ?? []
+  return FIXED_ENCAISSEMENT_DESIGNATIONS.map((designation, index) => {
+    const row = sourceRows[index] as (Partial<EncRow> & { ttc?: string }) | undefined
+    const source = row ?? {}
     const existingHt = safeString(source.ht)
     const legacyTtc = safeString(source.ttc)
-    const migratedHt = legacyTtc.trim() ? (num(legacyTtc) / 1.19).toFixed(2) : ""
+    const migratedHt = legacyTtc.trim() ? (num(legacyTtc, true) / 1.19).toFixed(2) : ""
 
     return {
-      designation: safeString(source.designation),
+      designation,
       ht: existingHt || migratedHt,
     }
   })
-
-  return normalized.length > 0 ? normalized : [{ designation: "", ht: "" }]
 }
 
 const normalizeTvaRows = (rows?: TvaRow[]) => {
@@ -2976,12 +3006,12 @@ const normalizeTvaRows = (rows?: TvaRow[]) => {
 }
 
 const normalizeTimbreRows = (rows?: TimbreRow[]) => {
-  const normalized = (rows ?? []).map((row) => ({
-    designation: safeString((row as Partial<TimbreRow>).designation),
-    caTTCEsp: safeString((row as Partial<TimbreRow>).caTTCEsp),
-    droitTimbre: safeString((row as Partial<TimbreRow>).droitTimbre),
-  }))
-  return normalized.length > 0 ? normalized : [{ designation: "", caTTCEsp: "", droitTimbre: "" }]
+  const first = (rows ?? [])[0] as Partial<TimbreRow> | undefined
+  return [{
+    designation: FIXED_TIMBRE_ROW.designation,
+    caTTCEsp: safeString(first?.caTTCEsp),
+    droitTimbre: safeString(first?.droitTimbre),
+  }]
 }
 
 const normalizeTapRows = (rows?: TAPRow[]) => {
@@ -3236,7 +3266,6 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
   const mon  = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const c12  = num(b12) * 0.07
   const c13  = num(b13) * 0.01
-
   const thStyle: React.CSSProperties = {
     border: "1px solid #000", padding: "4px 6px", backgroundColor: "#fff", color: "#000",
     fontSize: 11, fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", verticalAlign: "middle",
@@ -3775,6 +3804,178 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
   )
 }
 
+const popupText = (value: unknown) => {
+  const normalized = String(value ?? "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim()
+  return normalized || "-"
+}
+
+function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: SavedDeclaration }) {
+  if (tabKey === "tva_immo" || tabKey === "tva_biens") {
+    const rows = tabKey === "tva_immo" ? (decl.tvaImmoRows ?? []) : (decl.tvaBiensRows ?? [])
+    const totalLabel = tabKey === "tva_immo" ? "TOTAL TVA SUR IMMOBILISATION 445620" : "TOTAL TVA SUR BIENS ET SERVICES"
+    const tHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
+    const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
+    const tTTC = tHT + tTVA
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {["Nom et prénoms /Raison sociale", "Adresse", "NIF", "Authentification du NIF", "RC n°", "Authentification du n°RC", "Facture n°", "Date", "Montant HT", "TVA", "Montant TTC"].map((h) => (
+              <TableHead key={h} className={["Montant HT", "TVA", "Montant TTC"].includes(h) ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r, i) => {
+            const rowTva = getTvaAmount(r, true)
+            return (
+              <TableRow key={i}>
+                <TableCell className="text-xs">{popupText(r.nomRaisonSociale)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.adresse)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.nif)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.authNif)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.numRC)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.authRC)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.numFacture)}</TableCell>
+                <TableCell className="text-xs">{popupText(r.dateFacture)}</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{fmt(r.montantHT)}</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{fmt(rowTva)}</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{fmt(num(r.montantHT) + rowTva)}</TableCell>
+              </TableRow>
+            )
+          })}
+          <TableRow className="font-bold bg-muted">
+            <TableCell colSpan={8}>{totalLabel}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(tHT)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(tTVA)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(tTTC)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "encaissement") {
+    const rows = decl.encRows ?? []
+    const computed = rows.map((row) => {
+      const ht = num(row.ht)
+      const tva = ht * 0.19
+      return { designation: row.designation, ht, tva, ttc: ht + tva }
+    })
+    const totals = computed.reduce((acc, row) => ({ ht: acc.ht + row.ht, tva: acc.tva + row.tva, ttc: acc.ttc + row.ttc }), { ht: 0, tva: 0, ttc: 0 })
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {["DESIGNATIONS", "ENCAISSEMENTS HT", "TVA", "ENCAISSEMENTS TTC"].map((h) => (
+              <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {computed.map((r, i) => (
+            <TableRow key={i}>
+              <TableCell>{popupText(r.designation)}</TableCell>
+              <TableCell className="text-right font-semibold">{fmt(r.ht)}</TableCell>
+              <TableCell className="text-right font-semibold">{fmt(r.tva)}</TableCell>
+              <TableCell className="text-right font-semibold">{fmt(r.ttc)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totals.ht)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totals.tva)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totals.ttc)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  const rowsByKey: Record<string, unknown[]> = {
+    droits_timbre: decl.timbreRows ?? [],
+    etat_tap: decl.tapRows ?? [],
+    ca_siege: decl.caSiegeRows ?? [],
+    irg: decl.irgRows ?? [],
+    taxe2: decl.taxe2Rows ?? [],
+    taxe_masters: decl.masterRows ?? [],
+    taxe_formation: decl.taxe12Rows ?? [],
+    ibs: decl.ibs14Rows ?? [],
+    taxe_domicil: decl.taxe15Rows ?? [],
+    tva_autoliq: decl.tva16Rows ?? [],
+  }
+
+  const selectedRows = rowsByKey[tabKey] ?? []
+  if (tabKey === "ca_tap") {
+    const b12 = decl.b12 ?? ""
+    const b13 = decl.b13 ?? ""
+    const totalBase = num(b12) + num(b13)
+    const totalTaxe = num(b12) * 0.07 + num(b13) * 0.01
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {["DESIGNATIONS", "CA HT SOUMIS", "TAXE A VERSER"].map((h) => (
+              <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>CA RECHARGEMENT SOUMIS A 7%</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(b12)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(b12) * 0.07)}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>CA GLOBAL SOUMIS A 1%</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(b13)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(b13) * 0.01)}</TableCell>
+          </TableRow>
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
+    return <p className="text-sm text-muted-foreground">Aucune donnée pour ce tableau.</p>
+  }
+
+  const firstRow = selectedRows[0] as Record<string, unknown>
+  const headers = Object.keys(firstRow)
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {headers.map((header) => (
+            <TableHead key={header}>{header}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {selectedRows.map((row, rowIndex) => {
+          const typedRow = row as Record<string, unknown>
+          return (
+            <TableRow key={rowIndex}>
+              {headers.map((header) => (
+                <TableCell key={header} className="text-xs">{popupText(typedRow[header])}</TableCell>
+              ))}
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+}
+
 // 
 // PAGE
 // 
@@ -3868,10 +4069,10 @@ export default function NouvelleDeclarationPage() {
   const [fiscalPolicyRevision, setFiscalPolicyRevision] = useState(0)
 
   //  Tab data (lifted) 
-  const [encRows,       setEncRows]       = useState<EncRow[]>([{ designation: "", ht: "" }])
+  const [encRows,       setEncRows]       = useState<EncRow[]>(FIXED_ENCAISSEMENT_ROWS)
   const [tvaImmoRows,   setTvaImmoRows]   = useState<TvaRow[]>([{ ...EMPTY_TVA }])
   const [tvaBiensRows,  setTvaBiensRows]  = useState<TvaRow[]>([{ ...EMPTY_TVA }])
-  const [timbreRows,    setTimbreRows]    = useState<TimbreRow[]>([{ designation: "", caTTCEsp: "", droitTimbre: "" }])
+  const [timbreRows,    setTimbreRows]    = useState<TimbreRow[]>([{ ...FIXED_TIMBRE_ROW }])
   const [b12,           setB12]           = useState("")
   const [b13,           setB13]           = useState("")
   const [tapRows,       setTapRows]       = useState<TAPRow[]>([{ wilayaCode: "", commune: "", tap2: "" }])
@@ -3886,6 +4087,7 @@ export default function NouvelleDeclarationPage() {
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
   const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
+  const [showExistingDeclarationDialog, setShowExistingDeclarationDialog] = useState(false)
   const [recapRowsByKey, setRecapRowsByKey] = useState<Record<RecapKey, Record<string, string>[]>>({
     tva_collectee: [],
     tva_situation: [],
@@ -3956,6 +4158,40 @@ export default function NouvelleDeclarationPage() {
 
   const isDirectionLocked = isRegionalRole || isFinanceRole
   const effectiveDirection = isAdminRole ? safeString(direction).trim() : resolveDirectionForRole(direction)
+
+  const normalizeDirectionKey = useCallback((value: string) => {
+    return safeString(value)
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+  }, [])
+
+  const existingDeclarationMatch = useMemo(() => {
+    if (entryMode !== "declaration") return null
+    if (!activeTab || !mois || !annee || !effectiveDirection) return null
+
+    const expectedDirection = normalizeDirectionKey(effectiveDirection)
+    return fiscalDeclarations.find((declaration) => {
+      if (editingDeclarationId && String(declaration.id) === safeString(editingDeclarationId)) return false
+      return declaration.tabKey === activeTab
+        && declaration.mois === mois
+        && declaration.annee === annee
+        && normalizeDirectionKey(declaration.direction) === expectedDirection
+    }) ?? null
+  }, [activeTab, annee, editingDeclarationId, effectiveDirection, entryMode, fiscalDeclarations, mois, normalizeDirectionKey])
+
+  const existingDeclarationPreview = useMemo<ExistingDeclarationPreview | null>(() => {
+    if (!existingDeclarationMatch) return null
+    return {
+      id: String(existingDeclarationMatch.id),
+      tabKey: existingDeclarationMatch.tabKey,
+      direction: existingDeclarationMatch.direction,
+      mois: existingDeclarationMatch.mois,
+      annee: existingDeclarationMatch.annee,
+      data: parseFiscalDataPayload(existingDeclarationMatch.dataJson),
+    }
+  }, [existingDeclarationMatch])
 
   useEffect(() => {
     if (!userRole) return
@@ -4295,7 +4531,7 @@ export default function NouvelleDeclarationPage() {
     if (missingRequired) {
       toast({
         title: "Champs obligatoires",
-        description: "Veuillez renseigner tous les champs obligatoires avant d'enregistrer l'etat de sortie.",
+        description: "Veuillez renseigner tous les champs obligatoires avant d'enregistrer le recap.",
         variant: "destructive",
       })
       return
@@ -4348,7 +4584,7 @@ export default function NouvelleDeclarationPage() {
       }
 
       toast({
-        title: "Etat de sortie enregistre",
+        title: "Recap enregistre",
         description: `Le tableau ${activeRecapDefinition.title} a ete enregistre avec succes.`,
       })
       setIsSubmitting(false)
@@ -4363,17 +4599,18 @@ export default function NouvelleDeclarationPage() {
     }
   }, [activeRecapDefinition.columns, activeRecapDefinition.title, activeRecapTab, annee, mois, recapRowsByKey, router, toast])
 
-  if (isLoading || !user || status !== "authenticated") {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-muted-foreground">Chargement...</p>
-      </div>
-    )
-  }
-
   const handleSave = async () => {
     if (entryMode === "etats_sortie") {
       await handleSaveEtatsSortie()
+      return
+    }
+
+    if (existingDeclarationMatch && (!editingDeclarationId || String(existingDeclarationMatch.id) !== safeString(editingDeclarationId))) {
+      toast({
+        title: "Déclaration déjà existante",
+        description: "Une déclaration existe déjà pour ce tableau, cette période et cette direction. Utilisez Consulter, Supprimer ou Modifier.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -4803,6 +5040,143 @@ export default function NouvelleDeclarationPage() {
   }
 
 
+  const buildSavedDeclarationFromApi = useCallback((declaration: ApiFiscalDeclaration): SavedDeclaration => {
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const saved: SavedDeclaration = {
+      id: String(declaration.id),
+      createdAt: new Date().toISOString(),
+      direction: declaration.direction,
+      mois: declaration.mois,
+      annee: declaration.annee,
+    }
+
+    switch (declaration.tabKey) {
+      case "encaissement":
+        saved.encRows = normalizeEncRows(Array.isArray(payload.encRows) ? (payload.encRows as EncRow[]) : undefined)
+        break
+      case "tva_immo":
+        saved.tvaImmoRows = normalizeTvaRows(Array.isArray(payload.tvaImmoRows) ? (payload.tvaImmoRows as TvaRow[]) : undefined)
+        break
+      case "tva_biens":
+        saved.tvaBiensRows = normalizeTvaRows(Array.isArray(payload.tvaBiensRows) ? (payload.tvaBiensRows as TvaRow[]) : undefined)
+        break
+      case "droits_timbre":
+        saved.timbreRows = normalizeTimbreRows(Array.isArray(payload.timbreRows) ? (payload.timbreRows as TimbreRow[]) : undefined)
+        break
+      case "ca_tap":
+        saved.b12 = safeString(payload.b12)
+        saved.b13 = safeString(payload.b13)
+        break
+      case "etat_tap":
+        saved.tapRows = normalizeTapRows(Array.isArray(payload.tapRows) ? (payload.tapRows as TAPRow[]) : undefined)
+        break
+      case "ca_siege":
+        saved.caSiegeRows = normalizeSiegeRows(Array.isArray(payload.caSiegeRows) ? (payload.caSiegeRows as SiegeEncRow[]) : undefined)
+        break
+      case "irg":
+        saved.irgRows = normalizeIrgRows(Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : undefined)
+        break
+      case "taxe2":
+        saved.taxe2Rows = normalizeTaxe2Rows(Array.isArray(payload.taxe2Rows) ? (payload.taxe2Rows as Taxe2Row[]) : undefined)
+        break
+      case "taxe_masters":
+        saved.masterRows = normalizeMasterRows(Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : undefined)
+        break
+      case "taxe_vehicule":
+        saved.taxe11Montant = safeString(payload.taxe11Montant)
+        break
+      case "taxe_formation":
+        saved.taxe12Rows = normalizeTaxe12Rows(Array.isArray(payload.taxe12Rows) ? (payload.taxe12Rows as Taxe12Row[]) : undefined)
+        break
+      case "acompte":
+        saved.acompteMonths = normalizeAcompteMonths(Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : undefined)
+        break
+      case "ibs":
+        saved.ibs14Rows = normalizeIbsRows(Array.isArray(payload.ibs14Rows) ? (payload.ibs14Rows as Ibs14Row[]) : undefined)
+        break
+      case "taxe_domicil":
+        saved.taxe15Rows = normalizeTaxe15Rows(Array.isArray(payload.taxe15Rows) ? (payload.taxe15Rows as Taxe15Row[]) : undefined)
+        break
+      case "tva_autoliq":
+        saved.tva16Rows = normalizeTva16Rows(Array.isArray(payload.tva16Rows) ? (payload.tva16Rows as Tva16Row[]) : undefined)
+        break
+    }
+
+    return saved
+  }, [])
+
+  const upsertSavedDeclarationLocal = useCallback((declaration: SavedDeclaration) => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
+      const declarations = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
+      const next = [declaration, ...declarations.filter((item) => safeString(item.id) !== safeString(declaration.id))]
+      localStorage.setItem("fiscal_declarations", JSON.stringify(next))
+    } catch {
+      // Ignore local storage sync errors.
+    }
+  }, [])
+
+  const removeSavedDeclarationLocal = useCallback((declarationId: string) => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("fiscal_declarations") ?? "[]")
+      const declarations = Array.isArray(parsed) ? (parsed as SavedDeclaration[]) : []
+      const next = declarations.filter((item) => safeString(item.id) !== safeString(declarationId))
+      localStorage.setItem("fiscal_declarations", JSON.stringify(next))
+    } catch {
+      // Ignore local storage sync errors.
+    }
+  }, [])
+
+  const handleModifyExistingDeclaration = useCallback(() => {
+    if (!existingDeclarationMatch) return
+
+    const targetEditId = String(existingDeclarationMatch.id)
+    const targetTab = existingDeclarationMatch.tabKey
+    const saved = buildSavedDeclarationFromApi(existingDeclarationMatch)
+    upsertSavedDeclarationLocal(saved)
+
+    // Ensure edit loader effect runs immediately, even if the page does not remount.
+    setEntryMode("declaration")
+    setEditQuery({ editId: targetEditId, tab: targetTab })
+
+    setShowExistingDeclarationDialog(false)
+    router.push(`/declaration?editId=${encodeURIComponent(targetEditId)}&tab=${encodeURIComponent(targetTab)}`)
+  }, [buildSavedDeclarationFromApi, existingDeclarationMatch, router, upsertSavedDeclarationLocal])
+
+  const handleDeleteExistingDeclaration = useCallback(async () => {
+    if (!existingDeclarationMatch) return
+
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      const response = await fetch(`${API_BASE}/api/fiscal/${encodeURIComponent(String(existingDeclarationMatch.id))}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        const message = payload && typeof payload === "object" && "message" in payload
+          ? String((payload as { message?: unknown }).message ?? "Impossible de supprimer la déclaration existante")
+          : "Impossible de supprimer la déclaration existante"
+        toast({ title: "Suppression impossible", description: message, variant: "destructive" })
+        return
+      }
+
+      setFiscalDeclarations((prev) => prev.filter((item) => String(item.id) !== String(existingDeclarationMatch.id)))
+      removeSavedDeclarationLocal(String(existingDeclarationMatch.id))
+      setShowExistingDeclarationDialog(false)
+      toast({ title: "Déclaration supprimée", description: "La déclaration existante a été supprimée." })
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Impossible de contacter le serveur",
+        variant: "destructive",
+      })
+    }
+  }, [existingDeclarationMatch, removeSavedDeclarationLocal, toast])
+
+
   const activeColor = TABS.find((t) => t.key === activeTab)?.color ?? "#2db34b"
   const mon = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const directionSelectValue = entryMode === "etats_sortie" ? "Siege" : effectiveDirection
@@ -4816,15 +5190,21 @@ export default function NouvelleDeclarationPage() {
     return ""
   })()
 
+  if (isLoading || !user || status !== "authenticated") {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-sm text-muted-foreground">Chargement...</p>
+      </div>
+    )
+  }
+
   return (
     <LayoutWrapper user={user}>
       {/* Block global (direction) role */}
-      {user.role === "direction" || !hasFiscalTabAccess ? (
+      {!hasFiscalTabAccess ? (
         <AccessDeniedDialog
           title="Acces refuse"
-          message={user.role === "direction"
-            ? "Votre role ne vous permet pas de creer des declarations fiscales."
-            : "Votre role ne vous permet pas de gerer les tableaux fiscaux."}
+          message="Votre role ne vous permet pas de gerer les tableaux fiscaux."
           redirectTo="/fisca_dashbord"
         />
       ) : (
@@ -4856,7 +5236,6 @@ export default function NouvelleDeclarationPage() {
                 : "Remplissez chaque tableau, puis enregistrez."}
             </p>
           </div>
-
         </div>
 
         {/*  Global meta card (Direction + Periode)  */}
@@ -4866,7 +5245,7 @@ export default function NouvelleDeclarationPage() {
               <div className="flex items-center gap-2 text-xs font-medium text-emerald-800">
                 <span>Declaration</span>
                 <Switch checked={entryMode === "etats_sortie"} onCheckedChange={(checked) => setEntryMode(checked ? "etats_sortie" : "declaration")} />
-                <span>Etats de sortie</span>
+                <span>Recap</span>
               </div>
             </div>
             <div className="flex flex-wrap items-end gap-6">
@@ -4951,6 +5330,27 @@ export default function NouvelleDeclarationPage() {
                  {currentPeriodLockMessage}
               </p>
             )}
+            {existingDeclarationMatch && (
+              <div className="mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
+                <p className="font-semibold">Déclaration existante détectée pour les critères sélectionnés.</p>
+                <p className="mt-1">
+                  Tableau {TABS.find((tab) => tab.key === existingDeclarationMatch.tabKey)?.label ?? existingDeclarationMatch.tabKey}
+                  , période {MONTHS.find((month) => month.value === existingDeclarationMatch.mois)?.label ?? existingDeclarationMatch.mois} {existingDeclarationMatch.annee}
+                  , direction {existingDeclarationMatch.direction || "-"}.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowExistingDeclarationDialog(true)}>
+                    Consulter
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50" onClick={() => { void handleDeleteExistingDeclaration() }}>
+                    Supprimer
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs border-sky-300 text-sky-700 hover:bg-sky-50" onClick={handleModifyExistingDeclaration}>
+                    Modifier
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -4960,7 +5360,7 @@ export default function NouvelleDeclarationPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  Etats de sortie - {activeRecapDefinition.title}
+                  Recap - {activeRecapDefinition.title}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
               </CardHeader>
@@ -5034,9 +5434,11 @@ export default function NouvelleDeclarationPage() {
                   )}
 
                   <div className="flex justify-end">
-                    <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
                       <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-                    </Button>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -5211,6 +5613,82 @@ export default function NouvelleDeclarationPage() {
       </div>
         </>
       )}
+
+      <Dialog open={showExistingDeclarationDialog} onOpenChange={setShowExistingDeclarationDialog}>
+        <DialogContent className="!w-[95vw] sm:!w-[90vw] xl:!w-[74vw] !max-w-[1200px] h-[82vh] p-0 overflow-hidden [&_[data-slot=table-head]]:border-r [&_[data-slot=table-head]]:border-border [&_[data-slot=table-head]:last-child]:border-r-0 [&_[data-slot=table-cell]]:border-r [&_[data-slot=table-cell]]:border-border [&_[data-slot=table-cell]:last-child]:border-r-0">
+          <div className="border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+            <DialogHeader className="space-y-3">
+              <DialogTitle className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-base font-semibold leading-tight" style={{ color: TABS.find((tab) => tab.key === existingDeclarationPreview?.tabKey)?.color ?? PRIMARY_COLOR }}>
+                    {TABS.find((tab) => tab.key === existingDeclarationPreview?.tabKey)?.title ?? "Déclaration existante"}
+                  </p>
+                </div>
+              </DialogTitle>
+              {existingDeclarationPreview && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="gap-1.5 font-normal">
+                    <Building2 size={12} /> {existingDeclarationPreview.direction || "-"}
+                  </Badge>
+                  <Badge variant="secondary" className="gap-1.5 font-normal">
+                    <CalendarDays size={12} /> {MONTHS.find((month) => month.value === existingDeclarationPreview.mois)?.label ?? existingDeclarationPreview.mois} {existingDeclarationPreview.annee}
+                  </Badge>
+                </div>
+              )}
+            </DialogHeader>
+          </div>
+
+          <div className="h-[calc(82vh-140px)] overflow-auto bg-slate-50/60 px-6 py-5">
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+              {existingDeclarationPreview ? (
+                <div className="overflow-x-auto">
+                  <ExistingDeclarationTableView
+                    tabKey={existingDeclarationPreview.tabKey}
+                    decl={{
+                      id: existingDeclarationPreview.id,
+                      createdAt: new Date().toISOString(),
+                      direction: existingDeclarationPreview.direction,
+                      mois: existingDeclarationPreview.mois,
+                      annee: existingDeclarationPreview.annee,
+                      encRows: normalizeEncRows(Array.isArray(existingDeclarationPreview.data.encRows) ? (existingDeclarationPreview.data.encRows as EncRow[]) : undefined),
+                      tvaImmoRows: normalizeTvaRows(Array.isArray(existingDeclarationPreview.data.tvaImmoRows) ? (existingDeclarationPreview.data.tvaImmoRows as TvaRow[]) : undefined),
+                      tvaBiensRows: normalizeTvaRows(Array.isArray(existingDeclarationPreview.data.tvaBiensRows) ? (existingDeclarationPreview.data.tvaBiensRows as TvaRow[]) : undefined),
+                      timbreRows: normalizeTimbreRows(Array.isArray(existingDeclarationPreview.data.timbreRows) ? (existingDeclarationPreview.data.timbreRows as TimbreRow[]) : undefined),
+                      b12: safeString(existingDeclarationPreview.data.b12),
+                      b13: safeString(existingDeclarationPreview.data.b13),
+                      tapRows: normalizeTapRows(Array.isArray(existingDeclarationPreview.data.tapRows) ? (existingDeclarationPreview.data.tapRows as TAPRow[]) : undefined),
+                      caSiegeRows: normalizeSiegeRows(Array.isArray(existingDeclarationPreview.data.caSiegeRows) ? (existingDeclarationPreview.data.caSiegeRows as SiegeEncRow[]) : undefined),
+                      irgRows: normalizeIrgRows(Array.isArray(existingDeclarationPreview.data.irgRows) ? (existingDeclarationPreview.data.irgRows as IrgRow[]) : undefined),
+                      taxe2Rows: normalizeTaxe2Rows(Array.isArray(existingDeclarationPreview.data.taxe2Rows) ? (existingDeclarationPreview.data.taxe2Rows as Taxe2Row[]) : undefined),
+                      masterRows: normalizeMasterRows(Array.isArray(existingDeclarationPreview.data.masterRows) ? (existingDeclarationPreview.data.masterRows as MasterRow[]) : undefined),
+                      taxe11Montant: safeString(existingDeclarationPreview.data.taxe11Montant),
+                      taxe12Rows: normalizeTaxe12Rows(Array.isArray(existingDeclarationPreview.data.taxe12Rows) ? (existingDeclarationPreview.data.taxe12Rows as Taxe12Row[]) : undefined),
+                      acompteMonths: normalizeAcompteMonths(Array.isArray(existingDeclarationPreview.data.acompteMonths) ? (existingDeclarationPreview.data.acompteMonths as string[]) : undefined),
+                      ibs14Rows: normalizeIbsRows(Array.isArray(existingDeclarationPreview.data.ibs14Rows) ? (existingDeclarationPreview.data.ibs14Rows as Ibs14Row[]) : undefined),
+                      taxe15Rows: normalizeTaxe15Rows(Array.isArray(existingDeclarationPreview.data.taxe15Rows) ? (existingDeclarationPreview.data.taxe15Rows as Taxe15Row[]) : undefined),
+                      tva16Rows: normalizeTva16Rows(Array.isArray(existingDeclarationPreview.data.tva16Rows) ? (existingDeclarationPreview.data.tva16Rows as Tva16Row[]) : undefined),
+                    }}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Aucune déclaration à afficher.</p>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowExistingDeclarationDialog(false)}>
+                Fermer
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50" onClick={() => { void handleDeleteExistingDeclaration() }}>
+                Supprimer
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs border-sky-300 text-sky-700 hover:bg-sky-50" onClick={handleModifyExistingDeclaration}>
+                Modifier
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </LayoutWrapper>
   )
 }

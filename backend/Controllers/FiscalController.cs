@@ -74,11 +74,29 @@ public class FiscalController : ControllerBase
             ? userFromDatabase!.Role.Trim().ToLowerInvariant()
             : roleClaim.Trim().ToLowerInvariant();
 
+        var canonicalRole = CanonicalizeRole(normalizedRole);
+
         return (
-            normalizedRole,
+            canonicalRole,
             (userFromDatabase?.Direction ?? "").Trim(),
             (userFromDatabase?.Region ?? "").Trim()
         );
+    }
+
+    private static string CanonicalizeRole(string? role)
+    {
+        var normalizedRole = (role ?? "").Trim().ToLowerInvariant();
+
+        if (normalizedRole is "admin" or "administrateur" or "administrator")
+            return "admin";
+
+        if (normalizedRole is "regionale" or "régionale" or "regional" or "region")
+            return "regionale";
+
+        if (normalizedRole is "comptabilite" or "comptabilité" or "finance" or "direction")
+            return "finance";
+
+        return normalizedRole;
     }
 
     private static int GetDeadlineDayForRole(string? role)
@@ -148,6 +166,47 @@ public class FiscalController : ControllerBase
         return DateTime.Now > deadline;
     }
 
+    private static string ResolveDeadlineRoleForDeclaration(Declaration declaration)
+    {
+        if (IsHeadOfficeDirection(declaration.Direction))
+            return "finance";
+
+        var declarationOwnerRole = (declaration.User?.Role ?? "").Trim().ToLowerInvariant();
+        if (declarationOwnerRole is "finance" or "comptabilite" or "direction")
+            return "finance";
+
+        return "regionale";
+    }
+
+    private async Task AutoApproveExpiredPendingDeclarationsAsync()
+    {
+        var now = DateTime.Now;
+        var pendingDeclarations = await _context.Declarations
+            .Include(d => d.User)
+            .Where(d => !d.IsApproved)
+            .ToListAsync();
+
+        var hasChanges = false;
+        foreach (var declaration in pendingDeclarations)
+        {
+            var deadlineRole = ResolveDeadlineRoleForDeclaration(declaration);
+            if (!TryBuildPeriodDeadline(declaration.Mois, declaration.Annee, deadlineRole, out var deadline))
+                continue;
+
+            if (now <= deadline)
+                continue;
+
+            declaration.IsApproved = true;
+            declaration.ApprovedByUserId = null;
+            declaration.ApprovedAt = DateTime.UtcNow;
+            declaration.UpdatedAt = DateTime.UtcNow;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+            await _context.SaveChangesAsync();
+    }
+
     private IActionResult BuildPeriodLockedResponse(string mois, string annee, DateTime deadline)
     {
         return Conflict(new
@@ -168,6 +227,8 @@ public class FiscalController : ControllerBase
 
     private static readonly string[] FinanceManageableTabOrder =
     {
+        "tva_immo",
+        "tva_biens",
         "ca_siege",
         "irg",
         "taxe2",
@@ -207,7 +268,7 @@ public class FiscalController : ControllerBase
         if (normalizedRole == "regionale")
             return RegionalManageableTabs.Contains(normalizedTabKey);
 
-        if (normalizedRole is "comptabilite" or "finance")
+        if (normalizedRole is "comptabilite" or "finance" or "direction")
             return FinanceManageableTabs.Contains(normalizedTabKey);
 
         return false;
@@ -231,7 +292,7 @@ public class FiscalController : ControllerBase
         if (normalizedRole == "regionale")
             return RegionalManageableTabOrder.ToArray();
 
-        if (normalizedRole is "comptabilite" or "finance")
+        if (normalizedRole is "comptabilite" or "finance" or "direction")
             return FinanceManageableTabOrder.ToArray();
 
         return Array.Empty<string>();
@@ -605,6 +666,8 @@ public class FiscalController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? tabKey, [FromQuery] string? mois, [FromQuery] string? annee)
     {
+        await AutoApproveExpiredPendingDeclarationsAsync();
+
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
@@ -660,6 +723,8 @@ public class FiscalController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
+        await AutoApproveExpiredPendingDeclarationsAsync();
+
         var userId = GetCurrentUserId();
         var decl = await _context.Declarations
             .Include(d => d.User)
@@ -831,6 +896,8 @@ public class FiscalController : ControllerBase
     [HttpPost("{id}/approve")]
     public async Task<IActionResult> Approve(int id)
     {
+        await AutoApproveExpiredPendingDeclarationsAsync();
+
         var userId = GetCurrentUserId();
         var currentUserContext = await GetCurrentUserContextAsync(userId);
         var currentUserRole = (currentUserContext.Role ?? "").Trim().ToLowerInvariant();
@@ -977,6 +1044,8 @@ public class FiscalController : ControllerBase
     [HttpGet("reminders")]
     public async Task<IActionResult> GetReminders([FromQuery] string? mois, [FromQuery] string? annee)
     {
+        await AutoApproveExpiredPendingDeclarationsAsync();
+
         Console.WriteLine("=== [API CALLED] GET /api/fiscal/reminders ===");
         
         var userId = GetCurrentUserId();
