@@ -647,6 +647,7 @@ const MONTHS = [
   { value: "09", label: "Septembre" }, { value: "10", label: "Octobre" },
   { value: "11", label: "Novembre" },  { value: "12", label: "Decembre" },
 ]
+const ACOMPTE_ALLOWED_MONTHS = ["03", "05", "10"] as const
 const CURRENT_YEAR = new Date().getFullYear()
 const INITIAL_FISCAL_PERIOD = getCurrentFiscalPeriod()
 const YEARS = Array.from({ length: 101 }, (_, i) => (2000 + i).toString())
@@ -854,12 +855,28 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
 type IrgRow = { assietteImposable: string; montant: string }
 const IRG_LABELS = [
   "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15%",
-  "Jetons de presence 15%", "Tantieme 15%",
+  "Jetons de presence 10%", "Tantieme 10%",
 ]
+const IRG_AUTO_RATES: Array<number | null> = [null, 0.10, 0.15, 0.10, 0.10]
 interface Tab8Props { rows: IrgRow[]; setRows: React.Dispatch<React.SetStateAction<IrgRow[]>>; onSave: () => void; isSubmitting: boolean }
 function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
   const upd = (i: number, f: keyof IrgRow, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r
+
+      const rate = IRG_AUTO_RATES[i]
+      if (f === "assietteImposable" && rate !== null) {
+        const assiette = safeString(v)
+        const autoMontant = assiette ? (num(assiette, false) * rate).toFixed(2) : ""
+        return { ...r, assietteImposable: assiette, montant: autoMontant }
+      }
+
+      if (f === "montant" && rate !== null) {
+        return r
+      }
+
+      return { ...r, [f]: v }
+    }))
   const total = rows.reduce((s, r) => s + num(r.montant), 0)
   const totalAssiet = rows.reduce((s, r) => s + num(r.assietteImposable), 0)
   return (
@@ -878,7 +895,7 @@ function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 220 }}>{lbl}</td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].assietteImposable} onChange={(e) => upd(i, "assietteImposable", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className={`h-7 px-2 text-xs ${IRG_AUTO_RATES[i] !== null ? "bg-gray-100" : ""}`} value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} readOnly={IRG_AUTO_RATES[i] !== null} placeholder="0.00" style={{ minWidth: 150 }} /></td>
               </tr>
             ))}
           </tbody>
@@ -3032,10 +3049,15 @@ const normalizeSiegeRows = (rows?: SiegeEncRow[]) => {
 }
 
 const normalizeIrgRows = (rows?: IrgRow[]) => {
-  const normalized = (rows ?? []).map((row) => ({
-    assietteImposable: safeString((row as Partial<IrgRow>).assietteImposable),
-    montant: safeString((row as Partial<IrgRow>).montant),
-  }))
+  const normalized = (rows ?? []).map((row, index) => {
+    const assietteImposable = safeString((row as Partial<IrgRow>).assietteImposable)
+    const sourceMontant = safeString((row as Partial<IrgRow>).montant)
+    const autoRate = IRG_AUTO_RATES[index]
+    const montant = autoRate !== null && assietteImposable
+      ? (num(assietteImposable, false) * autoRate).toFixed(2)
+      : sourceMontant
+    return { assietteImposable, montant }
+  })
   return fillRows(normalized, 5, () => ({ assietteImposable: "", montant: "" }))
 }
 
@@ -4123,8 +4145,14 @@ export default function NouvelleDeclarationPage() {
     [fiscalPolicyRevision, userRole],
   )
   const selectableMonths = useMemo(
-    () => MONTHS.filter((month) => !isFiscalPeriodLocked(month.value, annee, userRole)),
-    [annee, fiscalPolicyRevision, userRole],
+    () => MONTHS.filter((month) => {
+      if (isFiscalPeriodLocked(month.value, annee, userRole)) return false
+      if (activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(month.value as (typeof ACOMPTE_ALLOWED_MONTHS)[number])) {
+        return false
+      }
+      return true
+    }),
+    [activeTab, annee, fiscalPolicyRevision, userRole],
   )
   const hasFiscalTabAccess = availableTabs.length > 0
   const isActiveTabDisabled = entryMode === "declaration" ? disabledTabKeys.has(activeTab) : false
@@ -4644,6 +4672,15 @@ export default function NouvelleDeclarationPage() {
       return
     }
 
+    if (activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(mois as (typeof ACOMPTE_ALLOWED_MONTHS)[number])) {
+      toast({
+        title: "Periode invalide",
+        description: "Le tableau 13 n'est autorise qu'en mars, mai et octobre.",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Validation : direction, mois, annee obligatoires
     if (!saveDirection) {
       toast({ title: "Direction requise", description: "Veuillez saisir la direction avant d'enregistrer.", variant: "destructive" })
@@ -4730,6 +4767,23 @@ export default function NouvelleDeclarationPage() {
       case "irg":
         if (irgRows.every(r => !r.assietteImposable && !r.montant)) {
           toast({ title: "Champs incomplets", description: "Veuillez renseigner au moins une ligne IRG.", variant: "destructive" })
+          validationError = true
+          break
+        }
+
+        const invalidIrgRow = irgRows.find((row) => {
+          if (!row.assietteImposable && !row.montant) return false
+          const assiette = num(row.assietteImposable, false)
+          const montant = num(row.montant, false)
+          return assiette <= montant
+        })
+
+        if (invalidIrgRow) {
+          toast({
+            title: "Montants invalides",
+            description: "Pour chaque ligne IRG renseignee, l'assiette imposable doit etre strictement superieure au montant.",
+            variant: "destructive",
+          })
           validationError = true
         }
         break
@@ -5268,7 +5322,7 @@ export default function NouvelleDeclarationPage() {
               {/* Mois */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Mois</label>
-                <Select value={mois} onValueChange={setMois} disabled={entryMode === "declaration" && activeTab === "acompte"}>
+                <Select value={mois} onValueChange={setMois}>
                   <SelectTrigger className="h-10 text-sm w-[150px]">
                     <SelectValue placeholder="Mois" />
                   </SelectTrigger>
