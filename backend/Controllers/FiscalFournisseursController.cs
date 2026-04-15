@@ -41,14 +41,21 @@ public class FiscalFournisseursController : ControllerBase
         return string.Concat(value.Where(c => !char.IsWhiteSpace(c))).Trim().ToUpperInvariant();
     }
 
-    private async Task<bool> FiscalFournisseurNifExistsAsync(string nif, int? excludedId = null)
+    private static string NormalizeAddress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        return string.Join(' ', value.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private async Task<bool> FiscalFournisseurIdentityExistsAsync(string nif, string? adresse, int? excludedId = null)
     {
         var normalizedNif = NormalizeNif(nif);
-        if (string.IsNullOrWhiteSpace(normalizedNif)) return false;
+        var normalizedAdresse = NormalizeAddress(adresse);
+        if (string.IsNullOrWhiteSpace(normalizedNif) && string.IsNullOrWhiteSpace(normalizedAdresse)) return false;
 
         var candidates = await _context.FiscalFournisseurs
             .AsNoTracking()
-            .Select(f => new { f.Id, f.NIF })
+            .Select(f => new { f.Id, f.NIF, f.Adresse })
             .ToListAsync();
 
         foreach (var item in candidates)
@@ -56,7 +63,7 @@ public class FiscalFournisseursController : ControllerBase
             if (excludedId.HasValue && item.Id == excludedId.Value)
                 continue;
 
-            if (NormalizeNif(item.NIF) == normalizedNif)
+            if (NormalizeNif(item.NIF) == normalizedNif && NormalizeAddress(item.Adresse) == normalizedAdresse)
                 return true;
         }
 
@@ -94,8 +101,8 @@ public class FiscalFournisseursController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.NIF))
             return BadRequest(new { message = "Le NIF est obligatoire." });
 
-        if (await FiscalFournisseurNifExistsAsync(dto.NIF))
-            return Conflict(new { message = "Un fournisseur fiscal avec ce NIF existe déjà." });
+        if (await FiscalFournisseurIdentityExistsAsync(dto.NIF, dto.Adresse))
+            return Conflict(new { message = "Un fournisseur fiscal avec ce couple NIF + adresse existe deja." });
 
         var userId = GetCurrentUserId();
         if (userId <= 0)
@@ -167,8 +174,8 @@ public class FiscalFournisseursController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.NIF))
             return BadRequest(new { message = "Le NIF est obligatoire." });
 
-        if (await FiscalFournisseurNifExistsAsync(dto.NIF, id))
-            return Conflict(new { message = "Un fournisseur fiscal avec ce NIF existe déjà." });
+        if (await FiscalFournisseurIdentityExistsAsync(dto.NIF, dto.Adresse, id))
+            return Conflict(new { message = "Un fournisseur fiscal avec ce couple NIF + adresse existe deja." });
 
         var userId = GetCurrentUserId();
         var currentUser = await GetCurrentUserAsync();

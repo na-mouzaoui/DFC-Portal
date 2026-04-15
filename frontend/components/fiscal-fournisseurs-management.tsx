@@ -61,9 +61,26 @@ interface ImportConflict {
   incoming: FormData
 }
 
+interface ImportFailureDetail {
+  supplierName: string
+  operation: "creation" | "mise_a_jour"
+  reason: string
+}
+
+interface ImportSummary {
+  created: number
+  updated: number
+  kept: number
+  unchanged: number
+  ignored: number
+  errors: number
+  success: number
+  failures: ImportFailureDetail[]
+}
+
 const EMPTY_FORM: FormData = { raisonSociale: "", adresse: "", authNif: "", rc: "", authRc: "", nif: "" }
 
-const parseCsvLine = (line: string) => {
+const parseCsvLine = (line: string, delimiter: string) => {
   const values: string[] = []
   let current = ""
   let inQuotes = false
@@ -82,7 +99,7 @@ const parseCsvLine = (line: string) => {
       continue
     }
 
-    if (char === ";" && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       values.push(current.trim())
       current = ""
       continue
@@ -115,6 +132,111 @@ const normalizeSupplierName = (value: string) =>
     .trim()
 
 const normalizeField = (value: string) => value.trim()
+const normalizeAddress = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+
+const detectDelimiter = (line: string) => {
+  if (line.includes("\t")) return "\t"
+  if (line.includes(";")) return ";"
+  if (line.includes(",")) return ","
+  return ";"
+}
+
+const decodeCsvFile = async (file: File) => {
+  const buffer = await file.arrayBuffer()
+  const utf8 = new TextDecoder("utf-8").decode(buffer)
+  if (!utf8.includes("\uFFFD")) {
+    return utf8.replace(/^\uFEFF/, "")
+  }
+
+  const fallbackEncodings = ["windows-1252", "iso-8859-1"]
+  for (const encoding of fallbackEncodings) {
+    try {
+      const decoded = new TextDecoder(encoding).decode(buffer)
+      if (!decoded.includes("\uFFFD")) {
+        return decoded.replace(/^\uFEFF/, "")
+      }
+    } catch {
+      // Continue trying other encodings.
+    }
+  }
+
+  return utf8.replace(/^\uFEFF/, "")
+}
+
+const expandScientificNotation = (value: string) => {
+  const raw = value.trim().replace(/\s+/g, "").replace(/,/g, ".")
+  const match = raw.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/)
+  if (!match) return value.trim()
+
+  const sign = match[1] === "-" ? "-" : ""
+  const integerPart = match[2]
+  const decimalPart = match[3] ?? ""
+  const exponent = Number.parseInt(match[4], 10)
+  if (Number.isNaN(exponent)) return value.trim()
+
+  const digits = `${integerPart}${decimalPart}`
+  const decimalShift = exponent - decimalPart.length
+
+  if (decimalShift >= 0) {
+    return `${sign}${digits}${"0".repeat(decimalShift)}`
+  }
+
+  const splitIndex = digits.length + decimalShift
+  if (splitIndex <= 0) {
+    return `${sign}0.${"0".repeat(Math.abs(splitIndex))}${digits}`
+  }
+
+  return `${sign}${digits.slice(0, splitIndex)}.${digits.slice(splitIndex)}`
+}
+
+const normalizeNifValue = (value: string) => {
+  const cleaned = value.trim()
+  if (!cleaned) return ""
+  const normalizedSource = cleaned.replace(/\s+/g, "").replace(/,/g, ".")
+  const sciMatch = normalizedSource.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/)
+
+  if (sciMatch) {
+    const integerPart = sciMatch[2]
+    const decimalPart = sciMatch[3] ?? ""
+    const exponent = Number.parseInt(sciMatch[4], 10)
+
+    if (!Number.isNaN(exponent)) {
+      const digits = `${integerPart}${decimalPart}`.replace(/^0+/, "") || "0"
+      const decimalIndex = integerPart.length + exponent
+
+      if (decimalIndex <= 0) {
+        return "0"
+      }
+
+      if (decimalIndex >= digits.length) {
+        return `${digits}${"0".repeat(decimalIndex - digits.length)}`
+      }
+
+      return digits.slice(0, decimalIndex)
+    }
+  }
+
+  return normalizedSource.replace(/[^0-9]/g, "")
+}
+
+const buildSupplierUniqKey = (nif: string, adresse: string) => {
+  const normalizedNif = normalizeNifValue(nif)
+  const normalizedAdresse = normalizeAddress(adresse)
+  return `${normalizedNif}|${normalizedAdresse}`
+}
+
+const extractApiErrorMessage = async (res: Response, fallback: string) => {
+  const payload = await res.json().catch(() => null) as { message?: string; title?: string } | null
+  if (payload?.message && payload.message.trim()) return payload.message.trim()
+  if (payload?.title && payload.title.trim()) return payload.title.trim()
+  return `${fallback} (HTTP ${res.status})`
+}
 
 const toSupplierPayload = (data: FormData) => ({
   raisonSociale: data.raisonSociale.trim(),
@@ -122,7 +244,7 @@ const toSupplierPayload = (data: FormData) => ({
   authNIF: data.authNif.trim(),
   rc: data.rc.trim(),
   authRC: data.authRc.trim(),
-  nif: data.nif.trim(),
+  nif: normalizeNifValue(data.nif),
 })
 
 const toFrDateTime = (value?: string) => {
@@ -152,11 +274,10 @@ const fileToBase64Data = (file: Blob) =>
 
 const hasDifferentSupplierDetails = (existing: FiscalFournisseur, incoming: FormData) => {
   return (
+    normalizeSupplierName(existing.raisonSociale) !== normalizeSupplierName(incoming.raisonSociale) ||
     normalizeField(existing.adresse) !== normalizeField(incoming.adresse) ||
-    normalizeField(existing.nif) !== normalizeField(incoming.nif) ||
-    normalizeField(existing.authNif) !== normalizeField(incoming.authNif) ||
-    normalizeField(existing.rc) !== normalizeField(incoming.rc) ||
-    normalizeField(existing.authRc) !== normalizeField(incoming.authRc)
+    normalizeNifValue(existing.nif) !== normalizeNifValue(incoming.nif) ||
+    normalizeField(existing.rc) !== normalizeField(incoming.rc)
   )
 }
 
@@ -182,6 +303,8 @@ export function FiscalFournisseursManagement() {
   const [pendingUnchanged, setPendingUnchanged] = useState(0)
   const [pendingIgnoredCount, setPendingIgnoredCount] = useState(0)
   const [importing, setImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
+  const [importSummaryOpen, setImportSummaryOpen] = useState(false)
 
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -234,14 +357,14 @@ export function FiscalFournisseursManagement() {
       return
     }
 
-    const normalizedName = normalizeSupplierName(form.raisonSociale)
+    const uniqKey = buildSupplierUniqKey(form.nif, form.adresse)
     const duplicate = fournisseurs.find(
-      (f) => normalizeSupplierName(f.raisonSociale) === normalizedName && (!editTarget || f.id !== editTarget.id),
+      (f) => buildSupplierUniqKey(f.nif, f.adresse) === uniqKey && (!editTarget || f.id !== editTarget.id),
     )
     if (duplicate) {
       toast({
         title: "Validation",
-        description: "Un fournisseur avec ce Nom / Raison Sociale existe déjà.",
+        description: "Un fournisseur avec ce couple NIF + adresse existe deja.",
         variant: "destructive",
       })
       return
@@ -299,6 +422,7 @@ export function FiscalFournisseursManagement() {
     let updated = 0
     let kept = 0
     let errors = 0
+    const failures: ImportFailureDetail[] = []
 
     for (const supplier of creates) {
       try {
@@ -308,9 +432,21 @@ export function FiscalFournisseursManagement() {
           body: JSON.stringify(toSupplierPayload(supplier)),
         })
         if (res.ok) created += 1
-        else errors += 1
+        else {
+          errors += 1
+          failures.push({
+            supplierName: supplier.raisonSociale || "(sans nom)",
+            operation: "creation",
+            reason: await extractApiErrorMessage(res, "Echec de creation"),
+          })
+        }
       } catch {
         errors += 1
+        failures.push({
+          supplierName: supplier.raisonSociale || "(sans nom)",
+          operation: "creation",
+          reason: "Echec de creation (erreur reseau ou serveur inaccessible)",
+        })
       }
     }
 
@@ -322,15 +458,32 @@ export function FiscalFournisseursManagement() {
       }
 
       try {
+        const mergedPayload: FormData = {
+          ...conflict.incoming,
+          authNif: conflict.existing.authNif ?? "",
+          authRc: conflict.existing.authRc ?? "",
+        }
         const res = await authFetch(`/api/fiscal-fournisseurs/${conflict.existing.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toSupplierPayload(conflict.incoming)),
+          body: JSON.stringify(toSupplierPayload(mergedPayload)),
         })
         if (res.ok) updated += 1
-        else errors += 1
+        else {
+          errors += 1
+          failures.push({
+            supplierName: conflict.incoming.raisonSociale || conflict.existing.raisonSociale || "(sans nom)",
+            operation: "mise_a_jour",
+            reason: await extractApiErrorMessage(res, "Echec de mise a jour"),
+          })
+        }
       } catch {
         errors += 1
+        failures.push({
+          supplierName: conflict.incoming.raisonSociale || conflict.existing.raisonSociale || "(sans nom)",
+          operation: "mise_a_jour",
+          reason: "Echec de mise a jour (erreur reseau ou serveur inaccessible)",
+        })
       }
     }
 
@@ -360,12 +513,26 @@ export function FiscalFournisseursManagement() {
       // Keep import flow resilient even if audit endpoint fails.
     }
 
+    const success = created + updated
+    setImportSummary({
+      created,
+      updated,
+      kept,
+      unchanged: unchangedCount,
+      ignored: ignoredCount,
+      errors,
+      success,
+      failures,
+    })
+    setImportSummaryOpen(true)
+
     toast({
-      title: "Import terminé",
-      description: `${summary.join(", ")}${errors > 0 ? `, ${errors} erreur(s)` : ""}.`,
+      title: "Import termine",
+      description: `${summary.join(", ")}${errors > 0 ? `, ${errors} echec(s)` : ""}.`,
       variant: errors > 0 ? "destructive" : "default",
     })
 
+    setImporting(false)
     resetImportResolution()
     fetchFournisseurs()
   }
@@ -536,23 +703,29 @@ export function FiscalFournisseursManagement() {
     }
   }
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ""
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const source = ((ev.target?.result as string) || "").replace(/\r/g, "")
+    try {
+      const source = (await decodeCsvFile(file)).replace(/\r/g, "")
       const allLines = source.split("\n").map((line) => line.trim()).filter(Boolean)
       if (allLines.length === 0) {
         toast({ title: "Import CSV", description: "Le fichier est vide.", variant: "destructive" })
         return
       }
 
-      const firstLine = parseCsvLine(allLines[0])
+      const delimiter = detectDelimiter(allLines[0])
+      const firstLine = parseCsvLine(allLines[0], delimiter)
       const headers = firstLine.map(normalizeCsvHeader)
       const hasHeader = headers.some((h) =>
         [
+          "numero",
+          "nom four",
+          "id site",
+          "site",
+          "ident fiscal",
+          "rc",
           "nom raison sociale",
           "raison sociale",
           "adresse",
@@ -575,17 +748,18 @@ export function FiscalFournisseursManagement() {
         return index >= 0 ? index : fallback
       }
 
-      const idxNom = headerIndex(["nom raison sociale", "raison sociale"], 0)
-      const idxAdresse = headerIndex(["adresse"], 1)
-      const idxNif = headerIndex(["nif"], 2)
-      const idxAuthNif = headerIndex(["auth nif"], 3)
-      const idxRc = headerIndex(["n rc", "no rc", "numero rc"], 4)
-      const idxAuthRc = headerIndex(["auth n rc", "auth no rc", "auth numero rc"], 5)
+      const idxNom = headerIndex(["nom four", "nom raison sociale", "raison sociale"], 1)
+      const idxSite = headerIndex(["site", "ville"], 3)
+      const idxAdresse = headerIndex(["adresse"], 6)
+      const idxNif = headerIndex(["ident fiscal", "nif"], 4)
+      const idxRc = headerIndex(["rc", "n rc", "no rc", "numero rc"], 5)
+      const idxAuthNif = hasHeader ? headers.findIndex((h) => ["auth nif"].includes(h)) : -1
+      const idxAuthRc = hasHeader ? headers.findIndex((h) => ["auth n rc", "auth no rc", "auth numero rc"].includes(h)) : -1
 
-      const csvRowsByName = new Map<string, FormData>()
+      const csvRowsByKey = new Map<string, FormData>()
       let ignoredCount = 0
       for (const line of lines) {
-        const cols = parseCsvLine(line)
+        const cols = parseCsvLine(line, delimiter)
         const isLegacyFormat = !hasHeader && cols.length <= 3
         const nom = (isLegacyFormat ? cols[0] ?? "" : cols[idxNom] ?? cols[0] ?? "").trim()
         if (!nom) {
@@ -593,19 +767,25 @@ export function FiscalFournisseursManagement() {
           continue
         }
 
+        const adresseValue = isLegacyFormat ? "" : (cols[idxAdresse] ?? "").trim()
+        const siteValue = isLegacyFormat ? "" : (cols[idxSite] ?? "").trim()
+        const normalizedAdresse = adresseValue || siteValue
+        const rawNif = (isLegacyFormat ? cols[2] ?? "" : cols[idxNif] ?? "").trim()
+
         const formRow: FormData = {
           raisonSociale: nom,
-          adresse: (isLegacyFormat ? "" : cols[idxAdresse] ?? "").trim(),
-          nif: (isLegacyFormat ? cols[2] ?? "" : cols[idxNif] ?? "").trim(),
-          authNif: (isLegacyFormat ? "" : cols[idxAuthNif] ?? "").trim(),
+          adresse: normalizedAdresse,
+          nif: normalizeNifValue(rawNif),
+          authNif: idxAuthNif >= 0 ? (cols[idxAuthNif] ?? "").trim() : "",
           rc: (isLegacyFormat ? cols[1] ?? "" : cols[idxRc] ?? "").trim(),
-          authRc: (isLegacyFormat ? "" : cols[idxAuthRc] ?? "").trim(),
+          authRc: idxAuthRc >= 0 ? (cols[idxAuthRc] ?? "").trim() : "",
         }
 
-        csvRowsByName.set(normalizeSupplierName(formRow.raisonSociale), formRow)
+        const uniqKey = buildSupplierUniqKey(formRow.nif, formRow.adresse)
+        csvRowsByKey.set(uniqKey || normalizeSupplierName(formRow.raisonSociale), formRow)
       }
 
-      const parsedRows = Array.from(csvRowsByName.values())
+      const parsedRows = Array.from(csvRowsByKey.values())
       if (parsedRows.length === 0) {
         toast({
           title: "Import CSV",
@@ -615,11 +795,11 @@ export function FiscalFournisseursManagement() {
         return
       }
 
-      const existingByName = new Map<string, FiscalFournisseur>()
+      const existingByKey = new Map<string, FiscalFournisseur>()
       for (const fournisseur of fournisseurs) {
-        const key = normalizeSupplierName(fournisseur.raisonSociale)
-        if (key && !existingByName.has(key)) {
-          existingByName.set(key, fournisseur)
+        const key = buildSupplierUniqKey(fournisseur.nif, fournisseur.adresse)
+        if (key && !existingByKey.has(key)) {
+          existingByKey.set(key, fournisseur)
         }
       }
 
@@ -628,8 +808,8 @@ export function FiscalFournisseursManagement() {
       let unchanged = 0
 
       for (const row of parsedRows) {
-        const key = normalizeSupplierName(row.raisonSociale)
-        const existing = existingByName.get(key)
+        const key = buildSupplierUniqKey(row.nif, row.adresse)
+        const existing = existingByKey.get(key)
         if (!existing) {
           toCreate.push(row)
           continue
@@ -657,8 +837,13 @@ export function FiscalFournisseursManagement() {
       }
 
       await applyImportChanges(toCreate, [], {}, unchanged, ignoredCount)
+    } catch {
+      toast({
+        title: "Import CSV",
+        description: "Impossible de lire le fichier importe.",
+        variant: "destructive",
+      })
     }
-    reader.readAsText(file, "utf-8")
   }
 
   const filtered = fournisseurs.filter((f) => {
@@ -666,7 +851,7 @@ export function FiscalFournisseursManagement() {
     return (
       f.raisonSociale.toLowerCase().includes(q) ||
       f.adresse.toLowerCase().includes(q) ||
-      f.nif.toLowerCase().includes(q) ||
+      normalizeNifValue(f.nif).toLowerCase().includes(q) ||
       f.authNif.toLowerCase().includes(q) ||
       f.rc.toLowerCase().includes(q) ||
       f.authRc.toLowerCase().includes(q)
@@ -721,7 +906,7 @@ export function FiscalFournisseursManagement() {
                   <TableCell className="font-mono text-muted-foreground">{idx + 1}</TableCell>
                   <TableCell className="font-medium">{f.raisonSociale}</TableCell>
                   <TableCell>{f.adresse || "—"}</TableCell>
-                  <TableCell>{f.nif || "—"}</TableCell>
+                  <TableCell>{normalizeNifValue(f.nif) || "—"}</TableCell>
                   <TableCell>{f.authNif || "—"}</TableCell>
                   <TableCell>{f.rc || "—"}</TableCell>
                   <TableCell>{f.authRc || "—"}</TableCell>
@@ -775,6 +960,66 @@ export function FiscalFournisseursManagement() {
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editTarget ? "Enregistrer" : "Créer"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Loader */}
+      <Dialog open={importing}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Import en cours</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Traitement des fournisseurs, veuillez patienter...</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Summary */}
+      <Dialog open={importSummaryOpen} onOpenChange={setImportSummaryOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Recapitulatif de l'import</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-2 text-sm">
+            <p>Nombre d'import reussi: <strong>{importSummary?.success ?? 0}</strong></p>
+            <p>Nombre d'echec: <strong>{importSummary?.errors ?? 0}</strong></p>
+            <p className="text-muted-foreground">
+              Crees: {importSummary?.created ?? 0}, modifies: {importSummary?.updated ?? 0}, conserves: {importSummary?.kept ?? 0}, deja identiques: {importSummary?.unchanged ?? 0}, lignes ignorees: {importSummary?.ignored ?? 0}
+            </p>
+          </div>
+
+          {(importSummary?.failures.length ?? 0) > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Details des echecs</p>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fournisseur</TableHead>
+                      <TableHead>Operation</TableHead>
+                      <TableHead>Raison</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importSummary?.failures.map((failure, index) => (
+                      <TableRow key={`${failure.supplierName}-${index}`}>
+                        <TableCell>{failure.supplierName}</TableCell>
+                        <TableCell>{failure.operation === "creation" ? "Creation" : "Mise a jour"}</TableCell>
+                        <TableCell>{failure.reason}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setImportSummaryOpen(false)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
