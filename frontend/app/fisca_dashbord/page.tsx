@@ -94,8 +94,9 @@ interface ApiFiscalDeclaration {
   mois: string
   annee: string
   direction: string
-  dataJson: string
+  dataJson?: string
   isApproved?: boolean
+  statut?: string
   approvedByUserId?: number | null
   approvedAt?: string | null
   createdAt: string
@@ -254,9 +255,16 @@ const getStoredToken = () => {
 }
 
 const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration => {
-  const parsedData = (() => {
+  const status = String(item.statut ?? "").trim().toUpperCase()
+  const isApprovedFromStatus = status ? status === "APPROVED" : null
+
+  // Back-end no longer persists detailed tab payload in SQL declaration rows.
+  // Keep mapping resilient when dataJson is absent or always "{}".
+  const parsedData: Record<string, unknown> = (() => {
+    const raw = String(item.dataJson ?? "").trim()
+    if (!raw || raw === "{}") return {}
     try {
-      const payload = JSON.parse(item.dataJson ?? "{}")
+      const payload = JSON.parse(raw)
       return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
     } catch {
       return {}
@@ -270,7 +278,7 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
     direction: item.direction ?? "",
     mois: item.mois,
     annee: item.annee,
-    isApproved: !!item.isApproved,
+    isApproved: isApprovedFromStatus ?? !!item.isApproved,
     approvedByUserId: item.approvedByUserId ?? null,
     approvedAt: item.approvedAt ?? null,
     encRows: [],

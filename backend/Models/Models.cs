@@ -146,7 +146,7 @@ public class Declaration
     public string Mois { get; set; } = "";          // "01" à "12"
     public string Annee { get; set; } = "";         // "2025"
     public string Direction { get; set; } = "";     // Direction de l'utilisateur
-    public string DataJson { get; set; } = "{}";   // Données du tableau en JSON
+    public string DataJson { get; set; } = "{}";   // Données JSON (table legacy runtime)
     public bool IsApproved { get; set; } = false;
     public int? ApprovedByUserId { get; set; }
     public DateTime? ApprovedAt { get; set; }

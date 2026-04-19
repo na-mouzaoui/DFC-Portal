@@ -17,7 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Checkbook> Checkbooks { get; set; }
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
-    public DbSet<Declaration> Declarations { get; set; }
+    public DbSet<FiscalPeriode> Periodes { get; set; }
+    public DbSet<FiscalDeclarationHeader> FiscalDeclarationHeaders { get; set; }
     public DbSet<FiscalFournisseur> FiscalFournisseurs { get; set; }
     public DbSet<EtatsDeSortie> EtatsDeSortie { get; set; }
     public DbSet<AdminFiscalSetting> AdminFiscalSettings { get; set; }
@@ -112,7 +113,7 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.User)
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Bank)
                   .WithMany()
                   .HasForeignKey(e => e.BankId)
@@ -138,28 +139,41 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.UserId);
         });
 
-        // Declaration configuration
-        modelBuilder.Entity<Declaration>(entity =>
+        // Periode configuration (normalized fiscal schema V2)
+        modelBuilder.Entity<FiscalPeriode>(entity =>
         {
-            entity.ToTable("Declaration");
+            entity.ToTable("Periode");
             entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(e => e.ApprovedByUser)
-                .WithMany()
-                .HasForeignKey(e => e.ApprovedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => new { e.UserId, e.TabKey, e.Mois, e.Annee });
-            entity.HasIndex(e => e.IsApproved);
-            entity.Property(e => e.DataJson).IsRequired();
-            entity.Property(e => e.TabKey).HasMaxLength(50).IsRequired();
-            entity.Property(e => e.Direction).HasMaxLength(200);
-            entity.Property(e => e.Mois).HasMaxLength(10);
-            entity.Property(e => e.Annee).HasMaxLength(10);
-            entity.Property(e => e.IsApproved).HasDefaultValue(false);
+            entity.HasIndex(e => new { e.Mois, e.Annee })
+                .IsUnique()
+                .HasDatabaseName("UX_Periode_Mois_Annee");
+        });
+
+        // Declaration header configuration (normalized fiscal schema V2)
+        modelBuilder.Entity<FiscalDeclarationHeader>(entity =>
+        {
+            entity.ToTable("Declaration", t => t.HasCheckConstraint("CK_Declaration_Statut", "[Statut] IN ('PENDING', 'APPROVED')"));
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.Periode)
+                .WithMany(p => p.Declarations)
+                .HasForeignKey(e => e.PeriodeId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Declaration_Periode");
+
+            entity.Property(e => e.Direction).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.TableauCode).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.Statut).HasMaxLength(20).IsRequired().HasDefaultValue("PENDING");
+            entity.Property(e => e.SubmittedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.Property(e => e.RowVersion).IsRowVersion().IsConcurrencyToken();
+
+            entity.HasIndex(e => new { e.PeriodeId, e.Direction, e.TableauCode })
+                .IsUnique()
+                .HasDatabaseName("UX_Declaration_Periode_Direction_Tableau");
+            entity.HasIndex(e => e.PeriodeId)
+                .HasDatabaseName("IX_Declaration_Periode");
+            entity.HasIndex(e => new { e.PeriodeId, e.Statut, e.Direction })
+                .HasDatabaseName("IX_Declaration_Worklist");
         });
 
         // EtatsDeSortie configuration

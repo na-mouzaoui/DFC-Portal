@@ -5,6 +5,7 @@ using CheckFillingAPI.Models;
 using CheckFillingAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Microsoft.Data.SqlClient;
 
 namespace CheckFillingAPI.Controllers;
 
@@ -74,21 +75,29 @@ public class FiscalFournisseursController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var fournisseurs = await _context.FiscalFournisseurs
-            .OrderBy(f => f.RaisonSociale)
-            .Select(f => new {
-                id = f.Id,
-                raisonSociale = f.RaisonSociale,
-                adresse = f.Adresse,
-                authNif = f.AuthNIF,
-                rc = f.RC,
-                authRc = f.AuthRC,
-                nif = f.NIF,
-                createdAt = f.CreatedAt,
-                updatedAt = f.UpdatedAt
-            })
-            .ToListAsync();
-        return Ok(fournisseurs);
+        try
+        {
+            var fournisseurs = await _context.FiscalFournisseurs
+                .OrderBy(f => f.RaisonSociale)
+                .Select(f => new {
+                    id = f.Id,
+                    raisonSociale = f.RaisonSociale,
+                    adresse = f.Adresse,
+                    authNif = f.AuthNIF,
+                    rc = f.RC,
+                    authRc = f.AuthRC,
+                    nif = f.NIF,
+                    createdAt = f.CreatedAt,
+                    updatedAt = f.UpdatedAt
+                })
+                .ToListAsync();
+            return Ok(fournisseurs);
+        }
+        catch (SqlException ex) when (ex.Number == 208)
+        {
+            // Keep declaration page functional even if the supplier table is temporarily missing.
+            return Ok(Array.Empty<object>());
+        }
     }
 
     // POST api/fiscal-fournisseurs

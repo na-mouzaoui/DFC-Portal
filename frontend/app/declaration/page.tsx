@@ -1478,8 +1478,9 @@ type ApiFiscalDeclaration = {
   mois: string
   annee: string
   direction: string
-  dataJson: string
+  dataJson?: string
   isApproved?: boolean
+  statut?: string
 }
 
 type ExistingDeclarationPreview = {
@@ -4304,15 +4305,20 @@ export default function NouvelleDeclarationPage() {
 
         const payload = await response.json().catch(() => null)
         const declarations = Array.isArray(payload)
-          ? payload.map((item) => ({
-              id: Number((item as { id?: unknown }).id ?? 0),
-              tabKey: String((item as { tabKey?: unknown }).tabKey ?? "").trim().toLowerCase(),
-              mois: String((item as { mois?: unknown }).mois ?? "").trim(),
-              annee: String((item as { annee?: unknown }).annee ?? "").trim(),
-              direction: String((item as { direction?: unknown }).direction ?? "").trim(),
-              dataJson: String((item as { dataJson?: unknown }).dataJson ?? "{}"),
-              isApproved: (item as { isApproved?: unknown }).isApproved === false ? false : true,
-            }))
+          ? payload.map((item) => {
+              const status = String((item as { statut?: unknown }).statut ?? "").trim().toUpperCase()
+              const isApprovedFromStatus = status ? status === "APPROVED" : null
+
+              return {
+                id: Number((item as { id?: unknown }).id ?? 0),
+                tabKey: String((item as { tabKey?: unknown }).tabKey ?? "").trim().toLowerCase(),
+                mois: String((item as { mois?: unknown }).mois ?? "").trim(),
+                annee: String((item as { annee?: unknown }).annee ?? "").trim(),
+                direction: String((item as { direction?: unknown }).direction ?? "").trim(),
+                dataJson: String((item as { dataJson?: unknown }).dataJson ?? "{}"),
+                isApproved: isApprovedFromStatus ?? ((item as { isApproved?: unknown }).isApproved === false ? false : true),
+              }
+            })
           : []
 
         if (!cancelled) {
