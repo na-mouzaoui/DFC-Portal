@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,13 +16,14 @@ import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
-import { Building2, CalendarDays, Plus, Trash2, Save } from "lucide-react"
+import { Building2, CalendarDays, Plus, Trash2, Save, Check, ChevronsUpDown } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
 import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole, isFiscalTabDisabledByPolicy } from "@/lib/fiscal-tab-access"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { API_BASE } from "@/lib/config"
+import { cn } from "@/lib/utils"
 
 // primary colour used by all tables/buttons
 const PRIMARY_COLOR = "#2db34b"
@@ -230,6 +233,81 @@ type FiscalFournisseurOption = {
   authRc: string
 }
 
+type SupplierSearchSelectProps = {
+  value: string
+  onChange: (nextValue: string) => void
+  fournisseurs: FiscalFournisseurOption[]
+  placeholder?: string
+  triggerClassName?: string
+}
+
+function SupplierSearchSelect({
+  value,
+  onChange,
+  fournisseurs,
+  placeholder = "Selectionner un fournisseur",
+  triggerClassName,
+}: SupplierSearchSelectProps) {
+  const [open, setOpen] = useState(false)
+  const selected = fournisseurs.find((f) => String(f.id) === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn("justify-between", triggerClassName)}
+        >
+          <span className="truncate text-left">{selected?.raisonSociale?.trim() || placeholder}</span>
+          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command>
+          <CommandInput placeholder="Rechercher un fournisseur..." />
+          <CommandList>
+            <CommandEmpty>Aucun fournisseur trouve.</CommandEmpty>
+            <CommandGroup>
+              {fournisseurs.map((fournisseur) => {
+                const fournisseurId = String(fournisseur.id)
+                return (
+                  <CommandItem
+                    key={fournisseur.id}
+                    value={`${fournisseur.raisonSociale} ${fournisseur.nif} ${fournisseur.rc} ${fournisseurId}`}
+                    onSelect={() => {
+                      onChange(fournisseurId)
+                      setOpen(false)
+                    }}
+                  >
+                    <Check className={cn("size-4", value === fournisseurId ? "opacity-100" : "opacity-0")} />
+                    <span className="truncate">{fournisseur.raisonSociale || "-"}</span>
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+            {value && (
+              <CommandGroup>
+                <CommandItem
+                  value="__clear_supplier__"
+                  onSelect={() => {
+                    onChange("")
+                    setOpen(false)
+                  }}
+                >
+                  Effacer la selection
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 type TvaRow = {
   fournisseurId?: string
   nomRaisonSociale: string; adresse: string; nif: string; authNif: string
@@ -402,17 +480,13 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                   <td className="px-1 py-1 border-b">
-                    <select
+                    <SupplierSearchSelect
                       value={currentRow.fournisseurId ?? ""}
-                      onChange={(e) => selectFournisseur(i, e.target.value)}
-                      className="h-7 rounded border border-gray-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-300"
-                      style={{ minWidth: 220 }}
-                    >
-                      <option value="">{supplierPlaceholder}</option>
-                      {fournisseurs.map((f) => (
-                        <option key={f.id} value={String(f.id)}>{f.raisonSociale || "-"}</option>
-                      ))}
-                    </select>
+                      onChange={(supplierId) => selectFournisseur(i, supplierId)}
+                      fournisseurs={fournisseurs}
+                      placeholder={supplierPlaceholder}
+                      triggerClassName="h-7 min-w-[220px] px-2 text-xs"
+                    />
                   </td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.adresse ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 150 }} placeholder="Auto" /></td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.nif ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
@@ -1264,8 +1338,8 @@ function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
 // 
 type Taxe15Row = { numFacture: string; dateFacture: string; raisonSociale: string; montantNetDevise: string; monnaie: string; tauxChange: string; montantDinars: string; tauxTaxe: string; montantAPayer: string }
 const EMPTY_TAXE15: Taxe15Row = { numFacture: "", dateFacture: "", raisonSociale: "", montantNetDevise: "", monnaie: "", tauxChange: "", montantDinars: "", tauxTaxe: "", montantAPayer: "" }
-interface Tab15Props { rows: Taxe15Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe15Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
+interface Tab15Props { rows: Taxe15Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe15Row[]>>; onSave: () => void; isSubmitting: boolean; fournisseurs: FiscalFournisseurOption[] }
+function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting, fournisseurs }: Tab15Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_TAXE15 }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const upd = (i: number, f: keyof Taxe15Row, v: string) =>
@@ -1296,7 +1370,18 @@ function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting }: Tab15Props) {
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i,"dateFacture",e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.raisonSociale} onChange={(e) => upd(i,"raisonSociale",e.target.value)} className="h-7 px-2 text-xs" placeholder="Raison Sociale" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b">
+                  <SupplierSearchSelect
+                    value={String(fournisseurs.find((f) => safeString(f.raisonSociale).trim() === safeString(row.raisonSociale).trim())?.id ?? "")}
+                    onChange={(supplierId) => {
+                      const selected = fournisseurs.find((f) => String(f.id) === supplierId)
+                      upd(i, "raisonSociale", selected?.raisonSociale ?? "")
+                    }}
+                    fournisseurs={fournisseurs}
+                    placeholder={row.raisonSociale?.trim() || "Raison Sociale"}
+                    triggerClassName="h-7 min-w-[150px] px-2 text-xs"
+                  />
+                </td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.monnaie} onChange={(e) => upd(i,"monnaie",e.target.value)} className="h-7 px-2 text-xs" placeholder="EUR / USD" style={{ minWidth: 80 }} /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
@@ -1468,8 +1553,10 @@ interface SavedDeclaration {
   taxe12Rows?: Taxe12Row[]
   acompteMonths?: string[]
   ibs14Rows?: Ibs14Row[]
+  ibsFournisseurId?: string
   taxe15Rows?: Taxe15Row[]
   tva16Rows?: Tva16Row[]
+  tva16FournisseurId?: string
 }
 
 type ApiFiscalDeclaration = {
@@ -1481,6 +1568,21 @@ type ApiFiscalDeclaration = {
   dataJson?: string
   isApproved?: boolean
   statut?: string
+}
+
+type RecapEncaissementSource = { direction: string; totalHt: number; totalTtc: number }
+type RecapAmountSource = { direction: string; amount: number }
+type RecapCaTapSource = { direction: string; b12: number; b13: number }
+type RecapTapSource = { direction: string; base: number; taxe: number }
+type RecapDroitsTimbreSource = { direction: string; totalCa: number; totalMontant: number }
+
+type RecapSourcesResponse = {
+  encaissementByDirection: RecapEncaissementSource[]
+  tvaImmoByDirection: RecapAmountSource[]
+  tvaBiensByDirection: RecapAmountSource[]
+  caTapByDirection: RecapCaTapSource[]
+  tapByDirection: RecapTapSource[]
+  droitsTimbreByDirection: RecapDroitsTimbreSource[]
 }
 
 type ExistingDeclarationPreview = {
@@ -1676,6 +1778,19 @@ const DROITS_TIMBRE_RECAP_ROWS = [
   "Total",
 ] as const
 
+const TAP15_RECAP_ROWS = [
+  "Direction Generale",
+  "DR Alger",
+  "DR Setif",
+  "DR Constantine",
+  "DR Annaba",
+  "DR Chlef",
+  "DR Oran",
+  "DR Bechar",
+  "DR Ouargla",
+  "Total",
+] as const
+
 const TACP7_RECAP_ROWS = [
   "Masters",
   "Mobiposte",
@@ -1820,6 +1935,28 @@ const resolveTvaSituationRecapRowByDirection = (direction: string): string | nul
   return resolveRegionalRecapRowByDirection(direction)
 }
 
+const resolveTapRecapRowByDirection = (direction: string): string | null => {
+  const normalized = (direction ?? "").trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    normalized === "siege"
+    || normalized === "siège"
+    || normalized.includes("siege")
+    || normalized.includes("siège")
+    || normalized.includes("direction generale")
+    || normalized.includes("direction générale")
+  ) {
+    return "Direction Generale"
+  }
+
+  if (normalized.includes("autoliquidation") || normalized.includes("auto liquidation")) {
+    return null
+  }
+
+  return resolveRegionalRecapRowByDirection(direction)
+}
+
 const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(dataJson ?? "{}")
@@ -1831,6 +1968,10 @@ const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
   }
 
   return {}
+}
+
+const isRegionalDrRecapRow = (designation: string): boolean => {
+  return normalizeRecapDesignation(designation).startsWith("dr ")
 }
 
 const RECAP_MISSING_META_KEY = "__missingCells"
@@ -2011,17 +2152,19 @@ const annotateTapLikeMissing = (
   declarations: ApiFiscalDeclaration[],
   mois: string,
   annee: string,
+  sourceTabKey: FiscalTabKey,
+  firstValueColumnKey: "caHt" | "base",
 ): Record<string, string>[] => {
   return clearRecapMissingMeta(rows).map((row) => {
     const designation = safeString(row.designation)
-    if (designation === "Total" || designation === "Direction Generale" || designation === "Regul CA du Janvier 2025 a Juin 2025") {
+    if (designation === "Total" || !isRegionalDrRecapRow(designation)) {
       return row
     }
 
-    const status = resolveDeclarationStatus(declarations, "etat_tap", mois, annee, designation)
+    const status = resolveDeclarationStatus(declarations, sourceTabKey, mois, annee, designation)
     if (status === "ok") return row
 
-    let next = setRecapMissingCell(row, "caHt", status)
+    let next = setRecapMissingCell(row, firstValueColumnKey, status)
     next = setRecapMissingCell(next, "taxe", status)
     return next
   })
@@ -2317,24 +2460,16 @@ const recalcTvaAPayerRecapRows = (rows: Record<string, string>[]): Record<string
   return nextRows
 }
 
-const buildTvaCollecteeRecapRows = (mois: string, annee: string, declarations: ApiFiscalDeclaration[]): Record<string, string>[] => {
+const buildTvaCollecteeRecapRows = (sources: RecapSourcesResponse): Record<string, string>[] => {
   const drTtcByRow = new Map<string, number>()
   const drHtByRow = new Map<string, number>()
 
-  for (const declaration of declarations) {
-    if (declaration.mois !== mois || declaration.annee !== annee) continue
-    if (declaration.tabKey !== "encaissement") continue
-
-    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+  for (const source of sources.encaissementByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
     if (!rowLabel) continue
 
-    const payload = parseFiscalDataPayload(declaration.dataJson)
-    const rows = Array.isArray(payload.encRows) ? (payload.encRows as EncRow[]) : []
-    const totalTtc = rows.reduce((sum, row) => sum + parseRecapAmount(row.ht) * 1.19, 0)
-    const totalHt = rows.reduce((sum, row) => sum + parseRecapAmount(row.ht), 0)
-
-    drTtcByRow.set(rowLabel, (drTtcByRow.get(rowLabel) ?? 0) + totalTtc)
-    drHtByRow.set(rowLabel, (drHtByRow.get(rowLabel) ?? 0) + totalHt)
+    drTtcByRow.set(rowLabel, (drTtcByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.totalTtc))
+    drHtByRow.set(rowLabel, (drHtByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.totalHt))
   }
 
   const rows = TVA_COLLECTEE_RECAP_ROWS.map((designation) => {
@@ -2360,28 +2495,20 @@ const buildTvaCollecteeRecapRows = (mois: string, annee: string, declarations: A
   return recalcTvaCollecteeRecapRows(rows)
 }
 
-const buildTvaSituationRecapRows = (mois: string, annee: string, declarations: ApiFiscalDeclaration[]): Record<string, string>[] => {
+const buildTvaSituationRecapRows = (sources: RecapSourcesResponse): Record<string, string>[] => {
   const immoByRow = new Map<string, number>()
   const biensByRow = new Map<string, number>()
 
-  for (const declaration of declarations) {
-    if (declaration.mois !== mois || declaration.annee !== annee) continue
-    if (declaration.tabKey !== "tva_immo" && declaration.tabKey !== "tva_biens") continue
-
-    const rowLabel = resolveTvaSituationRecapRowByDirection(declaration.direction)
+  for (const source of sources.tvaImmoByDirection) {
+    const rowLabel = resolveTvaSituationRecapRowByDirection(safeString(source.direction))
     if (!rowLabel) continue
+    immoByRow.set(rowLabel, (immoByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.amount))
+  }
 
-    const payload = parseFiscalDataPayload(declaration.dataJson)
-    const sourceRows = declaration.tabKey === "tva_immo"
-      ? (Array.isArray(payload.tvaImmoRows) ? (payload.tvaImmoRows as TvaRow[]) : [])
-      : (Array.isArray(payload.tvaBiensRows) ? (payload.tvaBiensRows as TvaRow[]) : [])
-    const totalTva = sourceRows.reduce((sum, row) => sum + getTvaAmountForRecap(row), 0)
-
-    if (declaration.tabKey === "tva_immo") {
-      immoByRow.set(rowLabel, (immoByRow.get(rowLabel) ?? 0) + totalTva)
-    } else {
-      biensByRow.set(rowLabel, (biensByRow.get(rowLabel) ?? 0) + totalTva)
-    }
+  for (const source of sources.tvaBiensByDirection) {
+    const rowLabel = resolveTvaSituationRecapRowByDirection(safeString(source.direction))
+    if (!rowLabel) continue
+    biensByRow.set(rowLabel, (biensByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.amount))
   }
 
   let totalImmo = 0
@@ -2478,27 +2605,17 @@ const buildTvaAPayerRecapRows = (
 }
 
 const buildDroitsTimbreRecapRows = (
-  mois: string,
-  annee: string,
-  declarations: ApiFiscalDeclaration[],
+  sources: RecapSourcesResponse,
 ): Record<string, string>[] => {
   const caByRow = new Map<string, number>()
   const montantByRow = new Map<string, number>()
 
-  for (const declaration of declarations) {
-    if (declaration.mois !== mois || declaration.annee !== annee) continue
-    if (declaration.tabKey !== "droits_timbre") continue
-
-    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+  for (const source of sources.droitsTimbreByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
     if (!rowLabel) continue
 
-    const payload = parseFiscalDataPayload(declaration.dataJson)
-    const rows = Array.isArray(payload.timbreRows) ? (payload.timbreRows as TimbreRow[]) : []
-    const totalCa = rows.reduce((sum, row) => sum + parseRecapAmount(row.caTTCEsp), 0)
-    const totalMontant = rows.reduce((sum, row) => sum + parseRecapAmount(row.droitTimbre), 0)
-
-    caByRow.set(rowLabel, (caByRow.get(rowLabel) ?? 0) + totalCa)
-    montantByRow.set(rowLabel, (montantByRow.get(rowLabel) ?? 0) + totalMontant)
+    caByRow.set(rowLabel, (caByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.totalCa))
+    montantByRow.set(rowLabel, (montantByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.totalMontant))
   }
 
   let totalCa = 0
@@ -2527,38 +2644,21 @@ const buildDroitsTimbreRecapRows = (
 }
 
 const buildTap15RecapRows = (
-  mois: string,
-  annee: string,
-  declarations: ApiFiscalDeclaration[],
+  sources: RecapSourcesResponse,
 ): Record<string, string>[] => {
   const baseByRow = new Map<string, number>()
 
-  for (const declaration of declarations) {
-    if (declaration.mois !== mois || declaration.annee !== annee) continue
-    if (declaration.tabKey !== "etat_tap") continue
-
-    const rowLabel = resolveRegionalRecapRowByDirection(declaration.direction)
+  for (const source of sources.tapByDirection) {
+    const rowLabel = resolveTapRecapRowByDirection(safeString(source.direction))
     if (!rowLabel) continue
 
-    const payload = parseFiscalDataPayload(declaration.dataJson)
-    const rows = Array.isArray(payload.tapRows) ? (payload.tapRows as TAPRow[]) : []
-    const totalBase = rows.reduce((sum, row) => sum + parseRecapAmount(row.tap2), 0)
-
-    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + totalBase)
+    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.base))
   }
 
   let totalBase = 0
   let totalTaxe = 0
 
-  return TNFDAL1_RECAP_ROWS.map((designation, index) => {
-    if (index === 0) {
-      return {
-        designation,
-        caHt: "0,00",
-        taxe: "0,00",
-      }
-    }
-
+  return TAP15_RECAP_ROWS.map((designation) => {
     if (designation === "Total") {
       return {
         designation,
@@ -2580,12 +2680,81 @@ const buildTap15RecapRows = (
   })
 }
 
-const buildTacp7RecapRows = (): Record<string, string>[] => {
-  return TACP7_RECAP_ROWS.map((designation) => ({
-    designation,
-    base: "0,00",
-    taxe: "0,00",
-  }))
+const buildTnfdal1RecapRows = (
+  sources: RecapSourcesResponse,
+): Record<string, string>[] => {
+  const baseByRow = new Map<string, number>()
+
+  for (const source of sources.caTapByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
+    if (!rowLabel) continue
+
+    const base = parseRecapAmount(source.b13)
+    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + base)
+  }
+
+  let totalBase = 0
+  let totalTaxe = 0
+
+  return TNFDAL1_RECAP_ROWS.map((designation) => {
+    if (designation === "Total") {
+      return {
+        designation,
+        caHt: formatRecapAmount(totalBase),
+        taxe: formatRecapAmount(totalTaxe),
+      }
+    }
+
+    if (!isRegionalDrRecapRow(designation)) {
+      return {
+        designation,
+        caHt: "0,00",
+        taxe: "0,00",
+      }
+    }
+
+    const base = baseByRow.get(designation) ?? 0
+    const taxe = base * 0.01
+    totalBase += base
+    totalTaxe += taxe
+
+    return {
+      designation,
+      caHt: formatRecapAmount(base),
+      taxe: formatRecapAmount(taxe),
+    }
+  })
+}
+
+const buildTacp7RecapRows = (
+  sources: RecapSourcesResponse,
+): Record<string, string>[] => {
+  const baseByRow = new Map<string, number>()
+
+  for (const source of sources.caTapByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
+    if (!rowLabel) continue
+
+    const base = parseRecapAmount(source.b12)
+    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + base)
+  }
+
+  return TACP7_RECAP_ROWS.map((designation) => {
+    if (!isRegionalDrRecapRow(designation)) {
+      return {
+        designation,
+        base: "0,00",
+        taxe: "0,00",
+      }
+    }
+
+    const base = baseByRow.get(designation) ?? 0
+    return {
+      designation,
+      base: formatRecapAmount(base),
+      taxe: formatRecapAmount(base * 0.07),
+    }
+  })
 }
 
 const buildMasters15RecapRows = (): Record<string, string>[] => {
@@ -2653,14 +2822,15 @@ const buildG50RecapRows = (
   mois: string,
   annee: string,
   declarations: ApiFiscalDeclaration[],
+  sources: RecapSourcesResponse,
 ): Record<string, string>[] => {
   const tvaAPayerRows = buildTvaAPayerRecapRows(
-    buildTvaCollecteeRecapRows(mois, annee, declarations),
-    buildTvaSituationRecapRows(mois, annee, declarations),
+    buildTvaCollecteeRecapRows(sources),
+    buildTvaSituationRecapRows(sources),
   )
-  const tvaSituationRows = buildTvaSituationRecapRows(mois, annee, declarations)
-  const droitsTimbreRows = buildDroitsTimbreRecapRows(mois, annee, declarations)
-  const tapRows = buildTap15RecapRows(mois, annee, declarations)
+  const tvaSituationRows = buildTvaSituationRecapRows(sources)
+  const droitsTimbreRows = buildDroitsTimbreRecapRows(sources)
+  const tapRows = buildTap15RecapRows(sources)
 
   const values = {
     acompte: 0,
@@ -2801,7 +2971,11 @@ const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey:
     return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
   }
 
-  if (recapKey === "tap15" || recapKey === "tnfdal1" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50") return false
+  if (recapKey === "tnfdal1") {
+    return designation === "Direction Generale" && (columnKey === "caHt" || columnKey === "taxe")
+  }
+
+  if (recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50") return false
 
   return false
 }
@@ -2930,9 +3104,18 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
     if (columnKey === "montant") return "Montant = SUM(Droits de timbre.droit timbre)"
   }
 
-  if (recapKey === "tnfdal1" || recapKey === "tap15") {
+  if (recapKey === "tap15") {
     if (columnKey === "caHt") return "Base = SUM(ETAT_TAP.montant imposable)"
     if (columnKey === "taxe") return "Taxe = Base * (1.5 / 100)"
+  }
+
+  if (recapKey === "tnfdal1") {
+    if (designation === "Direction Generale") {
+      if (columnKey === "caHt") return "Saisie manuelle"
+      if (columnKey === "taxe") return "Saisie manuelle"
+    }
+    if (columnKey === "caHt") return "Base = SUM(CA_TAP.B13)"
+    if (columnKey === "taxe") return "Taxe = Base * (1 / 100)"
   }
 
   if (recapKey === "masters15" && columnKey === "taxe") {
@@ -4107,9 +4290,19 @@ export default function NouvelleDeclarationPage() {
   const [taxe12Rows,     setTaxe12Rows]     = useState<Taxe12Row[]>([{ montant: "" }, { montant: "" }])
   const [acompteMonths,  setAcompteMonths]  = useState<string[]>(Array(12).fill(""))
   const [ibs14Rows,      setIbs14Rows]      = useState<Ibs14Row[]>([{ ...EMPTY_IBS14 }])
+  const [ibsFournisseurId, setIbsFournisseurId] = useState("")
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
+  const [tva16FournisseurId, setTva16FournisseurId] = useState("")
   const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
+  const [recapSources, setRecapSources] = useState<RecapSourcesResponse>({
+    encaissementByDirection: [],
+    tvaImmoByDirection: [],
+    tvaBiensByDirection: [],
+    caTapByDirection: [],
+    tapByDirection: [],
+    droitsTimbreByDirection: [],
+  })
   const [showExistingDeclarationDialog, setShowExistingDeclarationDialog] = useState(false)
   const [recapRowsByKey, setRecapRowsByKey] = useState<Record<RecapKey, Record<string, string>[]>>({
     tva_collectee: [],
@@ -4201,14 +4394,32 @@ export default function NouvelleDeclarationPage() {
     if (!activeTab || !mois || !annee || !effectiveDirection) return null
 
     const expectedDirection = normalizeDirectionKey(effectiveDirection)
+    const selectedIbsFournisseurId = safeString(ibsFournisseurId).trim()
+    const selectedTva16FournisseurId = safeString(tva16FournisseurId).trim()
+
+    const matchesSupplierScope = (declaration: ApiFiscalDeclaration): boolean => {
+      if (activeTab === "ibs") {
+        const payload = parseFiscalDataPayload(declaration.dataJson ?? "{}")
+        return safeString(payload.ibsFournisseurId).trim() === selectedIbsFournisseurId
+      }
+
+      if (activeTab === "tva_autoliq") {
+        const payload = parseFiscalDataPayload(declaration.dataJson ?? "{}")
+        return safeString(payload.tva16FournisseurId).trim() === selectedTva16FournisseurId
+      }
+
+      return true
+    }
+
     return fiscalDeclarations.find((declaration) => {
       if (editingDeclarationId && String(declaration.id) === safeString(editingDeclarationId)) return false
       return declaration.tabKey === activeTab
         && declaration.mois === mois
         && declaration.annee === annee
         && normalizeDirectionKey(declaration.direction) === expectedDirection
+        && matchesSupplierScope(declaration)
     }) ?? null
-  }, [activeTab, annee, editingDeclarationId, effectiveDirection, entryMode, fiscalDeclarations, mois, normalizeDirectionKey])
+  }, [activeTab, annee, editingDeclarationId, effectiveDirection, entryMode, fiscalDeclarations, ibsFournisseurId, mois, normalizeDirectionKey, tva16FournisseurId])
 
   const existingDeclarationPreview = useMemo<ExistingDeclarationPreview | null>(() => {
     if (!existingDeclarationMatch) return null
@@ -4337,16 +4548,59 @@ export default function NouvelleDeclarationPage() {
   }, [status, user])
 
   useEffect(() => {
-    const approvedDeclarations = fiscalDeclarations.filter((declaration) => declaration.isApproved !== false)
+    if (status !== "authenticated") return
 
+    let cancelled = false
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+
+    const loadRecapSources = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/fiscal/recap-sources?mois=${encodeURIComponent(mois)}&annee=${encodeURIComponent(annee)}`, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const payload = await response.json()
+        if (cancelled) return
+
+        setRecapSources({
+          encaissementByDirection: Array.isArray(payload?.encaissementByDirection) ? payload.encaissementByDirection : [],
+          tvaImmoByDirection: Array.isArray(payload?.tvaImmoByDirection) ? payload.tvaImmoByDirection : [],
+          tvaBiensByDirection: Array.isArray(payload?.tvaBiensByDirection) ? payload.tvaBiensByDirection : [],
+          caTapByDirection: Array.isArray(payload?.caTapByDirection) ? payload.caTapByDirection : [],
+          tapByDirection: Array.isArray(payload?.tapByDirection) ? payload.tapByDirection : [],
+          droitsTimbreByDirection: Array.isArray(payload?.droitsTimbreByDirection) ? payload.droitsTimbreByDirection : [],
+        })
+      } catch {
+        if (!cancelled) {
+          setRecapSources({
+            encaissementByDirection: [],
+            tvaImmoByDirection: [],
+            tvaBiensByDirection: [],
+            caTapByDirection: [],
+            tapByDirection: [],
+            droitsTimbreByDirection: [],
+          })
+        }
+      }
+    }
+
+    loadRecapSources()
+    return () => {
+      cancelled = true
+    }
+  }, [annee, mois, status])
+
+  useEffect(() => {
     const collecteeRows = annotateTvaCollecteeMissing(
-      buildTvaCollecteeRecapRows(mois, annee, approvedDeclarations),
+      buildTvaCollecteeRecapRows(recapSources),
       fiscalDeclarations,
       mois,
       annee,
     )
     const situationRows = annotateTvaSituationMissing(
-      buildTvaSituationRecapRows(mois, annee, approvedDeclarations),
+      buildTvaSituationRecapRows(recapSources),
       fiscalDeclarations,
       mois,
       annee,
@@ -4354,26 +4608,37 @@ export default function NouvelleDeclarationPage() {
     const recapRows = annotateTvaAPayerMissing(buildTvaAPayerRecapRows(collecteeRows, situationRows), collecteeRows, situationRows)
     const masters15Rows = recalcMasters15RecapRows(buildMasters15RecapRows())
     const tap15Rows = annotateTapLikeMissing(
-      buildTap15RecapRows(mois, annee, approvedDeclarations),
+      buildTap15RecapRows(recapSources),
       fiscalDeclarations,
       mois,
       annee,
+      "etat_tap",
+      "caHt",
     )
     const tnfdal1Rows = annotateTapLikeMissing(
-      buildTap15RecapRows(mois, annee, approvedDeclarations),
+      buildTnfdal1RecapRows(recapSources),
       fiscalDeclarations,
       mois,
       annee,
+      "ca_tap",
+      "caHt",
     )
-    const tacp7Rows = recalcTacp7RecapRows(buildTacp7RecapRows())
+    const tacp7Rows = annotateTapLikeMissing(
+      recalcTacp7RecapRows(buildTacp7RecapRows(recapSources)),
+      fiscalDeclarations,
+      mois,
+      annee,
+      "ca_tap",
+      "base",
+    )
     const droitsTimbreRows = annotateDroitsTimbreMissing(
-      buildDroitsTimbreRecapRows(mois, annee, approvedDeclarations),
+      buildDroitsTimbreRecapRows(recapSources),
       fiscalDeclarations,
       mois,
       annee,
     )
     const g50Rows = annotateG50Missing(
-      buildG50RecapRows(mois, annee, approvedDeclarations),
+      buildG50RecapRows(mois, annee, fiscalDeclarations, recapSources),
       fiscalDeclarations,
       mois,
       annee,
@@ -4394,7 +4659,7 @@ export default function NouvelleDeclarationPage() {
       droits_timbre: droitsTimbreRows,
       g50: g50Rows,
     })
-  }, [annee, fiscalDeclarations, mois])
+  }, [annee, fiscalDeclarations, mois, recapSources])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {
@@ -4463,8 +4728,10 @@ export default function NouvelleDeclarationPage() {
       setTaxe12Rows(normalizeTaxe12Rows(declaration.taxe12Rows))
       setAcompteMonths(normalizeAcompteMonths(declaration.acompteMonths))
       setIbs14Rows(normalizeIbsRows(declaration.ibs14Rows))
+      setIbsFournisseurId(safeString(declaration.ibsFournisseurId))
       setTaxe15Rows(normalizeTaxe15Rows(declaration.taxe15Rows))
       setTva16Rows(normalizeTva16Rows(declaration.tva16Rows))
+      setTva16FournisseurId(safeString(declaration.tva16FournisseurId))
     } catch {
       toast({
         title: "Erreur de chargement",
@@ -4596,6 +4863,7 @@ export default function NouvelleDeclarationPage() {
           title: activeRecapDefinition.title,
           mois,
           annee,
+          direction: effectiveDirection,
           rows: rowsToSave,
           formulas: {},
           isGenerated: false,
@@ -4631,7 +4899,7 @@ export default function NouvelleDeclarationPage() {
         variant: "destructive",
       })
     }
-  }, [activeRecapDefinition.columns, activeRecapDefinition.title, activeRecapTab, annee, mois, recapRowsByKey, router, toast])
+  }, [activeRecapDefinition.columns, activeRecapDefinition.title, activeRecapTab, annee, effectiveDirection, mois, recapRowsByKey, router, toast])
 
   const handleSave = async () => {
     if (entryMode === "etats_sortie") {
@@ -4867,8 +5135,10 @@ export default function NouvelleDeclarationPage() {
       taxe12Rows: [] as Taxe12Row[],
       acompteMonths: [] as string[],
       ibs14Rows: [] as Ibs14Row[],
+      ibsFournisseurId: "",
       taxe15Rows: [] as Taxe15Row[],
       tva16Rows: [] as Tva16Row[],
+      tva16FournisseurId: "",
     }
     
     // Remplir uniquement les donnees du tableau actif
@@ -4915,12 +5185,14 @@ export default function NouvelleDeclarationPage() {
         break
       case "ibs":
         baseDecl.ibs14Rows = ibs14Rows
+        baseDecl.ibsFournisseurId = ibsFournisseurId
         break
       case "taxe_domicil":
         baseDecl.taxe15Rows = taxe15Rows
         break
       case "tva_autoliq":
         baseDecl.tva16Rows = tva16Rows
+        baseDecl.tva16FournisseurId = tva16FournisseurId
         break
     }
     
@@ -4955,9 +5227,9 @@ export default function NouvelleDeclarationPage() {
         case "taxe_vehicule":  tabData = { taxe11Montant }; break
         case "taxe_formation": tabData = { taxe12Rows }; break
         case "acompte":        tabData = { acompteMonths }; break
-        case "ibs":            tabData = { ibs14Rows }; break
+        case "ibs":            tabData = { ibs14Rows, ibsFournisseurId }; break
         case "taxe_domicil":   tabData = { taxe15Rows }; break
-        case "tva_autoliq":    tabData = { tva16Rows }; break
+        case "tva_autoliq":    tabData = { tva16Rows, tva16FournisseurId }; break
       }
       const requestPayload = {
         tabKey: activeTab,
@@ -5032,9 +5304,9 @@ export default function NouvelleDeclarationPage() {
             case "taxe_vehicule":  restoreTabData = { taxe11Montant: originalDeclaration.taxe11Montant ?? "" }; break
             case "taxe_formation": restoreTabData = { taxe12Rows: originalDeclaration.taxe12Rows ?? [] }; break
             case "acompte":        restoreTabData = { acompteMonths: originalDeclaration.acompteMonths ?? [] }; break
-            case "ibs":            restoreTabData = { ibs14Rows: originalDeclaration.ibs14Rows ?? [] }; break
+            case "ibs":            restoreTabData = { ibs14Rows: originalDeclaration.ibs14Rows ?? [], ibsFournisseurId: originalDeclaration.ibsFournisseurId ?? "" }; break
             case "taxe_domicil":   restoreTabData = { taxe15Rows: originalDeclaration.taxe15Rows ?? [] }; break
-            case "tva_autoliq":    restoreTabData = { tva16Rows: originalDeclaration.tva16Rows ?? [] }; break
+            case "tva_autoliq":    restoreTabData = { tva16Rows: originalDeclaration.tva16Rows ?? [], tva16FournisseurId: originalDeclaration.tva16FournisseurId ?? "" }; break
           }
 
           const restoreResponse = await fetch(`${apiBase}/api/fiscal`, {
@@ -5153,12 +5425,14 @@ export default function NouvelleDeclarationPage() {
         break
       case "ibs":
         saved.ibs14Rows = normalizeIbsRows(Array.isArray(payload.ibs14Rows) ? (payload.ibs14Rows as Ibs14Row[]) : undefined)
+        saved.ibsFournisseurId = safeString(payload.ibsFournisseurId)
         break
       case "taxe_domicil":
         saved.taxe15Rows = normalizeTaxe15Rows(Array.isArray(payload.taxe15Rows) ? (payload.taxe15Rows as Taxe15Row[]) : undefined)
         break
       case "tva_autoliq":
         saved.tva16Rows = normalizeTva16Rows(Array.isArray(payload.tva16Rows) ? (payload.tva16Rows as Tva16Row[]) : undefined)
+        saved.tva16FournisseurId = safeString(payload.tva16FournisseurId)
         break
     }
 
@@ -5640,7 +5914,16 @@ export default function NouvelleDeclarationPage() {
             {activeTab === "ibs" && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N14 - IBS sur Fournisseurs Etrangers</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N14 - IBS sur Fournisseurs Etrangers</CardTitle>
+                    <SupplierSearchSelect
+                      value={ibsFournisseurId}
+                      onChange={setIbsFournisseurId}
+                      fournisseurs={fiscalFournisseurs}
+                      placeholder="Selectionner un fournisseur"
+                      triggerClassName="h-8 min-w-[260px] px-2 text-xs"
+                    />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <TabIBS rows={ibs14Rows} setRows={setIbs14Rows} onSave={handleSave} isSubmitting={isSubmitting} />
@@ -5653,14 +5936,23 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N15 - Taxe Domiciliation Bancaire</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTaxeDomicil rows={taxe15Rows} setRows={setTaxe15Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabTaxeDomicil rows={taxe15Rows} setRows={setTaxe15Rows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} />
                 </CardContent>
               </Card>
             )}
             {activeTab === "tva_autoliq" && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N16 - TVA Auto Liquidation</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N16 - TVA Auto Liquidation</CardTitle>
+                    <SupplierSearchSelect
+                      value={tva16FournisseurId}
+                      onChange={setTva16FournisseurId}
+                      fournisseurs={fiscalFournisseurs}
+                      placeholder="Selectionner un fournisseur"
+                      triggerClassName="h-8 min-w-[260px] px-2 text-xs"
+                    />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <TabTvaAutoLiq rows={tva16Rows} setRows={setTva16Rows} onSave={handleSave} isSubmitting={isSubmitting} />

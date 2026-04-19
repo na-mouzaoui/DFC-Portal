@@ -12,6 +12,7 @@ export interface ReminderData {
   remainingToEnterTabs: number
   remainingToApproveTabs: number
   missingTabs: string[]
+  missingToEnterTabs?: string[]
   isUrgent: boolean
 }
 

@@ -7,6 +7,8 @@ using CheckFillingAPI.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.Data.SqlClient;
 
 namespace CheckFillingAPI.Controllers;
 
@@ -212,8 +214,54 @@ public class FiscalController : ControllerBase
 
     private static readonly HashSet<string> RegionalManageableTabs = new(RegionalManageableTabOrder, StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> FinanceManageableTabs = new(FinanceManageableTabOrder, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> AcompteAllowedMonths = new(new[] { "03", "05", "10" }, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> SupplierScopedTabs = new(new[] { "ibs", "tva_autoliq" }, StringComparer.OrdinalIgnoreCase);
 
     private static string NormalizeTabKey(string? tabKey) => (tabKey ?? "").Trim().ToLowerInvariant();
+
+    private static bool IsSupplierScopedTab(string? tabKey)
+    {
+        return SupplierScopedTabs.Contains(NormalizeTabKey(tabKey));
+    }
+
+    private static string ExtractSupplierScopeKey(string? tabKey, string? dataJson)
+    {
+        var normalizedTabKey = NormalizeTabKey(tabKey);
+        if (!IsSupplierScopedTab(normalizedTabKey))
+            return string.Empty;
+
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(dataJson) ? "{}" : dataJson);
+            var root = document.RootElement;
+
+            if (normalizedTabKey == "ibs"
+                && root.TryGetProperty("ibsFournisseurId", out var ibsFournisseurIdProperty)
+                && ibsFournisseurIdProperty.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            {
+                return ibsFournisseurIdProperty.ToString().Trim();
+            }
+
+            if (normalizedTabKey == "tva_autoliq"
+                && root.TryGetProperty("tva16FournisseurId", out var tva16FournisseurIdProperty)
+                && tva16FournisseurIdProperty.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            {
+                return tva16FournisseurIdProperty.ToString().Trim();
+            }
+        }
+        catch
+        {
+            return string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsAcompteAllowedForMonth(string? month)
+    {
+        var normalizedMonth = (month ?? string.Empty).Trim();
+        return AcompteAllowedMonths.Contains(normalizedMonth);
+    }
 
     private async Task<bool> IsTable6EnabledAsync()
     {
@@ -249,6 +297,15 @@ public class FiscalController : ControllerBase
         return normalizedDirection is "siege" or "siège"
             || normalizedDirection.Contains("siege")
             || normalizedDirection.Contains("siège");
+    }
+
+    private static string NormalizeDirectionKey(string? direction)
+    {
+        var normalizedDirection = (direction ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedDirection))
+            return string.Empty;
+
+        return IsHeadOfficeDirection(normalizedDirection) ? "siege" : normalizedDirection;
     }
 
     private static string[] GetManageableTabsForRole(string role)
@@ -366,6 +423,318 @@ public class FiscalController : ControllerBase
                 Statut = d.Statut,
                 SubmittedAt = d.SubmittedAt,
             });
+    }
+
+    private static string NormalizePayloadJson(string? dataJson)
+    {
+        var trimmed = (dataJson ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? "{}" : trimmed;
+    }
+
+    private async Task<Dictionary<int, string>> GetPayloadMapAsync(IEnumerable<int> declarationIds)
+    {
+        // Compatibility backfill: hydrate payloads from legacy runtime table when present.
+        await _context.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'[dbo].[DeclarationLegacy]', N'U') IS NOT NULL
+AND OBJECT_ID(N'[dbo].[DeclarationPayload]', N'U') IS NOT NULL
+BEGIN
+    INSERT INTO [dbo].[DeclarationPayload] ([DeclarationId], [DataJson], [UpdatedAt])
+    SELECT [d].[Id], [l].[DataJson], SYSUTCDATETIME()
+    FROM [dbo].[Declaration] AS [d]
+    INNER JOIN [dbo].[DeclarationLegacy] AS [l] ON [l].[Id] = [d].[Id]
+    LEFT JOIN [dbo].[DeclarationPayload] AS [p] ON [p].[DeclarationId] = [d].[Id]
+    WHERE [p].[DeclarationId] IS NULL
+      AND [l].[DataJson] IS NOT NULL
+      AND LTRIM(RTRIM([l].[DataJson])) <> N'';
+END
+");
+
+        var ids = declarationIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<int, string>();
+
+        return await _context.FiscalDeclarationPayloads
+            .AsNoTracking()
+            .Where(p => ids.Contains(p.DeclarationId))
+            .ToDictionaryAsync(p => p.DeclarationId, p => p.DataJson);
+    }
+
+    private async Task UpsertPayloadAsync(int declarationId, string? dataJson)
+    {
+        var payloadJson = NormalizePayloadJson(dataJson);
+        var now = DateTime.UtcNow;
+
+        var payload = await _context.FiscalDeclarationPayloads
+            .FirstOrDefaultAsync(p => p.DeclarationId == declarationId);
+
+        if (payload is null)
+        {
+            payload = new FiscalDeclarationPayload
+            {
+                DeclarationId = declarationId,
+                DataJson = payloadJson,
+                UpdatedAt = now,
+            };
+            _context.FiscalDeclarationPayloads.Add(payload);
+        }
+        else
+        {
+            payload.DataJson = payloadJson;
+            payload.UpdatedAt = now;
+        }
+    }
+
+    private static string NormalizeDirectionValue(string? direction) => (direction ?? string.Empty).Trim();
+
+    private async Task PersistNormalizedTabDataAsync(string tabKey, int periodeId, string direction, string? dataJson)
+    {
+        var normalizedTabKey = NormalizeTabKey(tabKey);
+        var payload = NormalizePayloadJson(dataJson);
+        var normalizedDirection = NormalizeDirectionValue(direction);
+
+        switch (normalizedTabKey)
+        {
+            case "encaissement":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[EncaissementLigne] ([Designation])
+SELECT DISTINCT j.[designation]
+FROM OPENJSON({payload}, '$.encRows')
+WITH ([designation] NVARCHAR(255) '$.designation') AS j
+LEFT JOIN [dbo].[EncaissementLigne] l ON l.[Designation] = j.[designation]
+WHERE j.[designation] IS NOT NULL AND LTRIM(RTRIM(j.[designation])) <> N'' AND l.[Id] IS NULL;
+
+DELETE FROM [dbo].[Encaissement] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
+
+INSERT INTO [dbo].[Encaissement] ([EncaissementLigneId], [PeriodeId], [Direction], [MontantHT], [MontantTVA], [MontantTTC])
+SELECT
+    l.[Id],
+    {periodeId},
+    {normalizedDirection},
+    TRY_CAST(j.[ht] AS DECIMAL(18,2)),
+    TRY_CAST(j.[ht] AS DECIMAL(18,2)) * 0.19,
+    TRY_CAST(j.[ht] AS DECIMAL(18,2)) * 1.19
+FROM OPENJSON({payload}, '$.encRows')
+WITH (
+    [designation] NVARCHAR(255) '$.designation',
+    [ht] NVARCHAR(64) '$.ht'
+) AS j
+INNER JOIN [dbo].[EncaissementLigne] l ON l.[Designation] = j.[designation];
+");
+                break;
+
+            case "tva_immo":
+            case "tva_biens":
+            {
+                var tvaType = normalizedTabKey == "tva_immo" ? "IMMO" : "BS";
+                var rowsPath = normalizedTabKey == "tva_immo" ? "$.tvaImmoRows" : "$.tvaBiensRows";
+
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[Fournisseur] ([Nom], [EstEtranger], [NIF], [RC], [Adresse])
+SELECT DISTINCT
+    NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N''),
+    0,
+    NULLIF(LTRIM(RTRIM(j.[nif])), N''),
+    NULLIF(LTRIM(RTRIM(j.[numRC])), N''),
+    NULLIF(LTRIM(RTRIM(j.[adresse])), N'')
+FROM OPENJSON({payload}, {rowsPath})
+WITH (
+    [nomRaisonSociale] NVARCHAR(255) '$.nomRaisonSociale',
+    [nif] NVARCHAR(50) '$.nif',
+    [numRC] NVARCHAR(50) '$.numRC',
+    [adresse] NVARCHAR(255) '$.adresse'
+) AS j
+WHERE NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'') IS NOT NULL
+  AND NOT EXISTS (
+        SELECT 1
+        FROM [dbo].[Fournisseur] f
+        WHERE f.[Nom] = NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'')
+          AND ISNULL(f.[NIF], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[nif])), N''), N'')
+          AND ISNULL(f.[Adresse], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[adresse])), N''), N'')
+  );
+
+DELETE t
+FROM [dbo].[Tva] t
+WHERE t.[PeriodeId] = {periodeId}
+  AND t.[Direction] = {normalizedDirection}
+  AND t.[Type] = {tvaType};
+
+INSERT INTO [dbo].[Facture] ([IdFournisseur], [NumFacture], [DateFacture], [MontantHT], [TVA], [MontantTTC])
+SELECT DISTINCT
+    f.[Id],
+    j.[numFacture],
+    TRY_CAST(j.[dateFacture] AS DATE),
+    TRY_CAST(j.[montantHT] AS DECIMAL(18,2)),
+    TRY_CAST(j.[tva] AS DECIMAL(18,2)),
+    TRY_CAST(j.[montantHT] AS DECIMAL(18,2)) + TRY_CAST(j.[tva] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, {rowsPath})
+WITH (
+    [nomRaisonSociale] NVARCHAR(255) '$.nomRaisonSociale',
+    [nif] NVARCHAR(50) '$.nif',
+    [adresse] NVARCHAR(255) '$.adresse',
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [dateFacture] NVARCHAR(50) '$.dateFacture',
+    [montantHT] NVARCHAR(64) '$.montantHT',
+    [tva] NVARCHAR(64) '$.tva'
+) AS j
+INNER JOIN [dbo].[Fournisseur] f
+    ON f.[Nom] = NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'')
+   AND ISNULL(f.[NIF], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[nif])), N''), N'')
+   AND ISNULL(f.[Adresse], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[adresse])), N''), N'')
+WHERE NULLIF(LTRIM(RTRIM(j.[numFacture])), N'') IS NOT NULL
+  AND TRY_CAST(j.[dateFacture] AS DATE) IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM [dbo].[Facture] x
+      WHERE x.[IdFournisseur] = f.[Id]
+        AND x.[NumFacture] = j.[numFacture]
+        AND x.[DateFacture] = TRY_CAST(j.[dateFacture] AS DATE)
+  );
+
+INSERT INTO [dbo].[Tva] ([IdFournisseur], [NumFacture], [DateFacture], [PeriodeId], [Direction], [Type])
+SELECT
+    f.[Id],
+    j.[numFacture],
+    TRY_CAST(j.[dateFacture] AS DATE),
+    {periodeId},
+    {normalizedDirection},
+    {tvaType}
+FROM OPENJSON({payload}, {rowsPath})
+WITH (
+    [nomRaisonSociale] NVARCHAR(255) '$.nomRaisonSociale',
+    [nif] NVARCHAR(50) '$.nif',
+    [adresse] NVARCHAR(255) '$.adresse',
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [dateFacture] NVARCHAR(50) '$.dateFacture'
+) AS j
+INNER JOIN [dbo].[Fournisseur] f
+    ON f.[Nom] = NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'')
+   AND ISNULL(f.[NIF], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[nif])), N''), N'')
+   AND ISNULL(f.[Adresse], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[adresse])), N''), N'')
+WHERE NULLIF(LTRIM(RTRIM(j.[numFacture])), N'') IS NOT NULL
+  AND TRY_CAST(j.[dateFacture] AS DATE) IS NOT NULL;
+");
+                break;
+            }
+
+            case "ca_tap":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+IF NOT EXISTS (SELECT 1 FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B12')
+    INSERT INTO [dbo].[Ca71Ligne] ([Designation]) VALUES (N'B12');
+IF NOT EXISTS (SELECT 1 FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B13')
+    INSERT INTO [dbo].[Ca71Ligne] ([Designation]) VALUES (N'B13');
+
+DELETE FROM [dbo].[Ca71] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
+
+INSERT INTO [dbo].[Ca71] ([LigneId], [PeriodeId], [Direction], [MontantCA], [MontantTaxe])
+SELECT [Id], {periodeId}, {normalizedDirection}, TRY_CAST(JSON_VALUE({payload}, '$.b12') AS DECIMAL(18,2)), TRY_CAST(JSON_VALUE({payload}, '$.b12') AS DECIMAL(18,2)) * 0.07
+FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B12'
+UNION ALL
+SELECT [Id], {periodeId}, {normalizedDirection}, TRY_CAST(JSON_VALUE({payload}, '$.b13') AS DECIMAL(18,2)), TRY_CAST(JSON_VALUE({payload}, '$.b13') AS DECIMAL(18,2)) * 0.01
+FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B13';
+");
+                break;
+
+            case "etat_tap":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+IF NOT EXISTS (SELECT 1 FROM [dbo].[TapLigne] WHERE [Designation] = N'TAP 2%')
+    INSERT INTO [dbo].[TapLigne] ([Designation]) VALUES (N'TAP 2%');
+
+INSERT INTO [dbo].[Wilaya] ([Nom])
+SELECT DISTINCT j.[wilayaCode]
+FROM OPENJSON({payload}, '$.tapRows')
+WITH ([wilayaCode] NVARCHAR(100) '$.wilayaCode') AS j
+LEFT JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
+WHERE NULLIF(LTRIM(RTRIM(j.[wilayaCode])), N'') IS NOT NULL AND w.[Id] IS NULL;
+
+INSERT INTO [dbo].[Commune] ([WilayaId], [Nom])
+SELECT DISTINCT w.[Id], j.[commune]
+FROM OPENJSON({payload}, '$.tapRows')
+WITH (
+    [wilayaCode] NVARCHAR(100) '$.wilayaCode',
+    [commune] NVARCHAR(100) '$.commune'
+) AS j
+INNER JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
+LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune]
+WHERE NULLIF(LTRIM(RTRIM(j.[commune])), N'') IS NOT NULL AND c.[Id] IS NULL;
+
+DELETE FROM [dbo].[Tap] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
+
+INSERT INTO [dbo].[Tap] ([LigneId], [PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
+SELECT
+    l.[Id],
+    {periodeId},
+    {normalizedDirection},
+    c.[Id],
+    TRY_CAST(j.[tap2] AS DECIMAL(18,2)),
+    TRY_CAST(j.[tap2] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.tapRows')
+WITH (
+    [wilayaCode] NVARCHAR(100) '$.wilayaCode',
+    [commune] NVARCHAR(100) '$.commune',
+    [tap2] NVARCHAR(64) '$.tap2'
+) AS j
+INNER JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
+INNER JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune]
+CROSS JOIN (SELECT TOP 1 [Id] FROM [dbo].[TapLigne] WHERE [Designation] = N'TAP 2%') l;
+");
+                break;
+
+            case "droits_timbre":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[TimbreLigne] ([Designation])
+SELECT DISTINCT j.[designation]
+FROM OPENJSON({payload}, '$.timbreRows')
+WITH ([designation] NVARCHAR(255) '$.designation') AS j
+LEFT JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation]
+WHERE NULLIF(LTRIM(RTRIM(j.[designation])), N'') IS NOT NULL AND l.[Id] IS NULL;
+
+DELETE FROM [dbo].[Timbre] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
+
+INSERT INTO [dbo].[Timbre] ([TimbreLigneId], [PeriodeId], [Direction], [ChiffreAffaireTTC], [DroitTimbre])
+SELECT
+    l.[Id],
+    {periodeId},
+    {normalizedDirection},
+    TRY_CAST(j.[caTTCEsp] AS DECIMAL(18,2)),
+    TRY_CAST(j.[droitTimbre] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.timbreRows')
+WITH (
+    [designation] NVARCHAR(255) '$.designation',
+    [caTTCEsp] NVARCHAR(64) '$.caTTCEsp',
+    [droitTimbre] NVARCHAR(64) '$.droitTimbre'
+) AS j
+INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
+");
+                break;
+        }
+    }
+
+    private async Task DeleteNormalizedTabDataAsync(string tabKey, int periodeId, string direction)
+    {
+        var normalizedTabKey = NormalizeTabKey(tabKey);
+        var normalizedDirection = NormalizeDirectionValue(direction);
+
+        switch (normalizedTabKey)
+        {
+            case "encaissement":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Encaissement] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};");
+                break;
+            case "tva_immo":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Tva] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection} AND [Type] = {"IMMO"};");
+                break;
+            case "tva_biens":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Tva] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection} AND [Type] = {"BS"};");
+                break;
+            case "ca_tap":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Ca71] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};");
+                break;
+            case "etat_tap":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Tap] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};");
+                break;
+            case "droits_timbre":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Timbre] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};");
+                break;
+        }
     }
 
     private async Task AutoApproveExpiredPendingDeclarationsAsync()
@@ -492,6 +861,8 @@ public class FiscalController : ControllerBase
             .Where(d => IsDirectionAccessible(currentUserRole, currentUserContext.Direction, currentUserContext.Region, d.Direction))
             .ToList();
 
+        var payloadMap = await GetPayloadMapAsync(visibleDeclarations.Select(d => d.Id));
+
         return Ok(visibleDeclarations.Select(d => new
         {
             d.Id,
@@ -499,7 +870,7 @@ public class FiscalController : ControllerBase
             Mois = int.Parse(d.Mois).ToString("00"),
             Annee = d.Annee,
             d.Direction,
-            DataJson = "{}",
+            DataJson = payloadMap.TryGetValue(d.Id, out var payloadJson) ? payloadJson : "{}",
             CreatedAt = d.SubmittedAt,
             UpdatedAt = d.SubmittedAt,
             UserId = 0,
@@ -526,6 +897,10 @@ public class FiscalController : ControllerBase
         if (!IsDirectionAccessible(currentUserContext.Role, currentUserContext.Direction, currentUserContext.Region, declaration.Direction))
             return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez consulter que les déclarations de votre groupe." });
 
+        var payload = await _context.FiscalDeclarationPayloads
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.DeclarationId == declaration.Id);
+
         return Ok(new
         {
             declaration.Id,
@@ -533,7 +908,7 @@ public class FiscalController : ControllerBase
             Mois = int.Parse(declaration.Mois).ToString("00"),
             Annee = declaration.Annee,
             declaration.Direction,
-            DataJson = "{}",
+            DataJson = payload?.DataJson ?? "{}",
             CreatedAt = declaration.SubmittedAt,
             UpdatedAt = declaration.SubmittedAt,
             UserId = 0,
@@ -571,18 +946,22 @@ public class FiscalController : ControllerBase
 
         var periode = await GetOrCreatePeriodeAsync(normalizedMois, normalizedAnnee);
         var normalizedTabKey = NormalizeTabKey(request.TabKey);
+        var supplierScopeKey = ExtractSupplierScopeKey(normalizedTabKey, request.DataJson);
 
         var exists = await _context.FiscalDeclarationHeaders
             .AsNoTracking()
             .AnyAsync(d => d.PeriodeId == periode.Id
                 && d.TableauCode.ToLower() == normalizedTabKey
-                && d.Direction.ToLower() == targetDirection.ToLower());
+                && d.Direction.ToLower() == targetDirection.ToLower()
+                && d.SupplierScopeKey == supplierScopeKey);
 
         if (exists)
         {
             return Conflict(new
             {
-                message = $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), cette direction et cette période ({normalizedMois}/{normalizedAnnee}).",
+                message = IsSupplierScopedTab(normalizedTabKey)
+                    ? $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), ce fournisseur, cette direction et cette période ({normalizedMois}/{normalizedAnnee})."
+                    : $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), cette direction et cette période ({normalizedMois}/{normalizedAnnee}).",
                 isDoubloon = true
             });
         }
@@ -592,11 +971,17 @@ public class FiscalController : ControllerBase
             PeriodeId = periode.Id,
             Direction = targetDirection,
             TableauCode = normalizedTabKey,
+            SupplierScopeKey = supplierScopeKey,
             Statut = "PENDING",
             SubmittedAt = DateTime.UtcNow,
         };
 
         _context.FiscalDeclarationHeaders.Add(declaration);
+        await _context.SaveChangesAsync();
+
+        await PersistNormalizedTabDataAsync(normalizedTabKey, periode.Id, targetDirection, request.DataJson);
+
+        await UpsertPayloadAsync(declaration.Id, request.DataJson);
         await _context.SaveChangesAsync();
 
         await _auditService.LogAction(userId, "FISCAL_SAVE", "Declaration", declaration.Id,
@@ -643,6 +1028,7 @@ public class FiscalController : ControllerBase
 
         var targetDirection = ResolveDirectionForRole(currentUserRole, request.Direction, currentUserContext.Direction, currentUserContext.Region, declaration.Direction);
         var normalizedTabKey = NormalizeTabKey(request.TabKey);
+        var supplierScopeKey = ExtractSupplierScopeKey(normalizedTabKey, request.DataJson);
         var targetPeriode = await GetOrCreatePeriodeAsync(normalizedMois, normalizedAnnee);
 
         var duplicateExists = await _context.FiscalDeclarationHeaders
@@ -650,13 +1036,16 @@ public class FiscalController : ControllerBase
             .AnyAsync(d => d.Id != id
                 && d.PeriodeId == targetPeriode.Id
                 && d.TableauCode.ToLower() == normalizedTabKey
-                && d.Direction.ToLower() == targetDirection.ToLower());
+                && d.Direction.ToLower() == targetDirection.ToLower()
+                && d.SupplierScopeKey == supplierScopeKey);
 
         if (duplicateExists)
         {
             return Conflict(new
             {
-                message = $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), cette direction et cette période ({normalizedMois}/{normalizedAnnee}).",
+                message = IsSupplierScopedTab(normalizedTabKey)
+                    ? $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), ce fournisseur, cette direction et cette période ({normalizedMois}/{normalizedAnnee})."
+                    : $"Une déclaration existe déjà pour ce tableau ({request.TabKey}), cette direction et cette période ({normalizedMois}/{normalizedAnnee}).",
                 isDoubloon = true
             });
         }
@@ -664,8 +1053,13 @@ public class FiscalController : ControllerBase
         declaration.PeriodeId = targetPeriode.Id;
         declaration.Direction = targetDirection;
         declaration.TableauCode = normalizedTabKey;
+        declaration.SupplierScopeKey = supplierScopeKey;
         declaration.Statut = "PENDING";
         declaration.SubmittedAt = DateTime.UtcNow;
+
+        await PersistNormalizedTabDataAsync(normalizedTabKey, targetPeriode.Id, targetDirection, request.DataJson);
+
+        await UpsertPayloadAsync(declaration.Id, request.DataJson);
 
         await _context.SaveChangesAsync();
 
@@ -765,6 +1159,8 @@ public class FiscalController : ControllerBase
         if (IsPeriodLocked(mois, annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(mois, annee, periodDeadline);
 
+        await DeleteNormalizedTabDataAsync(declaration.TableauCode, declaration.PeriodeId, declaration.Direction);
+
         _context.FiscalDeclarationHeaders.Remove(declaration);
         await _context.SaveChangesAsync();
 
@@ -797,6 +1193,96 @@ public class FiscalController : ControllerBase
             new { TabKey = declaration.TableauCode, Mois = declaration.Periode.Mois.ToString("00"), Annee = declaration.Periode.Annee.ToString() });
 
         return Ok(new { message = "Impression enregistrée dans l'audit." });
+    }
+
+    // ─── GET api/fiscal/recap-sources ─────────────────────────────────────
+    [HttpGet("recap-sources")]
+    public async Task<IActionResult> GetRecapSources([FromQuery] string mois, [FromQuery] string annee)
+    {
+        if (!TryNormalizePeriod(mois, annee, out var normalizedMois, out var normalizedAnnee))
+            return BadRequest(new { message = "Période invalide." });
+
+        var periode = await _context.Periodes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Mois == int.Parse(normalizedMois) && p.Annee == int.Parse(normalizedAnnee));
+
+        if (periode is null)
+        {
+            return Ok(new
+            {
+                encaissementByDirection = Array.Empty<object>(),
+                tvaImmoByDirection = Array.Empty<object>(),
+                tvaBiensByDirection = Array.Empty<object>(),
+                caTapByDirection = Array.Empty<object>(),
+                tapByDirection = Array.Empty<object>(),
+                droitsTimbreByDirection = Array.Empty<object>(),
+            });
+        }
+
+        var encaissementByDirection = await _context.Database.SqlQueryRaw<DirectionEncaissementSourceDto>(@"
+SELECT [Direction] AS [Direction],
+       SUM(ISNULL([MontantHT], 0)) AS [TotalHt],
+       SUM(ISNULL([MontantTTC], 0)) AS [TotalTtc]
+FROM [dbo].[Encaissement]
+WHERE [PeriodeId] = {0}
+GROUP BY [Direction]", periode.Id).ToListAsync();
+
+        var tvaImmoByDirection = await _context.Database.SqlQueryRaw<DirectionAmountSourceDto>(@"
+SELECT t.[Direction] AS [Direction],
+       SUM(ISNULL(f.[TVA], 0)) AS [Amount]
+FROM [dbo].[Tva] t
+INNER JOIN [dbo].[Facture] f
+    ON f.[IdFournisseur] = t.[IdFournisseur]
+   AND f.[NumFacture] = t.[NumFacture]
+   AND f.[DateFacture] = t.[DateFacture]
+WHERE t.[PeriodeId] = {0} AND t.[Type] = 'IMMO'
+GROUP BY t.[Direction]", periode.Id).ToListAsync();
+
+        var tvaBiensByDirection = await _context.Database.SqlQueryRaw<DirectionAmountSourceDto>(@"
+SELECT t.[Direction] AS [Direction],
+       SUM(ISNULL(f.[TVA], 0)) AS [Amount]
+FROM [dbo].[Tva] t
+INNER JOIN [dbo].[Facture] f
+    ON f.[IdFournisseur] = t.[IdFournisseur]
+   AND f.[NumFacture] = t.[NumFacture]
+   AND f.[DateFacture] = t.[DateFacture]
+WHERE t.[PeriodeId] = {0} AND t.[Type] = 'BS'
+GROUP BY t.[Direction]", periode.Id).ToListAsync();
+
+        var caTapByDirection = await _context.Database.SqlQueryRaw<DirectionCaTapSourceDto>(@"
+SELECT c.[Direction] AS [Direction],
+       SUM(CASE WHEN l.[Designation] = 'B12' THEN ISNULL(c.[MontantCA], 0) ELSE 0 END) AS [B12],
+       SUM(CASE WHEN l.[Designation] = 'B13' THEN ISNULL(c.[MontantCA], 0) ELSE 0 END) AS [B13]
+FROM [dbo].[Ca71] c
+INNER JOIN [dbo].[Ca71Ligne] l ON l.[Id] = c.[LigneId]
+WHERE c.[PeriodeId] = {0}
+GROUP BY c.[Direction]", periode.Id).ToListAsync();
+
+        var tapByDirection = await _context.Database.SqlQueryRaw<DirectionTapSourceDto>(@"
+SELECT [Direction] AS [Direction],
+       SUM(ISNULL([MontantImposable], 0)) AS [Base],
+       SUM(ISNULL([MontantTAP], 0)) AS [Taxe]
+FROM [dbo].[Tap]
+WHERE [PeriodeId] = {0}
+GROUP BY [Direction]", periode.Id).ToListAsync();
+
+        var droitsTimbreByDirection = await _context.Database.SqlQueryRaw<DirectionDroitsTimbreSourceDto>(@"
+SELECT [Direction] AS [Direction],
+       SUM(ISNULL([ChiffreAffaireTTC], 0)) AS [TotalCa],
+       SUM(ISNULL([DroitTimbre], 0)) AS [TotalMontant]
+FROM [dbo].[Timbre]
+WHERE [PeriodeId] = {0}
+GROUP BY [Direction]", periode.Id).ToListAsync();
+
+        return Ok(new
+        {
+            encaissementByDirection,
+            tvaImmoByDirection,
+            tvaBiensByDirection,
+            caTapByDirection,
+            tapByDirection,
+            droitsTimbreByDirection,
+        });
     }
 
     // ─── GET api/fiscal/reminders ─────────────────────────────────────────
@@ -850,7 +1336,11 @@ public class FiscalController : ControllerBase
                 allAccessibleDirections.Add(userRegion);
             allAccessibleDirections.Add("Siège");
         }
-        else if (currentUserRole is "finance" or "comptabilite" or "direction")
+        else if (currentUserRole is "finance" or "comptabilite")
+        {
+            allAccessibleDirections.Add("Siège");
+        }
+        else if (currentUserRole == "direction")
         {
             var allRegions = await _context.Regions.Select(r => r.Name).ToListAsync();
             allAccessibleDirections.UnionWith(allRegions);
@@ -866,7 +1356,7 @@ public class FiscalController : ControllerBase
 
         var declarationsByDirectionMap = visibleDeclarations
             .Where(d => !string.IsNullOrWhiteSpace(d.Direction))
-            .GroupBy(d => d.Direction.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(d => NormalizeDirectionKey(d.Direction), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => g.Select(d => (TabKey: d.TabKey, IsApproved: string.Equals(d.Statut, "APPROVED", StringComparison.OrdinalIgnoreCase))).ToList(),
@@ -876,9 +1366,11 @@ public class FiscalController : ControllerBase
 
         foreach (var direction in allAccessibleDirections)
         {
-            var isSiegeDirection = IsHeadOfficeDirection(direction);
+            var normalizedDirectionKey = NormalizeDirectionKey(direction);
+            var isSiegeDirection = IsHeadOfficeDirection(normalizedDirectionKey);
             var assignedTabs = (isSiegeDirection ? FinanceManageableTabOrder : RegionalManageableTabOrder)
                 .Where(tab => isTable6Enabled || !string.Equals(tab, "etat_tap", StringComparison.OrdinalIgnoreCase))
+                .Where(tab => IsAcompteAllowedForMonth(currentMonth) || !string.Equals(tab, "acompte", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
             var roleForDeadline = isSiegeDirection ? "finance" : "regionale";
 
@@ -888,7 +1380,7 @@ public class FiscalController : ControllerBase
             var deadlineEndOfDay = deadline.AddDays(1).Date;
             var daysUntilDeadline = (int)Math.Floor((deadlineEndOfDay - now).TotalDays);
 
-            declarationsByDirectionMap.TryGetValue(direction, out var declarationsForDirection);
+            declarationsByDirectionMap.TryGetValue(normalizedDirectionKey, out var declarationsForDirection);
             declarationsForDirection ??= new List<(string TabKey, bool IsApproved)>();
 
             var enteredTabSet = declarationsForDirection
@@ -908,6 +1400,9 @@ public class FiscalController : ControllerBase
             var missingTabs = assignedTabs
                 .Where(tab => !approvedTabSet.Contains(tab))
                 .ToList();
+            var missingToEnterTabs = assignedTabs
+                .Where(tab => !enteredTabSet.Contains(tab))
+                .ToList();
 
             reminders.Add(new ReminderDto
             {
@@ -922,6 +1417,7 @@ public class FiscalController : ControllerBase
                 RemainingToEnterTabs = remainingToEnterTabs,
                 RemainingToApproveTabs = remainingToApproveTabs,
                 MissingTabs = missingTabs,
+                MissingToEnterTabs = missingToEnterTabs,
                 IsUrgent = daysUntilDeadline <= 5
             });
         }
@@ -939,6 +1435,40 @@ public class DeclarationRequest
     public string? DataJson { get; set; }
 }
 
+public sealed class DirectionEncaissementSourceDto
+{
+    public string Direction { get; set; } = string.Empty;
+    public decimal TotalHt { get; set; }
+    public decimal TotalTtc { get; set; }
+}
+
+public sealed class DirectionAmountSourceDto
+{
+    public string Direction { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+}
+
+public sealed class DirectionCaTapSourceDto
+{
+    public string Direction { get; set; } = string.Empty;
+    public decimal B12 { get; set; }
+    public decimal B13 { get; set; }
+}
+
+public sealed class DirectionTapSourceDto
+{
+    public string Direction { get; set; } = string.Empty;
+    public decimal Base { get; set; }
+    public decimal Taxe { get; set; }
+}
+
+public sealed class DirectionDroitsTimbreSourceDto
+{
+    public string Direction { get; set; } = string.Empty;
+    public decimal TotalCa { get; set; }
+    public decimal TotalMontant { get; set; }
+}
+
 public sealed class ReminderDto
 {
     public string Direction { get; set; } = string.Empty;
@@ -952,5 +1482,6 @@ public sealed class ReminderDto
     public int RemainingToEnterTabs { get; set; }
     public int RemainingToApproveTabs { get; set; }
     public List<string> MissingTabs { get; set; } = new();
+    public List<string> MissingToEnterTabs { get; set; } = new();
     public bool IsUrgent { get; set; }
 }

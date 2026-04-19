@@ -19,8 +19,9 @@ public class AppDbContext : DbContext
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
     public DbSet<FiscalPeriode> Periodes { get; set; }
     public DbSet<FiscalDeclarationHeader> FiscalDeclarationHeaders { get; set; }
+    public DbSet<FiscalDeclarationPayload> FiscalDeclarationPayloads { get; set; }
     public DbSet<FiscalFournisseur> FiscalFournisseurs { get; set; }
-    public DbSet<EtatsDeSortie> EtatsDeSortie { get; set; }
+    public DbSet<Recap> Recaps { get; set; }
     public DbSet<AdminFiscalSetting> AdminFiscalSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -163,35 +164,53 @@ public class AppDbContext : DbContext
 
             entity.Property(e => e.Direction).HasMaxLength(120).IsRequired();
             entity.Property(e => e.TableauCode).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.SupplierScopeKey).HasMaxLength(64).IsRequired().HasDefaultValue(string.Empty);
             entity.Property(e => e.Statut).HasMaxLength(20).IsRequired().HasDefaultValue("PENDING");
             entity.Property(e => e.SubmittedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.Property(e => e.RowVersion).IsRowVersion().IsConcurrencyToken();
 
-            entity.HasIndex(e => new { e.PeriodeId, e.Direction, e.TableauCode })
+            entity.HasIndex(e => new { e.PeriodeId, e.Direction, e.TableauCode, e.SupplierScopeKey })
                 .IsUnique()
-                .HasDatabaseName("UX_Declaration_Periode_Direction_Tableau");
+                .HasDatabaseName("UX_Declaration_Periode_Direction_Tableau_SupplierScope");
             entity.HasIndex(e => e.PeriodeId)
                 .HasDatabaseName("IX_Declaration_Periode");
             entity.HasIndex(e => new { e.PeriodeId, e.Statut, e.Direction })
                 .HasDatabaseName("IX_Declaration_Worklist");
         });
 
-        // EtatsDeSortie configuration
-        modelBuilder.Entity<EtatsDeSortie>(entity =>
+        modelBuilder.Entity<FiscalDeclarationPayload>(entity =>
         {
-            entity.ToTable("EtatsDeSortie");
+            entity.ToTable("DeclarationPayload");
+            entity.HasKey(e => e.DeclarationId);
+
+            entity.Property(e => e.DataJson).IsRequired();
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+
+            entity.HasOne(e => e.Declaration)
+                .WithOne(d => d.Payload)
+                .HasForeignKey<FiscalDeclarationPayload>(e => e.DeclarationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_DeclarationPayload_Declaration");
+        });
+
+        // Recap registry configuration
+        modelBuilder.Entity<Recap>(entity =>
+        {
+            entity.ToTable("Recap");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => new { e.Key, e.Mois, e.Annee }).IsUnique();
+            entity.HasIndex(e => new { e.Key, e.Mois, e.Annee, e.Direction })
+                .IsUnique()
+                .HasDatabaseName("UX_Recap_Key_Mois_Annee_Direction");
             entity.Property(e => e.Key).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Mois).HasMaxLength(10).IsRequired();
             entity.Property(e => e.Annee).HasMaxLength(10).IsRequired();
-            entity.Property(e => e.RowsJson).IsRequired();
+            entity.Property(e => e.Direction).HasMaxLength(200).IsRequired();
             entity.Property(e => e.FormulasJson).IsRequired();
             entity.Property(e => e.IsGenerated).HasDefaultValue(true);
         });

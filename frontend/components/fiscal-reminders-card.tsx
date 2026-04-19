@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { ReminderData } from "@/lib/fiscal-reminders"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { formatTabKey, ReminderData } from "@/lib/fiscal-reminders"
 
 const normalizeDirectionKey = (value: string) => {
   const normalized = (value ?? "").trim().toLowerCase()
@@ -296,6 +297,11 @@ function ReminderKpiRow({
   const enteredTabs = reminders.reduce((sum, reminder) => sum + reminder.enteredTabs, 0)
   const approvedTabs = reminders.reduce((sum, reminder) => sum + reminder.approvedTabs, 0)
   const remainingToEnterTabs = reminders.reduce((sum, reminder) => sum + reminder.remainingToEnterTabs, 0)
+  const remainingToEnterTabLabels = Array.from(new Set(
+    reminders.flatMap((reminder) => reminder.missingToEnterTabs ?? []),
+  ))
+    .map((tabKey) => formatTabKey(tabKey))
+    .sort((a, b) => a.localeCompare(b, "fr"))
   const currentPeriodLabel = `${closestReminder.mois}/${closestReminder.annee}`
 
   return (
@@ -337,6 +343,7 @@ function ReminderKpiRow({
             value={String(remainingToEnterTabs)}
             icon={<FileClock className="h-4 w-4 text-amber-500" />}
             valueClassName="text-amber-600"
+            tooltipLines={remainingToEnterTabLabels}
           />
         </div>
         {directionStatus && (
@@ -360,12 +367,16 @@ function IndicatorBrick({
   value,
   icon,
   valueClassName,
+  tooltipLines = [],
 }: {
   label: string
   value: string
   icon: React.ReactNode
   valueClassName?: string
+  tooltipLines?: string[]
 }) {
+  const hasTooltip = tooltipLines.length > 0
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -373,7 +384,23 @@ function IndicatorBrick({
         {icon}
       </CardHeader>
       <CardContent>
-        <div className={`text-2xl font-bold ${valueClassName ?? ""}`.trim()}>{value}</div>
+        {hasTooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={`text-2xl font-bold underline decoration-dotted cursor-help ${valueClassName ?? ""}`.trim()}>{value}</div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="font-semibold mb-1">Tableaux restants a saisir</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                {tooltipLines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <div className={`text-2xl font-bold ${valueClassName ?? ""}`.trim()}>{value}</div>
+        )}
       </CardContent>
     </Card>
   )

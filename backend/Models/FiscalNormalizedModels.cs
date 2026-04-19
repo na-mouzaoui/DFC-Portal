@@ -15,9 +15,20 @@ public class FiscalDeclarationHeader
     public int PeriodeId { get; set; }
     public string Direction { get; set; } = string.Empty;
     public string TableauCode { get; set; } = string.Empty;
+    public string SupplierScopeKey { get; set; } = string.Empty;
     public string Statut { get; set; } = "PENDING";
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
     public FiscalPeriode Periode { get; set; } = null!;
+    public FiscalDeclarationPayload? Payload { get; set; }
+}
+
+public class FiscalDeclarationPayload
+{
+    public int DeclarationId { get; set; }
+    public string DataJson { get; set; } = "{}";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public FiscalDeclarationHeader Declaration { get; set; } = null!;
 }

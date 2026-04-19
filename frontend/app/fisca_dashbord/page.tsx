@@ -60,6 +60,7 @@ const MONTH_LABELS_SHORT = ["Janv","Fév","Mars","Avr","Mai","Juin","Juil","Aoû
 
 interface SavedDeclaration {
   id: string
+  tabKey?: string
   userId?: number
   createdAt: string
   direction: string
@@ -273,6 +274,7 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
 
   const declaration: SavedDeclaration = {
     id: String(item.id),
+    tabKey: String(item.tabKey ?? "").trim().toLowerCase(),
     userId: item.userId,
     createdAt: item.createdAt,
     direction: item.direction ?? "",
@@ -381,6 +383,25 @@ const DASH_TABS = [
   { key: "taxe_domicil",  label: "15 a Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
   { key: "tva_autoliq",   label: "16 a TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
 ]
+
+const DECLARATION_TYPE_LABELS: Record<string, string> = {
+  encaissement: "Encaissement",
+  tva_immo: "TVA / IMMO",
+  tva_biens: "TVA / Biens & Serv",
+  droits_timbre: "Droits Timbre",
+  ca_tap: "CA 7% & CA Glob 1%",
+  etat_tap: "ETAT TAP",
+  ca_siege: "CA Siège",
+  irg: "Situation IRG",
+  taxe2: "Taxe 2%",
+  taxe_masters: "Taxe des Master 1,5%",
+  taxe_vehicule: "Taxe Vehicule",
+  taxe_formation: "Taxe Formation",
+  acompte: "Acompte Provisionnel",
+  ibs: "IBS Fournisseurs Etrangers",
+  taxe_domicil: "Taxe Domiciliation",
+  tva_autoliq: "TVA Auto Liquidation",
+}
 
 // aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const fmt = (v: number | string) => {
@@ -1850,6 +1871,15 @@ export default function FiscaDashboardPage() {
   }
 
   const getDeclarationType = (decl: SavedDeclaration) => {
+    const normalizedTabKey = String(decl.tabKey ?? "").trim().toLowerCase()
+    if (normalizedTabKey) {
+      const tab = DASH_TABS.find((item) => item.key === normalizedTabKey)
+      if (tab) {
+        const cleanLabel = DECLARATION_TYPE_LABELS[tab.key] ?? tab.label
+        return { key: tab.key, label: cleanLabel, color: tab.color }
+      }
+    }
+
     if ((decl.encRows?.length ?? 0) > 0) return { key: "encaissement", label: "Encaissement", color: "#2db34b" }
     if ((decl.tvaImmoRows?.length ?? 0) > 0) return { key: "tva_immo", label: "TVA / IMMO", color: "#1d6fb8" }
     if ((decl.tvaBiensRows?.length ?? 0) > 0) return { key: "tva_biens", label: "TVA / Biens & Serv", color: "#7c3aed" }

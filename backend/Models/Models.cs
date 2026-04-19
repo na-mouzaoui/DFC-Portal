@@ -173,7 +173,7 @@ public class FiscalFournisseur
     public User User { get; set; } = null!;
 }
 
-public class EtatsDeSortie
+public class Recap
 {
     public int Id { get; set; }
     public int UserId { get; set; }
@@ -181,7 +181,7 @@ public class EtatsDeSortie
     public string Title { get; set; } = string.Empty;
     public string Mois { get; set; } = string.Empty;
     public string Annee { get; set; } = string.Empty;
-    public string RowsJson { get; set; } = "[]";
+    public string Direction { get; set; } = string.Empty;
     public string FormulasJson { get; set; } = "{}";
     public bool IsGenerated { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
