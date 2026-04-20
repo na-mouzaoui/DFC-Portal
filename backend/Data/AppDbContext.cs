@@ -19,10 +19,14 @@ public class AppDbContext : DbContext
     public DbSet<UserBankCalibration> UserBankCalibrations { get; set; }
     public DbSet<FiscalPeriode> Periodes { get; set; }
     public DbSet<FiscalDeclarationHeader> FiscalDeclarationHeaders { get; set; }
-    public DbSet<FiscalDeclarationPayload> FiscalDeclarationPayloads { get; set; }
-    public DbSet<FiscalFournisseur> FiscalFournisseurs { get; set; }
     public DbSet<Recap> Recaps { get; set; }
-    public DbSet<AdminFiscalSetting> AdminFiscalSettings { get; set; }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // Apply explicit precision for all decimal properties, including raw SQL DTO projections.
+        configurationBuilder.Properties<decimal>().HavePrecision(18, 5);
+        configurationBuilder.Properties<decimal?>().HavePrecision(18, 5);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -123,23 +127,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PositionsJson).IsRequired();
         });
 
-        // FiscalFournisseur configuration
-        modelBuilder.Entity<FiscalFournisseur>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
-            entity.Property(e => e.RaisonSociale).IsRequired().HasMaxLength(300);
-            entity.Property(e => e.Adresse).HasMaxLength(500);
-            entity.Property(e => e.AuthNIF).HasMaxLength(150);
-            entity.Property(e => e.RC).HasMaxLength(100);
-            entity.Property(e => e.AuthRC).HasMaxLength(150);
-            entity.Property(e => e.NIF).HasMaxLength(100);
-            entity.HasIndex(e => e.UserId);
-        });
-
         // Periode configuration (normalized fiscal schema V2)
         modelBuilder.Entity<FiscalPeriode>(entity =>
         {
@@ -178,21 +165,6 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("IX_Declaration_Worklist");
         });
 
-        modelBuilder.Entity<FiscalDeclarationPayload>(entity =>
-        {
-            entity.ToTable("DeclarationPayload");
-            entity.HasKey(e => e.DeclarationId);
-
-            entity.Property(e => e.DataJson).IsRequired();
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-
-            entity.HasOne(e => e.Declaration)
-                .WithOne(d => d.Payload)
-                .HasForeignKey<FiscalDeclarationPayload>(e => e.DeclarationId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK_DeclarationPayload_Declaration");
-        });
-
         // Recap registry configuration
         modelBuilder.Entity<Recap>(entity =>
         {
@@ -213,14 +185,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Direction).HasMaxLength(200).IsRequired();
             entity.Property(e => e.FormulasJson).IsRequired();
             entity.Property(e => e.IsGenerated).HasDefaultValue(true);
-        });
-
-        // AdminFiscalSetting configuration
-        modelBuilder.Entity<AdminFiscalSetting>(entity =>
-        {
-            entity.ToTable("AdminFiscalSettings");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.IsTable6Enabled).HasDefaultValue(true);
         });
 
         // Seed data
@@ -298,14 +262,6 @@ public class AppDbContext : DbContext
             new Region { Id = 4, Name = "ouest", VillesJson = "[\"Oran\", \"Tlemcen\", \"Sidi Bel Abbès\", \"Mostaganem\", \"Mascara\"]", CreatedAt = seedCreatedAt }
         );
 
-        modelBuilder.Entity<AdminFiscalSetting>().HasData(
-            new AdminFiscalSetting
-            {
-                Id = 1,
-                IsTable6Enabled = true,
-                UpdatedAt = seedCreatedAt
-            }
-        );
     }
 }
 

@@ -6,6 +6,7 @@ using CheckFillingAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace CheckFillingAPI.Controllers;
 
@@ -36,22 +37,46 @@ public class AdminController : ControllerBase
         return user?.Role == "admin";
     }
 
-    private async Task<AdminFiscalSetting> GetOrCreateFiscalSettingAsync()
+    private async Task<(bool IsTable6Enabled, DateTime? UpdatedAt)> GetLatestFiscalSettingAsync()
     {
-        var setting = await _context.AdminFiscalSettings.FirstOrDefaultAsync(s => s.Id == 1);
-        if (setting != null)
-            return setting;
+        var latestUpdate = await _context.AuditLogs
+            .AsNoTracking()
+            .Where(l => l.Action == "UPDATE_FISCAL_SETTING" && l.EntityType == "FiscalSetting")
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync();
 
-        setting = new AdminFiscalSetting
+        if (latestUpdate is null)
+            return (true, null);
+
+        try
         {
-            Id = 1,
-            IsTable6Enabled = true,
-            UpdatedAt = DateTime.UtcNow
-        };
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(latestUpdate.Details) ? "{}" : latestUpdate.Details);
+            var root = document.RootElement;
 
-        _context.AdminFiscalSettings.Add(setting);
-        await _context.SaveChangesAsync();
-        return setting;
+            if (root.TryGetProperty("isTable6Enabled", out var isEnabledElement)
+                && isEnabledElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                return (isEnabledElement.GetBoolean(), latestUpdate.CreatedAt);
+            }
+
+            if (root.TryGetProperty("newValue", out var newValueElement))
+            {
+                if (newValueElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return (newValueElement.GetBoolean(), latestUpdate.CreatedAt);
+
+                if (newValueElement.ValueKind == JsonValueKind.String
+                    && bool.TryParse(newValueElement.GetString(), out var parsedBool))
+                {
+                    return (parsedBool, latestUpdate.CreatedAt);
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to enabled state if an old malformed payload is encountered.
+        }
+
+        return (true, latestUpdate.CreatedAt);
     }
 
     [HttpGet("fiscal-settings")]
@@ -60,7 +85,7 @@ public class AdminController : ControllerBase
         if (!await IsAdmin())
             return Forbid();
 
-        var setting = await GetOrCreateFiscalSettingAsync();
+        var setting = await GetLatestFiscalSettingAsync();
         return Ok(new
         {
             isTable6Enabled = setting.IsTable6Enabled,
@@ -74,16 +99,27 @@ public class AdminController : ControllerBase
         if (!await IsAdmin())
             return Forbid();
 
-        var setting = await GetOrCreateFiscalSettingAsync();
+        var userId = GetCurrentUserId();
+        var previous = await GetLatestFiscalSettingAsync();
 
-        setting.IsTable6Enabled = request.IsEnabled;
-        setting.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        await _auditService.LogAction(
+            userId,
+            "UPDATE_FISCAL_SETTING",
+            "FiscalSetting",
+            null,
+            new
+            {
+                settingName = "table6",
+                oldValue = previous.IsTable6Enabled,
+                newValue = request.IsEnabled,
+                isTable6Enabled = request.IsEnabled
+            }
+        );
 
         return Ok(new
         {
-            isTable6Enabled = setting.IsTable6Enabled,
-            updatedAt = setting.UpdatedAt
+            isTable6Enabled = request.IsEnabled,
+            updatedAt = DateTime.UtcNow
         });
     }
 

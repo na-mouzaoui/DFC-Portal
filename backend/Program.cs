@@ -213,27 +213,6 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     // Apply pending migrations or create database if missing
     db.Database.Migrate();
-
-    // Safety net: if migration history is out of sync, ensure fiscal settings table exists.
-    db.Database.ExecuteSqlRaw(@"
-IF OBJECT_ID(N'[dbo].[AdminFiscalSettings]', N'U') IS NULL
-BEGIN
-    CREATE TABLE [dbo].[AdminFiscalSettings] (
-        [Id] INT NOT NULL,
-        [IsTable6Enabled] BIT NOT NULL CONSTRAINT [DF_AdminFiscalSettings_IsTable6Enabled] DEFAULT(1),
-        [UpdatedAt] DATETIME2 NOT NULL,
-        CONSTRAINT [PK_AdminFiscalSettings] PRIMARY KEY ([Id])
-    );
-
-    INSERT INTO [dbo].[AdminFiscalSettings] ([Id], [IsTable6Enabled], [UpdatedAt])
-    VALUES (1, 1, GETUTCDATE());
-END
-ELSE IF NOT EXISTS (SELECT 1 FROM [dbo].[AdminFiscalSettings] WHERE [Id] = 1)
-BEGIN
-    INSERT INTO [dbo].[AdminFiscalSettings] ([Id], [IsTable6Enabled], [UpdatedAt])
-    VALUES (1, 1, GETUTCDATE());
-END
-");
 }
 
 app.Run();

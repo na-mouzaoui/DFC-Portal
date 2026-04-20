@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
+using System.Globalization;
 
 namespace CheckFillingAPI.Controllers;
 
@@ -32,6 +33,7 @@ public class FiscalController : ControllerBase
     {
         public int Id { get; init; }
         public string TabKey { get; init; } = string.Empty;
+        public string SupplierScopeKey { get; init; } = string.Empty;
         public string Mois { get; init; } = string.Empty;
         public string Annee { get; init; } = string.Empty;
         public string Direction { get; init; } = string.Empty;
@@ -265,11 +267,44 @@ public class FiscalController : ControllerBase
 
     private async Task<bool> IsTable6EnabledAsync()
     {
-        var setting = await _context.AdminFiscalSettings
+        var latestUpdate = await _context.AuditLogs
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == 1);
+            .Where(l => l.Action == "UPDATE_FISCAL_SETTING" && l.EntityType == "FiscalSetting")
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync();
 
-        return setting?.IsTable6Enabled ?? true;
+        if (latestUpdate is null)
+            return true;
+
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(latestUpdate.Details) ? "{}" : latestUpdate.Details);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("isTable6Enabled", out var isEnabledElement)
+                && isEnabledElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                return isEnabledElement.GetBoolean();
+            }
+
+            if (root.TryGetProperty("newValue", out var newValueElement))
+            {
+                if (newValueElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return newValueElement.GetBoolean();
+
+                if (newValueElement.ValueKind == JsonValueKind.String
+                    && bool.TryParse(newValueElement.GetString(), out var parsedBool))
+                {
+                    return parsedBool;
+                }
+            }
+        }
+        catch
+        {
+            return true;
+        }
+
+        return true;
     }
 
     private static bool CanManageTabForRole(string role, string? tabKey)
@@ -417,6 +452,7 @@ public class FiscalController : ControllerBase
             {
                 Id = d.Id,
                 TabKey = d.TableauCode,
+                SupplierScopeKey = d.SupplierScopeKey,
                 Mois = d.Periode.Mois.ToString(),
                 Annee = d.Periode.Annee.ToString(),
                 Direction = d.Direction,
@@ -431,56 +467,388 @@ public class FiscalController : ControllerBase
         return string.IsNullOrWhiteSpace(trimmed) ? "{}" : trimmed;
     }
 
-    private async Task<Dictionary<int, string>> GetPayloadMapAsync(IEnumerable<int> declarationIds)
+    private static string ToInvariantString(decimal? value, int decimals = 2)
     {
-        // Compatibility backfill: hydrate payloads from legacy runtime table when present.
-        await _context.Database.ExecuteSqlRawAsync(@"
-IF OBJECT_ID(N'[dbo].[DeclarationLegacy]', N'U') IS NOT NULL
-AND OBJECT_ID(N'[dbo].[DeclarationPayload]', N'U') IS NOT NULL
-BEGIN
-    INSERT INTO [dbo].[DeclarationPayload] ([DeclarationId], [DataJson], [UpdatedAt])
-    SELECT [d].[Id], [l].[DataJson], SYSUTCDATETIME()
-    FROM [dbo].[Declaration] AS [d]
-    INNER JOIN [dbo].[DeclarationLegacy] AS [l] ON [l].[Id] = [d].[Id]
-    LEFT JOIN [dbo].[DeclarationPayload] AS [p] ON [p].[DeclarationId] = [d].[Id]
-    WHERE [p].[DeclarationId] IS NULL
-      AND [l].[DataJson] IS NOT NULL
-      AND LTRIM(RTRIM([l].[DataJson])) <> N'';
-END
-");
+        if (!value.HasValue)
+            return string.Empty;
 
-        var ids = declarationIds.Distinct().ToArray();
-        if (ids.Length == 0)
-            return new Dictionary<int, string>();
-
-        return await _context.FiscalDeclarationPayloads
-            .AsNoTracking()
-            .Where(p => ids.Contains(p.DeclarationId))
-            .ToDictionaryAsync(p => p.DeclarationId, p => p.DataJson);
+        return Math.Round(value.Value, decimals).ToString($"F{decimals}", CultureInfo.InvariantCulture);
     }
 
-    private async Task UpsertPayloadAsync(int declarationId, string? dataJson)
+    private static string ToDateString(DateTime? value)
     {
-        var payloadJson = NormalizePayloadJson(dataJson);
-        var now = DateTime.UtcNow;
+        return value.HasValue ? value.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : string.Empty;
+    }
 
-        var payload = await _context.FiscalDeclarationPayloads
-            .FirstOrDefaultAsync(p => p.DeclarationId == declarationId);
-
-        if (payload is null)
+    private static string MonthNumberToFrenchName(int? month)
+    {
+        return month switch
         {
-            payload = new FiscalDeclarationPayload
-            {
-                DeclarationId = declarationId,
-                DataJson = payloadJson,
-                UpdatedAt = now,
-            };
-            _context.FiscalDeclarationPayloads.Add(payload);
+            1 => "Janvier",
+            2 => "Fevrier",
+            3 => "Mars",
+            4 => "Avril",
+            5 => "Mai",
+            6 => "Juin",
+            7 => "Juillet",
+            8 => "Aout",
+            9 => "Septembre",
+            10 => "Octobre",
+            11 => "Novembre",
+            12 => "Decembre",
+            _ => string.Empty
+        };
+    }
+
+    private async Task<Dictionary<int, string>> GetPayloadMapAsync(IEnumerable<int> declarationIds)
+    {
+        var ids = declarationIds.Distinct().ToHashSet();
+        if (ids.Count == 0)
+            return new Dictionary<int, string>();
+
+        var declarations = await BuildDeclarationQuery()
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync();
+
+        var payloadMap = new Dictionary<int, string>();
+        foreach (var declaration in declarations)
+        {
+            payloadMap[declaration.Id] = await BuildDataJsonFromNormalizedAsync(declaration);
         }
-        else
+
+        return payloadMap;
+    }
+
+    private async Task<string> BuildDataJsonFromNormalizedAsync(DeclarationView declaration)
+    {
+        var period = await _context.Periodes
+            .AsNoTracking()
+            .FirstAsync(p => p.Mois == int.Parse(declaration.Mois) && p.Annee == int.Parse(declaration.Annee));
+
+        var periodeDbId = period.Id;
+        var direction = declaration.Direction;
+        var tabKey = NormalizeTabKey(declaration.TabKey);
+
+        switch (tabKey)
         {
-            payload.DataJson = payloadJson;
-            payload.UpdatedAt = now;
+            case "encaissement":
+            {
+                var rows = await _context.Database.SqlQueryRaw<EncaissementPayloadRow>(@"
+SELECT l.[Designation], e.[MontantHT]
+FROM [dbo].[Encaissement] e
+INNER JOIN [dbo].[EncaissementLigne] l ON l.[Id] = e.[EncaissementLigneId]
+WHERE e.[PeriodeId] = {0} AND e.[Direction] = {1}
+ORDER BY l.[Id], e.[Id]", periodeDbId, direction).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    encRows = rows.Select(r => new { designation = r.Designation, ht = ToInvariantString(r.MontantHT) }).ToArray()
+                });
+            }
+
+            case "tva_immo":
+            case "tva_biens":
+            {
+                var tvaType = tabKey == "tva_immo" ? "IMMO" : "BS";
+                var rows = await _context.Database.SqlQueryRaw<TvaPayloadRow>(@"
+SELECT
+    f.[Id] AS [FournisseurId],
+    f.[Nom] AS [NomRaisonSociale],
+    ISNULL(f.[Adresse], N'') AS [Adresse],
+    ISNULL(f.[NIF], N'') AS [Nif],
+    ISNULL(f.[RC], N'') AS [NumRC],
+    t.[NumFacture],
+    t.[DateFacture],
+    fac.[MontantHT],
+    fac.[TVA]
+FROM [dbo].[Tva] t
+INNER JOIN [dbo].[Facture] fac
+    ON fac.[IdFournisseur] = t.[IdFournisseur]
+   AND fac.[NumFacture] = t.[NumFacture]
+   AND fac.[DateFacture] = t.[DateFacture]
+INNER JOIN [dbo].[Fournisseur] f ON f.[Id] = t.[IdFournisseur]
+WHERE t.[PeriodeId] = {0} AND t.[Direction] = {1} AND t.[Type] = {2}
+ORDER BY t.[Id]", periodeDbId, direction, tvaType).ToListAsync();
+
+                var key = tabKey == "tva_immo" ? "tvaImmoRows" : "tvaBiensRows";
+                var payloadRows = rows.Select(r => new
+                {
+                    fournisseurId = r.FournisseurId.ToString(CultureInfo.InvariantCulture),
+                    nomRaisonSociale = r.NomRaisonSociale,
+                    adresse = r.Adresse,
+                    nif = r.Nif,
+                    authNif = "",
+                    numRC = r.NumRC,
+                    authRC = "",
+                    numFacture = r.NumFacture,
+                    dateFacture = ToDateString(r.DateFacture),
+                    montantHT = ToInvariantString(r.MontantHT),
+                    tva = ToInvariantString(r.TVA)
+                }).ToArray();
+
+                return key == "tvaImmoRows"
+                    ? JsonSerializer.Serialize(new { tvaImmoRows = payloadRows })
+                    : JsonSerializer.Serialize(new { tvaBiensRows = payloadRows });
+            }
+
+            case "droits_timbre":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TimbrePayloadRow>(@"
+SELECT l.[Designation], t.[ChiffreAffaireTTC], t.[DroitTimbre]
+FROM [dbo].[Timbre] t
+INNER JOIN [dbo].[TimbreLigne] l ON l.[Id] = t.[TimbreLigneId]
+WHERE t.[PeriodeId] = {0} AND t.[Direction] = {1}
+ORDER BY l.[Id], t.[Id]", periodeDbId, direction).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    timbreRows = rows.Select(r => new
+                    {
+                        designation = r.Designation,
+                        caTTCEsp = ToInvariantString(r.ChiffreAffaireTTC),
+                        droitTimbre = ToInvariantString(r.DroitTimbre)
+                    }).ToArray()
+                });
+            }
+
+            case "ca_tap":
+            {
+                var lines = await _context.Database.SqlQueryRaw<CaTapPayloadRow>(@"
+SELECT l.[Designation], c.[MontantCA]
+FROM [dbo].[Ca71] c
+INNER JOIN [dbo].[Ca71Ligne] l ON l.[Id] = c.[LigneId]
+WHERE c.[PeriodeId] = {0} AND c.[Direction] = {1}
+ORDER BY l.[Id]", periodeDbId, direction).ToListAsync();
+
+                var b12 = lines.FirstOrDefault(x => string.Equals(x.Designation, "B12", StringComparison.OrdinalIgnoreCase))?.MontantCA;
+                var b13 = lines.FirstOrDefault(x => string.Equals(x.Designation, "B13", StringComparison.OrdinalIgnoreCase))?.MontantCA;
+
+                return JsonSerializer.Serialize(new { b12 = ToInvariantString(b12), b13 = ToInvariantString(b13) });
+            }
+
+            case "etat_tap":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TapPayloadRow>(@"
+SELECT w.[Nom] AS [WilayaCode], c.[Nom] AS [Commune], t.[MontantImposable]
+FROM [dbo].[Tap] t
+INNER JOIN [dbo].[Commune] c ON c.[Id] = t.[CommuneId]
+INNER JOIN [dbo].[Wilaya] w ON w.[Id] = c.[WilayaId]
+WHERE t.[PeriodeId] = {0} AND t.[Direction] = {1}
+ORDER BY t.[Id]", periodeDbId, direction).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    tapRows = rows.Select(r => new
+                    {
+                        wilayaCode = r.WilayaCode,
+                        commune = r.Commune,
+                        tap2 = ToInvariantString(r.MontantImposable)
+                    }).ToArray()
+                });
+            }
+
+            case "ca_siege":
+            {
+                var rows = await _context.Database.SqlQueryRaw<CaSiegePayloadRow>(@"
+SELECT [MontantTTC], [MontantHT]
+FROM [dbo].[CaSiege]
+WHERE [PeriodeId] = {0}
+ORDER BY [LigneId], [Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    caSiegeRows = rows.Select(r => new
+                    {
+                        ttc = ToInvariantString(r.MontantTTC),
+                        ht = ToInvariantString(r.MontantHT)
+                    }).ToArray()
+                });
+            }
+
+            case "irg":
+            {
+                var rows = await _context.Database.SqlQueryRaw<IrgPayloadRow>(@"
+SELECT [AssietteImposable], [Montant]
+FROM [dbo].[Irg]
+WHERE [PeriodeId] = {0}
+ORDER BY [LigneId], [Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    irgRows = rows.Select(r => new
+                    {
+                        assietteImposable = ToInvariantString(r.AssietteImposable),
+                        montant = ToInvariantString(r.Montant)
+                    }).ToArray()
+                });
+            }
+
+            case "taxe2":
+            {
+                var rows = await _context.Database.SqlQueryRaw<Taxe2PayloadRow>(@"
+SELECT [BaseMontant], [MontantTaxe]
+FROM [dbo].[Taxe2]
+WHERE [PeriodeId] = {0}
+ORDER BY [Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    taxe2Rows = rows.Select(r => new
+                    {
+                        @base = ToInvariantString(r.BaseMontant),
+                        montant = ToInvariantString(r.MontantTaxe)
+                    }).ToArray()
+                });
+            }
+
+            case "taxe_masters":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TaxeMasterPayloadRow>(@"
+SELECT [DateFacture], [Nom], [NumFacture], [MontantHT], [Taxe], [Mois], [Observation]
+FROM [dbo].[TaxeMaster]
+WHERE [PeriodeId] = {0}
+ORDER BY [Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    masterRows = rows.Select(r => new
+                    {
+                        date = ToDateString(r.DateFacture),
+                        nomMaster = r.Nom ?? string.Empty,
+                        numFacture = r.NumFacture ?? string.Empty,
+                        dateFacture = ToDateString(r.DateFacture),
+                        montantHT = ToInvariantString(r.MontantHT),
+                        taxe15 = ToInvariantString(r.Taxe),
+                        mois = MonthNumberToFrenchName(r.Mois),
+                        observation = r.Observation ?? string.Empty
+                    }).ToArray()
+                });
+            }
+
+            case "taxe_vehicule":
+            {
+                var montantRows = await _context.Database.SqlQueryRaw<TaxeVehiculePayloadRow>(@"
+SELECT TOP 1 [Montant]
+FROM [dbo].[TaxeVehicule]
+WHERE [PeriodeId] = {0}
+ORDER BY [Id]", periodeDbId).ToListAsync();
+
+                var montant = montantRows.FirstOrDefault();
+
+                return JsonSerializer.Serialize(new { taxe11Montant = ToInvariantString(montant?.Montant) });
+            }
+
+            case "taxe_formation":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TaxeFormationPayloadRow>(@"
+SELECT [Montant]
+FROM [dbo].[Formation]
+WHERE [PeriodeId] = {0}
+ORDER BY [LigneId], [Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    taxe12Rows = rows.Select(r => new { montant = ToInvariantString(r.Montant) }).ToArray()
+                });
+            }
+
+            case "acompte":
+            {
+                var months = Enumerable.Repeat(string.Empty, 12).ToArray();
+
+                var rows = await _context.Database.SqlQueryRaw<AcomptePayloadRow>(@"
+SELECT [MonthIndex], [Montant]
+FROM [dbo].[AcompteProvisionel]
+WHERE [PeriodeId] = {0}
+ORDER BY [MonthIndex], [Id]", periodeDbId).ToListAsync();
+
+                foreach (var row in rows)
+                {
+                    if (row.MonthIndex is >= 1 and <= 12)
+                    {
+                        months[row.MonthIndex.Value - 1] = ToInvariantString(row.Montant);
+                    }
+                }
+
+                return JsonSerializer.Serialize(new { acompteMonths = months });
+            }
+
+            case "ibs":
+            {
+                var fournisseurId = int.TryParse(declaration.SupplierScopeKey, out var parsedSupplierId) ? parsedSupplierId : 0;
+                var rows = await _context.Database.SqlQueryRaw<IbsPayloadRow>(@"
+SELECT [NumFacture], [MontantBrutDevise], [MontantBrutDinars], [MontantNetTransferableDevise], [MontantIBS], [MontantNetTransferableDinars]
+FROM [dbo].[Ibs]
+WHERE [PeriodeId] = {0} AND [FournisseurId] = {1}
+ORDER BY [Id]", periodeDbId, fournisseurId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    ibsFournisseurId = declaration.SupplierScopeKey,
+                    ibs14Rows = rows.Select(r => new
+                    {
+                        numFacture = r.NumFacture ?? string.Empty,
+                        montantBrutDevise = ToInvariantString(r.MontantBrutDevise, 5),
+                        tauxChange = string.Empty,
+                        montantBrutDinars = ToInvariantString(r.MontantBrutDinars),
+                        montantNetDevise = ToInvariantString(r.MontantNetTransferableDevise, 5),
+                        montantIBS = ToInvariantString(r.MontantIBS),
+                        montantNetDinars = ToInvariantString(r.MontantNetTransferableDinars)
+                    }).ToArray()
+                });
+            }
+
+            case "taxe_domicil":
+            {
+                var rows = await _context.Database.SqlQueryRaw<DomiciliationPayloadRow>(@"
+SELECT d.[NumFacture], d.[DateFacture], f.[Nom] AS [RaisonSociale], d.[MontantNetDevise], d.[Devise], d.[TauxChange], d.[MontantDinars], d.[TauxTaxe], d.[MontantAPayerDinars]
+FROM [dbo].[Domiciliation] d
+INNER JOIN [dbo].[Fournisseur] f ON f.[Id] = d.[FournisseurId]
+WHERE d.[PeriodeId] = {0}
+ORDER BY d.[Id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    taxe15Rows = rows.Select(r => new
+                    {
+                        numFacture = r.NumFacture ?? string.Empty,
+                        dateFacture = ToDateString(r.DateFacture),
+                        raisonSociale = r.RaisonSociale ?? string.Empty,
+                        montantNetDevise = ToInvariantString(r.MontantNetDevise, 5),
+                        monnaie = r.Devise ?? string.Empty,
+                        tauxChange = ToInvariantString(r.TauxChange, 5),
+                        montantDinars = ToInvariantString(r.MontantDinars),
+                        tauxTaxe = ToInvariantString(r.TauxTaxe),
+                        montantAPayer = ToInvariantString(r.MontantAPayerDinars)
+                    }).ToArray()
+                });
+            }
+
+            case "tva_autoliq":
+            {
+                var fournisseurId = int.TryParse(declaration.SupplierScopeKey, out var parsedSupplierId) ? parsedSupplierId : 0;
+                var rows = await _context.Database.SqlQueryRaw<AutoLiquidationPayloadRow>(@"
+SELECT [NumFacture], [MontantBrutDevise], [TauxChange], [MontantBrutDinars], [TVA19]
+FROM [dbo].[AutoLiquidation]
+WHERE [PeriodeId] = {0} AND [FournisseurId] = {1}
+ORDER BY [Id]", periodeDbId, fournisseurId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    tva16FournisseurId = declaration.SupplierScopeKey,
+                    tva16Rows = rows.Select(r => new
+                    {
+                        numFacture = r.NumFacture ?? string.Empty,
+                        montantBrutDevise = ToInvariantString(r.MontantBrutDevise, 5),
+                        tauxChange = ToInvariantString(r.TauxChange, 5),
+                        montantBrutDinars = ToInvariantString(r.MontantBrutDinars),
+                        tva19 = ToInvariantString(r.TVA19)
+                    }).ToArray()
+                });
+            }
+
+            default:
+                return "{}";
         }
     }
 
@@ -706,10 +1074,260 @@ WITH (
 INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
 ");
                 break;
+
+            case "ca_siege":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[CaSiegeLigne] ([Designation])
+SELECT x.[Designation]
+FROM (VALUES
+    (N'Encaissement'),
+    (N'Encaissement Exoneree'),
+    (N'Encaissement MOBIPOST'),
+    (N'Encaissement POST PAID'),
+    (N'Encaissement RACIMO'),
+    (N'Encaissement DME'),
+    (N'Encaissement SOFIA'),
+    (N'Encaissement CCP RECOUVREMENT A'),
+    (N'Encaissement CCP RECOUVREMENT B'),
+    (N'Encaissement CCP TPE'),
+    (N'Encaissement BNA TPE'),
+    (N'Encaissement MASTER ALGERIE POSTE')
+) AS x([Designation])
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[CaSiegeLigne] l WHERE l.[Designation] = x.[Designation]);
+
+DELETE FROM [dbo].[CaSiege] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[CaSiege] ([LigneId], [PeriodeId], [MontantHT], [MontantTTC])
+SELECT l.[Id], {periodeId}, TRY_CAST(JSON_VALUE(j.[value], '$.ht') AS DECIMAL(18,2)), TRY_CAST(JSON_VALUE(j.[value], '$.ttc') AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.caSiegeRows') AS j
+INNER JOIN [dbo].[CaSiegeLigne] l ON l.[Id] = (TRY_CAST(j.[key] AS INT) + 1);
+");
+                break;
+
+            case "irg":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[IrgLigne] ([Designation])
+SELECT x.[Designation]
+FROM (VALUES
+    (N'IRG sur Salaire Bareme'),
+    (N'Autre IRG 10%'),
+    (N'Autre IRG 15%'),
+    (N'Jetons de presence 10%'),
+    (N'Tantieme 10%')
+) AS x([Designation])
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[IrgLigne] l WHERE l.[Designation] = x.[Designation]);
+
+DELETE FROM [dbo].[Irg] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[Irg] ([LigneId], [PeriodeId], [AssietteImposable], [Montant])
+SELECT l.[Id], {periodeId}, TRY_CAST(JSON_VALUE(j.[value], '$.assietteImposable') AS DECIMAL(18,2)), TRY_CAST(JSON_VALUE(j.[value], '$.montant') AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.irgRows') AS j
+INNER JOIN [dbo].[IrgLigne] l ON l.[Id] = (TRY_CAST(j.[key] AS INT) + 1);
+");
+                break;
+
+            case "taxe2":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[Taxe2] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[Taxe2] ([PeriodeId], [BaseMontant], [MontantTaxe])
+SELECT {periodeId}, TRY_CAST(j.[base] AS DECIMAL(18,2)), TRY_CAST(j.[montant] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.taxe2Rows')
+WITH (
+    [base] NVARCHAR(64) '$.base',
+    [montant] NVARCHAR(64) '$.montant'
+) AS j;
+");
+                break;
+
+            case "taxe_masters":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[TaxeMaster] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[TaxeMaster] ([PeriodeId], [DateFacture], [Nom], [NumFacture], [MontantHT], [Taxe], [Mois], [Observation])
+SELECT
+    {periodeId},
+    TRY_CAST(j.[dateFacture] AS DATE),
+    NULLIF(LTRIM(RTRIM(j.[nomMaster])), N''),
+    NULLIF(LTRIM(RTRIM(j.[numFacture])), N''),
+    TRY_CAST(j.[montantHT] AS DECIMAL(18,2)),
+    TRY_CAST(j.[taxe15] AS DECIMAL(18,2)),
+    CASE UPPER(LTRIM(RTRIM(j.[mois])))
+        WHEN N'JANVIER' THEN 1
+        WHEN N'FEVRIER' THEN 2
+        WHEN N'MARS' THEN 3
+        WHEN N'AVRIL' THEN 4
+        WHEN N'MAI' THEN 5
+        WHEN N'JUIN' THEN 6
+        WHEN N'JUILLET' THEN 7
+        WHEN N'AOUT' THEN 8
+        WHEN N'SEPTEMBRE' THEN 9
+        WHEN N'OCTOBRE' THEN 10
+        WHEN N'NOVEMBRE' THEN 11
+        WHEN N'DECEMBRE' THEN 12
+        ELSE TRY_CAST(j.[mois] AS INT)
+    END,
+    NULLIF(LTRIM(RTRIM(j.[observation])), N'')
+FROM OPENJSON({payload}, '$.masterRows')
+WITH (
+    [dateFacture] NVARCHAR(50) '$.dateFacture',
+    [nomMaster] NVARCHAR(255) '$.nomMaster',
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [montantHT] NVARCHAR(64) '$.montantHT',
+    [taxe15] NVARCHAR(64) '$.taxe15',
+    [mois] NVARCHAR(10) '$.mois',
+    [observation] NVARCHAR(255) '$.observation'
+) AS j;
+");
+                break;
+
+            case "taxe_vehicule":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[TaxeVehicule] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[TaxeVehicule] ([PeriodeId], [Montant])
+VALUES ({periodeId}, TRY_CAST(JSON_VALUE({payload}, '$.taxe11Montant') AS DECIMAL(18,2)));
+");
+                break;
+
+            case "taxe_formation":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[FormationLigne] ([Designation])
+SELECT x.[Designation]
+FROM (VALUES
+    (N'Taxe de Formation Professionnelle 1%'),
+    (N'Taxe d''Apprentissage 1%')
+) AS x([Designation])
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[FormationLigne] l WHERE l.[Designation] = x.[Designation]);
+
+DELETE FROM [dbo].[Formation] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[Formation] ([LigneId], [PeriodeId], [Montant])
+SELECT l.[Id], {periodeId}, TRY_CAST(JSON_VALUE(j.[value], '$.montant') AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.taxe12Rows') AS j
+INNER JOIN [dbo].[FormationLigne] l ON l.[Id] = (TRY_CAST(j.[key] AS INT) + 1);
+");
+                break;
+
+            case "acompte":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[AcompteProvisionel] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[AcompteProvisionel] ([PeriodeId], [MonthIndex], [Montant])
+SELECT {periodeId}, (TRY_CAST(j.[key] AS INT) + 1), TRY_CAST(j.[value] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.acompteMonths') AS j
+WHERE NULLIF(LTRIM(RTRIM(j.[value])), N'') IS NOT NULL;
+");
+                break;
+
+            case "ibs":
+            {
+                var supplierId = int.TryParse(ExtractSupplierScopeKey("ibs", payload), out var parsedSupplierId) ? parsedSupplierId : 0;
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[Ibs] WHERE [PeriodeId] = {periodeId} AND [FournisseurId] = {supplierId};
+
+IF {supplierId} > 0
+BEGIN
+INSERT INTO [dbo].[Ibs] ([PeriodeId], [FournisseurId], [NumFacture], [MontantBrutDevise], [MontantBrutDinars], [MontantNetTransferableDevise], [MontantIBS], [MontantNetTransferableDinars])
+SELECT
+    {periodeId},
+    {supplierId},
+    NULLIF(LTRIM(RTRIM(j.[numFacture])), N''),
+    TRY_CAST(j.[montantBrutDevise] AS DECIMAL(18,5)),
+    TRY_CAST(j.[montantBrutDinars] AS DECIMAL(18,2)),
+    TRY_CAST(j.[montantNetDevise] AS DECIMAL(18,5)),
+    TRY_CAST(j.[montantIBS] AS DECIMAL(18,2)),
+    TRY_CAST(j.[montantNetDinars] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.ibs14Rows')
+WITH (
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [montantBrutDevise] NVARCHAR(64) '$.montantBrutDevise',
+    [montantBrutDinars] NVARCHAR(64) '$.montantBrutDinars',
+    [montantNetDevise] NVARCHAR(64) '$.montantNetDevise',
+    [montantIBS] NVARCHAR(64) '$.montantIBS',
+    [montantNetDinars] NVARCHAR(64) '$.montantNetDinars'
+) AS j;
+END
+");
+                break;
+            }
+
+            case "taxe_domicil":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[Fournisseur] ([Nom], [EstEtranger], [NIF], [RC], [Adresse])
+SELECT DISTINCT NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N''), 1, NULL, NULL, NULL
+FROM OPENJSON({payload}, '$.taxe15Rows')
+WITH ([raisonSociale] NVARCHAR(255) '$.raisonSociale') AS j
+WHERE NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N'') IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM [dbo].[Fournisseur] f
+      WHERE f.[Nom] = NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N'')
+  );
+
+DELETE FROM [dbo].[Domiciliation] WHERE [PeriodeId] = {periodeId};
+
+INSERT INTO [dbo].[Domiciliation] ([PeriodeId], [FournisseurId], [NumFacture], [DateFacture], [MontantNetDevise], [Devise], [TauxChange], [MontantDinars], [TauxTaxe], [MontantAPayerDinars])
+SELECT
+    {periodeId},
+    f.[Id],
+    NULLIF(LTRIM(RTRIM(j.[numFacture])), N''),
+    TRY_CAST(j.[dateFacture] AS DATE),
+    TRY_CAST(j.[montantNetDevise] AS DECIMAL(18,5)),
+    NULLIF(LTRIM(RTRIM(j.[monnaie])), N''),
+    TRY_CAST(j.[tauxChange] AS DECIMAL(18,5)),
+    TRY_CAST(j.[montantDinars] AS DECIMAL(18,2)),
+    TRY_CAST(j.[tauxTaxe] AS DECIMAL(5,2)),
+    TRY_CAST(j.[montantAPayer] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.taxe15Rows')
+WITH (
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [dateFacture] NVARCHAR(50) '$.dateFacture',
+    [raisonSociale] NVARCHAR(255) '$.raisonSociale',
+    [montantNetDevise] NVARCHAR(64) '$.montantNetDevise',
+    [monnaie] NVARCHAR(10) '$.monnaie',
+    [tauxChange] NVARCHAR(64) '$.tauxChange',
+    [montantDinars] NVARCHAR(64) '$.montantDinars',
+    [tauxTaxe] NVARCHAR(64) '$.tauxTaxe',
+    [montantAPayer] NVARCHAR(64) '$.montantAPayer'
+) AS j
+INNER JOIN [dbo].[Fournisseur] f
+    ON f.[Nom] = NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N'');
+");
+                break;
+
+            case "tva_autoliq":
+            {
+                var supplierId = int.TryParse(ExtractSupplierScopeKey("tva_autoliq", payload), out var parsedSupplierId) ? parsedSupplierId : 0;
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+DELETE FROM [dbo].[AutoLiquidation] WHERE [PeriodeId] = {periodeId} AND [FournisseurId] = {supplierId};
+
+IF {supplierId} > 0
+BEGIN
+INSERT INTO [dbo].[AutoLiquidation] ([PeriodeId], [FournisseurId], [NumFacture], [MontantBrutDevise], [MontantBrutDinars], [TauxChange], [TVA19])
+SELECT
+    {periodeId},
+    {supplierId},
+    NULLIF(LTRIM(RTRIM(j.[numFacture])), N''),
+    TRY_CAST(j.[montantBrutDevise] AS DECIMAL(18,5)),
+    TRY_CAST(j.[montantBrutDinars] AS DECIMAL(18,2)),
+    TRY_CAST(j.[tauxChange] AS DECIMAL(18,5)),
+    TRY_CAST(j.[tva19] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.tva16Rows')
+WITH (
+    [numFacture] NVARCHAR(50) '$.numFacture',
+    [montantBrutDevise] NVARCHAR(64) '$.montantBrutDevise',
+    [tauxChange] NVARCHAR(64) '$.tauxChange',
+    [montantBrutDinars] NVARCHAR(64) '$.montantBrutDinars',
+    [tva19] NVARCHAR(64) '$.tva19'
+) AS j;
+END
+");
+                break;
+            }
         }
     }
 
-    private async Task DeleteNormalizedTabDataAsync(string tabKey, int periodeId, string direction)
+    private async Task DeleteNormalizedTabDataAsync(string tabKey, int periodeId, string direction, string? supplierScopeKey = null)
     {
         var normalizedTabKey = NormalizeTabKey(tabKey);
         var normalizedDirection = NormalizeDirectionValue(direction);
@@ -734,6 +1352,42 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
             case "droits_timbre":
                 await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Timbre] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};");
                 break;
+            case "ca_siege":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[CaSiege] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "irg":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Irg] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "taxe2":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Taxe2] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "taxe_masters":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[TaxeMaster] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "taxe_vehicule":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[TaxeVehicule] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "taxe_formation":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Formation] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "acompte":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[AcompteProvisionel] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "ibs":
+            {
+                var supplierId = int.TryParse((supplierScopeKey ?? string.Empty).Trim(), out var parsedSupplierId) ? parsedSupplierId : 0;
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Ibs] WHERE [PeriodeId] = {periodeId} AND [FournisseurId] = {supplierId};");
+                break;
+            }
+            case "taxe_domicil":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[Domiciliation] WHERE [PeriodeId] = {periodeId};");
+                break;
+            case "tva_autoliq":
+            {
+                var supplierId = int.TryParse((supplierScopeKey ?? string.Empty).Trim(), out var parsedSupplierId) ? parsedSupplierId : 0;
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[AutoLiquidation] WHERE [PeriodeId] = {periodeId} AND [FournisseurId] = {supplierId};");
+                break;
+            }
         }
     }
 
@@ -897,9 +1551,7 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
         if (!IsDirectionAccessible(currentUserContext.Role, currentUserContext.Direction, currentUserContext.Region, declaration.Direction))
             return StatusCode(403, new { message = "Accès refusé. Vous ne pouvez consulter que les déclarations de votre groupe." });
 
-        var payload = await _context.FiscalDeclarationPayloads
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.DeclarationId == declaration.Id);
+        var dataJson = await BuildDataJsonFromNormalizedAsync(declaration);
 
         return Ok(new
         {
@@ -908,7 +1560,7 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
             Mois = int.Parse(declaration.Mois).ToString("00"),
             Annee = declaration.Annee,
             declaration.Direction,
-            DataJson = payload?.DataJson ?? "{}",
+            DataJson = dataJson,
             CreatedAt = declaration.SubmittedAt,
             UpdatedAt = declaration.SubmittedAt,
             UserId = 0,
@@ -980,8 +1632,6 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
         await _context.SaveChangesAsync();
 
         await PersistNormalizedTabDataAsync(normalizedTabKey, periode.Id, targetDirection, request.DataJson);
-
-        await UpsertPayloadAsync(declaration.Id, request.DataJson);
         await _context.SaveChangesAsync();
 
         await _auditService.LogAction(userId, "FISCAL_SAVE", "Declaration", declaration.Id,
@@ -1058,8 +1708,6 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
         declaration.SubmittedAt = DateTime.UtcNow;
 
         await PersistNormalizedTabDataAsync(normalizedTabKey, targetPeriode.Id, targetDirection, request.DataJson);
-
-        await UpsertPayloadAsync(declaration.Id, request.DataJson);
 
         await _context.SaveChangesAsync();
 
@@ -1159,7 +1807,7 @@ INNER JOIN [dbo].[TimbreLigne] l ON l.[Designation] = j.[designation];
         if (IsPeriodLocked(mois, annee, currentUserRole, out var periodDeadline))
             return BuildPeriodLockedResponse(mois, annee, periodDeadline);
 
-        await DeleteNormalizedTabDataAsync(declaration.TableauCode, declaration.PeriodeId, declaration.Direction);
+        await DeleteNormalizedTabDataAsync(declaration.TableauCode, declaration.PeriodeId, declaration.Direction, declaration.SupplierScopeKey);
 
         _context.FiscalDeclarationHeaders.Remove(declaration);
         await _context.SaveChangesAsync();
@@ -1467,6 +2115,155 @@ public sealed class DirectionDroitsTimbreSourceDto
     public string Direction { get; set; } = string.Empty;
     public decimal TotalCa { get; set; }
     public decimal TotalMontant { get; set; }
+}
+
+internal sealed class EncaissementPayloadRow
+{
+    public string Designation { get; set; } = string.Empty;
+    [Precision(18, 5)]
+    public decimal? MontantHT { get; set; }
+}
+
+internal sealed class TvaPayloadRow
+{
+    public int FournisseurId { get; set; }
+    public string NomRaisonSociale { get; set; } = string.Empty;
+    public string Adresse { get; set; } = string.Empty;
+    public string Nif { get; set; } = string.Empty;
+    public string NumRC { get; set; } = string.Empty;
+    public string NumFacture { get; set; } = string.Empty;
+    public DateTime? DateFacture { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantHT { get; set; }
+    [Precision(18, 5)]
+    public decimal? TVA { get; set; }
+}
+
+internal sealed class TimbrePayloadRow
+{
+    public string Designation { get; set; } = string.Empty;
+    [Precision(18, 5)]
+    public decimal? ChiffreAffaireTTC { get; set; }
+    [Precision(18, 5)]
+    public decimal? DroitTimbre { get; set; }
+}
+
+internal sealed class CaTapPayloadRow
+{
+    public string Designation { get; set; } = string.Empty;
+    [Precision(18, 5)]
+    public decimal? MontantCA { get; set; }
+}
+
+internal sealed class TapPayloadRow
+{
+    public string WilayaCode { get; set; } = string.Empty;
+    public string Commune { get; set; } = string.Empty;
+    [Precision(18, 5)]
+    public decimal? MontantImposable { get; set; }
+}
+
+internal sealed class CaSiegePayloadRow
+{
+    [Precision(18, 5)]
+    public decimal? MontantTTC { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantHT { get; set; }
+}
+
+internal sealed class IrgPayloadRow
+{
+    [Precision(18, 5)]
+    public decimal? AssietteImposable { get; set; }
+    [Precision(18, 5)]
+    public decimal? Montant { get; set; }
+}
+
+internal sealed class Taxe2PayloadRow
+{
+    [Precision(18, 5)]
+    public decimal? BaseMontant { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantTaxe { get; set; }
+}
+
+internal sealed class TaxeMasterPayloadRow
+{
+    public DateTime? DateFacture { get; set; }
+    public string? Nom { get; set; }
+    public string? NumFacture { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantHT { get; set; }
+    [Precision(18, 5)]
+    public decimal? Taxe { get; set; }
+    public int? Mois { get; set; }
+    public string? Observation { get; set; }
+}
+
+internal sealed class TaxeVehiculePayloadRow
+{
+    [Precision(18, 5)]
+    public decimal? Montant { get; set; }
+}
+
+internal sealed class TaxeFormationPayloadRow
+{
+    [Precision(18, 5)]
+    public decimal? Montant { get; set; }
+}
+
+internal sealed class AcomptePayloadRow
+{
+    public int Id { get; set; }
+    public int? MonthIndex { get; set; }
+    [Precision(18, 5)]
+    public decimal? Montant { get; set; }
+}
+
+internal sealed class IbsPayloadRow
+{
+    public string? NumFacture { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantBrutDevise { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantBrutDinars { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantNetTransferableDevise { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantIBS { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantNetTransferableDinars { get; set; }
+}
+
+internal sealed class DomiciliationPayloadRow
+{
+    public string? NumFacture { get; set; }
+    public DateTime? DateFacture { get; set; }
+    public string? RaisonSociale { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantNetDevise { get; set; }
+    public string? Devise { get; set; }
+    [Precision(18, 5)]
+    public decimal? TauxChange { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantDinars { get; set; }
+    [Precision(18, 5)]
+    public decimal? TauxTaxe { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantAPayerDinars { get; set; }
+}
+
+internal sealed class AutoLiquidationPayloadRow
+{
+    public string? NumFacture { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantBrutDevise { get; set; }
+    [Precision(18, 5)]
+    public decimal? TauxChange { get; set; }
+    [Precision(18, 5)]
+    public decimal? MontantBrutDinars { get; set; }
+    [Precision(18, 5)]
+    public decimal? TVA19 { get; set; }
 }
 
 public sealed class ReminderDto

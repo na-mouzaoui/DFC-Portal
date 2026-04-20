@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CheckFillingAPI.Data;
-using CheckFillingAPI.Models;
 using CheckFillingAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using Microsoft.Data.SqlClient;
 
 namespace CheckFillingAPI.Controllers;
 
@@ -29,13 +27,6 @@ public class FiscalFournisseursController : ControllerBase
         return int.Parse(userIdClaim ?? "0");
     }
 
-    private async Task<User?> GetCurrentUserAsync()
-    {
-        var userId = GetCurrentUserId();
-        if (userId <= 0) return null;
-        return await _context.Users.FindAsync(userId);
-    }
-
     private static string NormalizeNif(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
@@ -48,23 +39,41 @@ public class FiscalFournisseursController : ControllerBase
         return string.Join(' ', value.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
+    private async Task<List<FiscalFournisseurView>> LoadFournisseursAsync()
+    {
+        return await _context.Database.SqlQueryRaw<FiscalFournisseurView>(@"
+SELECT
+    [Id] AS [Id],
+    [Nom] AS [RaisonSociale],
+    ISNULL([Adresse], N'') AS [Adresse],
+    N'' AS [AuthNif],
+    ISNULL([RC], N'') AS [Rc],
+    N'' AS [AuthRc],
+    ISNULL([NIF], N'') AS [Nif],
+    SYSUTCDATETIME() AS [CreatedAt],
+    SYSUTCDATETIME() AS [UpdatedAt]
+FROM [dbo].[Fournisseur]
+ORDER BY [Nom]
+").ToListAsync();
+    }
+
     private async Task<bool> FiscalFournisseurIdentityExistsAsync(string nif, string? adresse, int? excludedId = null)
     {
         var normalizedNif = NormalizeNif(nif);
         var normalizedAdresse = NormalizeAddress(adresse);
         if (string.IsNullOrWhiteSpace(normalizedNif) && string.IsNullOrWhiteSpace(normalizedAdresse)) return false;
 
-        var candidates = await _context.FiscalFournisseurs
-            .AsNoTracking()
-            .Select(f => new { f.Id, f.NIF, f.Adresse })
-            .ToListAsync();
+        var candidates = await _context.Database.SqlQueryRaw<FiscalFournisseurIdentity>(@"
+SELECT [Id], ISNULL([NIF], N'') AS [Nif], ISNULL([Adresse], N'') AS [Adresse]
+FROM [dbo].[Fournisseur]
+").ToListAsync();
 
         foreach (var item in candidates)
         {
             if (excludedId.HasValue && item.Id == excludedId.Value)
                 continue;
 
-            if (NormalizeNif(item.NIF) == normalizedNif && NormalizeAddress(item.Adresse) == normalizedAdresse)
+            if (NormalizeNif(item.Nif) == normalizedNif && NormalizeAddress(item.Adresse) == normalizedAdresse)
                 return true;
         }
 
@@ -75,29 +84,19 @@ public class FiscalFournisseursController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        try
+        var fournisseurs = await LoadFournisseursAsync();
+        return Ok(fournisseurs.Select(f => new
         {
-            var fournisseurs = await _context.FiscalFournisseurs
-                .OrderBy(f => f.RaisonSociale)
-                .Select(f => new {
-                    id = f.Id,
-                    raisonSociale = f.RaisonSociale,
-                    adresse = f.Adresse,
-                    authNif = f.AuthNIF,
-                    rc = f.RC,
-                    authRc = f.AuthRC,
-                    nif = f.NIF,
-                    createdAt = f.CreatedAt,
-                    updatedAt = f.UpdatedAt
-                })
-                .ToListAsync();
-            return Ok(fournisseurs);
-        }
-        catch (SqlException ex) when (ex.Number == 208)
-        {
-            // Keep declaration page functional even if the supplier table is temporarily missing.
-            return Ok(Array.Empty<object>());
-        }
+            id = f.Id,
+            raisonSociale = f.RaisonSociale,
+            adresse = f.Adresse,
+            authNif = f.AuthNif,
+            rc = f.Rc,
+            authRc = f.AuthRc,
+            nif = f.Nif,
+            createdAt = f.CreatedAt,
+            updatedAt = f.UpdatedAt
+        }));
     }
 
     // POST api/fiscal-fournisseurs
@@ -117,59 +116,56 @@ public class FiscalFournisseursController : ControllerBase
         if (userId <= 0)
             return Unauthorized();
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var nifValue = string.IsNullOrWhiteSpace(dto.NIF) ? null : dto.NIF.Trim();
+        var rcValue = string.IsNullOrWhiteSpace(dto.RC) ? null : dto.RC.Trim();
+        var adresseValue = string.IsNullOrWhiteSpace(dto.Adresse) ? null : dto.Adresse.Trim();
 
-        var fournisseur = new FiscalFournisseur
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[Fournisseur] ([Nom], [EstEtranger], [NIF], [RC], [Adresse])
+    VALUES ({dto.RaisonSociale.Trim()}, {true}, {nifValue}, {rcValue}, {adresseValue});
+");
+
+        var createdRows = await _context.Database.SqlQueryRaw<FiscalFournisseurView>(@"
+SELECT TOP 1
+    [Id] AS [Id],
+    [Nom] AS [RaisonSociale],
+    ISNULL([Adresse], N'') AS [Adresse],
+    N'' AS [AuthNif],
+    ISNULL([RC], N'') AS [Rc],
+    N'' AS [AuthRc],
+    ISNULL([NIF], N'') AS [Nif],
+    SYSUTCDATETIME() AS [CreatedAt],
+    SYSUTCDATETIME() AS [UpdatedAt]
+FROM [dbo].[Fournisseur]
+ORDER BY [Id] DESC
+").ToListAsync();
+
+    var created = createdRows.First();
+
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_CREATE",
+            "Fournisseur",
+            created.Id,
+            new
+            {
+                created.RaisonSociale,
+                NIF = created.Nif,
+                RC = created.Rc
+            }
+        );
+
+        return CreatedAtAction(nameof(GetAll), new { id = created.Id }, new
         {
-            UserId = userId,
-            RaisonSociale = dto.RaisonSociale.Trim(),
-            Adresse = dto.Adresse?.Trim() ?? string.Empty,
-            AuthNIF = dto.AuthNIF?.Trim() ?? string.Empty,
-            RC = dto.RC?.Trim() ?? string.Empty,
-            AuthRC = dto.AuthRC?.Trim() ?? string.Empty,
-            NIF = dto.NIF?.Trim() ?? string.Empty,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        _context.FiscalFournisseurs.Add(fournisseur);
-        await _context.SaveChangesAsync();
-
-        try
-        {
-            await _auditService.LogAction(
-                userId,
-                "FISCAL_FOURNISSEUR_CREATE",
-                "FiscalFournisseur",
-                fournisseur.Id,
-                new
-                {
-                    fournisseur.RaisonSociale,
-                    fournisseur.NIF,
-                    fournisseur.AuthNIF,
-                    fournisseur.RC,
-                    fournisseur.AuthRC
-                }
-            );
-
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
-        }
-
-        return CreatedAtAction(nameof(GetAll), new { id = fournisseur.Id }, new {
-            id = fournisseur.Id,
-            raisonSociale = fournisseur.RaisonSociale,
-            adresse = fournisseur.Adresse,
-            authNif = fournisseur.AuthNIF,
-            rc = fournisseur.RC,
-            authRc = fournisseur.AuthRC,
-            nif = fournisseur.NIF,
-            createdAt = fournisseur.CreatedAt,
-            updatedAt = fournisseur.UpdatedAt
+            id = created.Id,
+            raisonSociale = created.RaisonSociale,
+            adresse = created.Adresse,
+            authNif = created.AuthNif,
+            rc = created.Rc,
+            authRc = created.AuthRc,
+            nif = created.Nif,
+            createdAt = created.CreatedAt,
+            updatedAt = created.UpdatedAt
         });
     }
 
@@ -187,84 +183,96 @@ public class FiscalFournisseursController : ControllerBase
             return Conflict(new { message = "Un fournisseur fiscal avec ce couple NIF + adresse existe deja." });
 
         var userId = GetCurrentUserId();
-        var currentUser = await GetCurrentUserAsync();
-        if (currentUser == null)
+        if (userId <= 0)
             return Unauthorized();
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var nifValue = string.IsNullOrWhiteSpace(dto.NIF) ? null : dto.NIF.Trim();
+        var rcValue = string.IsNullOrWhiteSpace(dto.RC) ? null : dto.RC.Trim();
+        var adresseValue = string.IsNullOrWhiteSpace(dto.Adresse) ? null : dto.Adresse.Trim();
 
-        var fournisseur = await _context.FiscalFournisseurs
-            .FirstOrDefaultAsync(f => f.Id == id);
+        var existingRows = await _context.Database.SqlQueryRaw<FiscalFournisseurView>(@"
+SELECT
+    [Id] AS [Id],
+    [Nom] AS [RaisonSociale],
+    ISNULL([Adresse], N'') AS [Adresse],
+    N'' AS [AuthNif],
+    ISNULL([RC], N'') AS [Rc],
+    N'' AS [AuthRc],
+    ISNULL([NIF], N'') AS [Nif],
+    SYSUTCDATETIME() AS [CreatedAt],
+    SYSUTCDATETIME() AS [UpdatedAt]
+FROM [dbo].[Fournisseur]
+WHERE [Id] = {0}
+", id).ToListAsync();
 
-        if (fournisseur == null)
+    var existing = existingRows.FirstOrDefault();
+
+        if (existing is null)
             return NotFound(new { message = "Fournisseur introuvable." });
-
-        // L'admin peut gérer tous les fournisseurs fiscaux, sinon uniquement ses propres entrées.
-        if (currentUser.Role != "admin" && fournisseur.UserId != userId)
-            return Forbid();
 
         var oldValues = new
         {
-            fournisseur.RaisonSociale,
-            fournisseur.Adresse,
-            fournisseur.AuthNIF,
-            fournisseur.RC,
-            fournisseur.AuthRC,
-            fournisseur.NIF,
+            existing.RaisonSociale,
+            existing.Adresse,
+            NIF = existing.Nif,
+            RC = existing.Rc,
         };
 
-        fournisseur.RaisonSociale = dto.RaisonSociale.Trim();
-        fournisseur.Adresse = dto.Adresse?.Trim() ?? string.Empty;
-        fournisseur.AuthNIF = dto.AuthNIF?.Trim() ?? string.Empty;
-        fournisseur.RC = dto.RC?.Trim() ?? string.Empty;
-        fournisseur.AuthRC = dto.AuthRC?.Trim() ?? string.Empty;
-        fournisseur.NIF = dto.NIF?.Trim() ?? string.Empty;
-        fournisseur.UpdatedAt = DateTime.UtcNow;
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE [dbo].[Fournisseur]
+SET [Nom] = {dto.RaisonSociale.Trim()},
+    [NIF] = {nifValue},
+    [RC] = {rcValue},
+    [Adresse] = {adresseValue}
+WHERE [Id] = {id}
+");
 
-        var auditPayload = new
-        {
-            oldValues,
-            newValues = new
+        var updatedRows = await _context.Database.SqlQueryRaw<FiscalFournisseurView>(@"
+SELECT
+    [Id] AS [Id],
+    [Nom] AS [RaisonSociale],
+    ISNULL([Adresse], N'') AS [Adresse],
+    N'' AS [AuthNif],
+    ISNULL([RC], N'') AS [Rc],
+    N'' AS [AuthRc],
+    ISNULL([NIF], N'') AS [Nif],
+    SYSUTCDATETIME() AS [CreatedAt],
+    SYSUTCDATETIME() AS [UpdatedAt]
+FROM [dbo].[Fournisseur]
+WHERE [Id] = {0}
+", id).ToListAsync();
+
+    var updated = updatedRows.First();
+
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_UPDATE",
+            "Fournisseur",
+            id,
+            new
             {
-                fournisseur.RaisonSociale,
-                fournisseur.Adresse,
-                fournisseur.AuthNIF,
-                fournisseur.RC,
-                fournisseur.AuthRC,
-                fournisseur.NIF,
+                oldValues,
+                newValues = new
+                {
+                    updated.RaisonSociale,
+                    updated.Adresse,
+                    NIF = updated.Nif,
+                    RC = updated.Rc,
+                }
             }
-        };
+        );
 
-        await _context.SaveChangesAsync();
-
-        try
+        return Ok(new
         {
-            await _auditService.LogAction(
-                userId,
-                "FISCAL_FOURNISSEUR_UPDATE",
-                "FiscalFournisseur",
-                fournisseur.Id,
-                auditPayload
-            );
-
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
-        }
-
-        return Ok(new {
-            id = fournisseur.Id,
-            raisonSociale = fournisseur.RaisonSociale,
-            adresse = fournisseur.Adresse,
-            authNif = fournisseur.AuthNIF,
-            rc = fournisseur.RC,
-            authRc = fournisseur.AuthRC,
-            nif = fournisseur.NIF,
-            createdAt = fournisseur.CreatedAt,
-            updatedAt = fournisseur.UpdatedAt
+            id = updated.Id,
+            raisonSociale = updated.RaisonSociale,
+            adresse = updated.Adresse,
+            authNif = updated.AuthNif,
+            rc = updated.Rc,
+            authRc = updated.AuthRc,
+            nif = updated.Nif,
+            createdAt = updated.CreatedAt,
+            updatedAt = updated.UpdatedAt
         });
     }
 
@@ -273,52 +281,44 @@ public class FiscalFournisseursController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var userId = GetCurrentUserId();
-        var currentUser = await GetCurrentUserAsync();
-        if (currentUser == null)
+        if (userId <= 0)
             return Unauthorized();
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var fournisseurRows = await _context.Database.SqlQueryRaw<FiscalFournisseurView>(@"
+SELECT
+    [Id] AS [Id],
+    [Nom] AS [RaisonSociale],
+    ISNULL([Adresse], N'') AS [Adresse],
+    N'' AS [AuthNif],
+    ISNULL([RC], N'') AS [Rc],
+    N'' AS [AuthRc],
+    ISNULL([NIF], N'') AS [Nif],
+    SYSUTCDATETIME() AS [CreatedAt],
+    SYSUTCDATETIME() AS [UpdatedAt]
+FROM [dbo].[Fournisseur]
+WHERE [Id] = {0}
+", id).ToListAsync();
 
-        var fournisseur = await _context.FiscalFournisseurs
-            .FirstOrDefaultAsync(f => f.Id == id);
+    var fournisseur = fournisseurRows.FirstOrDefault();
 
-        if (fournisseur == null)
+        if (fournisseur is null)
             return NotFound(new { message = "Fournisseur introuvable." });
 
-        // L'admin peut gérer tous les fournisseurs fiscaux, sinon uniquement ses propres entrées.
-        if (currentUser.Role != "admin" && fournisseur.UserId != userId)
-            return Forbid();
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"DELETE FROM [dbo].[Fournisseur] WHERE [Id] = {id}");
 
-        var auditPayload = new
-        {
-            fournisseur.RaisonSociale,
-            fournisseur.Adresse,
-            fournisseur.AuthNIF,
-            fournisseur.RC,
-            fournisseur.AuthRC,
-            fournisseur.NIF,
-        };
-
-        _context.FiscalFournisseurs.Remove(fournisseur);
-        await _context.SaveChangesAsync();
-
-        try
-        {
-            await _auditService.LogAction(
-                userId,
-                "FISCAL_FOURNISSEUR_DELETE",
-                "FiscalFournisseur",
-                id,
-                auditPayload
-            );
-
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Impossible d'enregistrer l'action d'audit pour ce fournisseur fiscal." });
-        }
+        await _auditService.LogAction(
+            userId,
+            "FISCAL_FOURNISSEUR_DELETE",
+            "Fournisseur",
+            id,
+            new
+            {
+                fournisseur.RaisonSociale,
+                fournisseur.Adresse,
+                NIF = fournisseur.Nif,
+                RC = fournisseur.Rc,
+            }
+        );
 
         return NoContent();
     }
@@ -332,7 +332,7 @@ public class FiscalFournisseursController : ControllerBase
         await _auditService.LogAction(
             userId,
             "FISCAL_FOURNISSEUR_IMPORT",
-            "FiscalFournisseur",
+            "Fournisseur",
             null,
             new
             {
@@ -347,6 +347,26 @@ public class FiscalFournisseursController : ControllerBase
         );
 
         return Ok(new { message = "Import audit log enregistré." });
+    }
+
+    private sealed class FiscalFournisseurIdentity
+    {
+        public int Id { get; set; }
+        public string Nif { get; set; } = string.Empty;
+        public string Adresse { get; set; } = string.Empty;
+    }
+
+    private sealed class FiscalFournisseurView
+    {
+        public int Id { get; set; }
+        public string RaisonSociale { get; set; } = string.Empty;
+        public string Adresse { get; set; } = string.Empty;
+        public string AuthNif { get; set; } = string.Empty;
+        public string Rc { get; set; } = string.Empty;
+        public string AuthRc { get; set; } = string.Empty;
+        public string Nif { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
     }
 }
 
