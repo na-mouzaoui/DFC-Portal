@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { HubConnectionBuilder } from "@microsoft/signalr"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
+import { useWilayasCommunes } from "@/hooks/use-wilayas-communes"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -17,7 +18,6 @@ import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { getFiscalReminders, type ReminderData } from "@/lib/fiscal-reminders"
 import { RemindersCard } from "@/components/fiscal-reminders-card"
 import { API_BASE } from "@/lib/config"
-import WILAYAS_COMMUNES from "@/lib/wilayas-communes"
 
 type EncRow = { designation: string; ht?: string; ttc?: string }
 type TvaRate = "19" | "9"
@@ -609,9 +609,9 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
   )
 }
 
-function TAPTable({ rows }: { rows: TAPRow[] }) {
+function TAPTable({ rows, wilayas }: { rows: TAPRow[]; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[] }) {
   const getWilayaName = (code: string) =>
-    WILAYAS_COMMUNES.find((entry) => entry.code === code)?.wilaya ?? "-"
+    wilayas.find((entry) => entry.code === code)?.wilaya ?? "-"
 
   const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
   const totalTap = totalImposable * 0.015
@@ -954,14 +954,14 @@ function Tva16Table({ rows }: { rows: Tva16Row[] }) {
   )
 }
 
-function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDeclaration; color: string }) {
+function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: SavedDeclaration; color: string; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[] }) {
   switch (tabKey) {
     case "encaissement":  return <EncTable rows={decl.encRows ?? []} />
     case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} totalLabel="TOTAL TVA SUR IMMOBILISATION 445620" />
     case "tva_biens":     return <TvaTable rows={decl.tvaBiensRows ?? []} totalLabel="TOTAL TVA SUR BIENS ET SERVICES" />
     case "droits_timbre": return <TimbreTable rows={decl.timbreRows ?? []} />
     case "ca_tap":        return <CATable b12={decl.b12 ?? ""} b13={decl.b13 ?? ""} />
-    case "etat_tap":      return <TAPTable rows={decl.tapRows ?? []} />
+    case "etat_tap":      return <TAPTable rows={decl.tapRows ?? []} wilayas={wilayas} />
     case "ca_siege":      return <CaSiegeTable rows={decl.caSiegeRows ?? []} />
     case "irg":           return <IrgTable rows={decl.irgRows ?? []} />
     case "taxe2":         return <Taxe2Table rows={decl.taxe2Rows ?? []} />
@@ -977,8 +977,8 @@ function TabDataView({ tabKey, decl, color }: { tabKey: string; decl: SavedDecla
 }
 
 // aaa Print Zone aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-function DashPrintZone({ decl, tabKey, tabTitle }: {
-  decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string
+function DashPrintZone({ decl, tabKey, tabTitle, wilayas }: {
+  decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[]
 }) {
   if (!decl) return null
   const moisLabel = MONTHS[decl.mois] ?? decl.mois
@@ -1073,7 +1073,7 @@ function DashPrintZone({ decl, tabKey, tabTitle }: {
         {tabTitle}
       </div>
       {/* aa Table aa */}
-      <TabDataView tabKey={tabKey} decl={decl} color="#555" />
+      <TabDataView tabKey={tabKey} decl={decl} color="#555" wilayas={wilayas} />
     </div>
   )
 }
@@ -1082,6 +1082,7 @@ export default function FiscaDashboardPage() {
   const { user, isLoading, status } = useAuth({ requireAuth: true, redirectTo: "/login" })
   const router = useRouter()
   const { toast } = useToast()
+  const { wilayas } = useWilayasCommunes()
   const [declarations, setDeclarations] = useState<SavedDeclaration[]>([])
   const [recaps, setRecaps] = useState<SavedRecap[]>([])
   const [viewDecl, setViewDecl] = useState<SavedDeclaration | null>(null)
@@ -2288,6 +2289,7 @@ export default function FiscaDashboardPage() {
         tabKey={viewTabKey}
         tabTitle={viewTabTitle}
         color={viewTabColor}
+        wilayas={wilayas}
       />
 
       <div className="space-y-6">
@@ -2687,7 +2689,7 @@ export default function FiscaDashboardPage() {
             <div className="h-[calc(82vh-140px)] overflow-auto bg-slate-50/60 px-6 py-5">
               <div className="rounded-xl border bg-white p-4 shadow-sm">
                 <div className="overflow-x-auto">
-                  <TabDataView tabKey={viewTabKey} decl={viewDecl} color={viewTabColor} />
+                  <TabDataView tabKey={viewTabKey} decl={viewDecl} color={viewTabColor} wilayas={wilayas} />
                 </div>
               </div>
               <div className="mt-4 flex justify-end gap-2">

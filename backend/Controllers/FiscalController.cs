@@ -1004,9 +1004,6 @@ FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B13';
 
             case "etat_tap":
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-IF NOT EXISTS (SELECT 1 FROM [dbo].[TapLigne] WHERE [Designation] = N'TAP 2%')
-    INSERT INTO [dbo].[TapLigne] ([Designation]) VALUES (N'TAP 2%');
-
 INSERT INTO [dbo].[Wilaya] ([Nom])
 SELECT DISTINCT j.[wilayaCode]
 FROM OPENJSON({payload}, '$.tapRows')
@@ -1027,9 +1024,8 @@ WHERE NULLIF(LTRIM(RTRIM(j.[commune])), N'') IS NOT NULL AND c.[Id] IS NULL;
 
 DELETE FROM [dbo].[Tap] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
 
-INSERT INTO [dbo].[Tap] ([LigneId], [PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
+INSERT INTO [dbo].[Tap] ([PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
 SELECT
-    l.[Id],
     {periodeId},
     {normalizedDirection},
     c.[Id],
@@ -1042,8 +1038,7 @@ WITH (
     [tap2] NVARCHAR(64) '$.tap2'
 ) AS j
 INNER JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
-INNER JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune]
-CROSS JOIN (SELECT TOP 1 [Id] FROM [dbo].[TapLigne] WHERE [Designation] = N'TAP 2%') l;
+INNER JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune];
 ");
                 break;
 
@@ -1569,6 +1564,70 @@ END
             ApprovedAt = string.Equals(declaration.Statut, "APPROVED", StringComparison.OrdinalIgnoreCase) ? declaration.SubmittedAt : (DateTime?)null,
             Statut = declaration.Statut
         });
+    }
+
+    // ─── GET api/fiscal/wilayas-communes ───────────────────────────────────
+    [HttpGet("wilayas-communes")]
+    public async Task<IActionResult> GetWilayasCommunes()
+    {
+        try
+        {
+            var result = new List<dynamic>();
+            
+            // Fetch all wilayas with their communes
+            var query = @"
+                SELECT w.[Id], w.[Nom] as Wilaya,
+                       c.[Id] as CommuneId, c.[Nom] as CommuneName
+                FROM [dbo].[Wilaya] w
+                LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id]
+                ORDER BY w.[Nom], c.[Nom]
+            ";
+            
+            var conn = _context.Database.GetDbConnection();
+            await conn.OpenAsync();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = query;
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    var wilayasDict = new Dictionary<int, (string nom, List<(int id, string nom)> communes)>();
+                    
+                    while (await reader.ReadAsync())
+                    {
+                        var wilayaId = reader.GetInt32(0);
+                        var wilayaNom = reader.GetString(1);
+                        var communeId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+                        var communeName = reader.IsDBNull(3) ? null : reader.GetString(3);
+                        
+                        if (!wilayasDict.ContainsKey(wilayaId))
+                        {
+                            wilayasDict[wilayaId] = (wilayaNom, new List<(int, string)>());
+                        }
+                        
+                        if (communeId.HasValue && !string.IsNullOrEmpty(communeName))
+                        {
+                            wilayasDict[wilayaId].communes.Add((communeId.Value, communeName));
+                        }
+                    }
+                    
+                    foreach (var kvp in wilayasDict)
+                    {
+                        result.Add(new
+                        {
+                            code = kvp.Key.ToString(),
+                            wilaya = kvp.Value.nom,
+                            communes = kvp.Value.communes.Select(c => new { id = c.id, nom = c.nom }).ToList()
+                        });
+                    }
+                }
+            }
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Erreur lors de la récupération des wilayas et communes", error = ex.Message });
+        }
     }
 
     // ─── POST api/fiscal ───────────────────────────────────────────────────

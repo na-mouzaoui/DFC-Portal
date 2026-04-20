@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { useAuth } from "@/hooks/use-auth"
+import { useWilayasCommunes } from "@/hooks/use-wilayas-communes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +19,6 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Building2, CalendarDays, Plus, Trash2, Save, Check, ChevronsUpDown } from "lucide-react"
 import { AccessDeniedDialog } from "@/components/access-denied-dialog"
-import WILAYAS_COMMUNES, { type WilayaCommuneEntry } from "@/lib/wilayas-communes"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { getManageableFiscalTabKeysForDirection, isAdminFiscalRole, isFinanceFiscalRole, isRegionalFiscalRole, isFiscalTabDisabledByPolicy } from "@/lib/fiscal-tab-access"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
@@ -702,8 +702,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
 // 
 type TAPRow = { wilayaCode: string; commune: string; tap2: string }
 type SiegeEncRow = { ttc: string; ht: string }
-
-const WILAYA_COMMUNE_DATA: WilayaCommuneEntry[] = WILAYAS_COMMUNES
+type WilayaCommuneData = { code: string; wilaya: string; communes: { id: number; nom: string }[] }
 
 const SIEGE_G1_LABELS = ["Encaissement", "Encaissement Exon\u00e9r\u00e9e"]
 const SIEGE_G2_LABELS = [
@@ -731,9 +730,10 @@ interface Tab6Props {
   annee: string; setAnnee: (v: string) => void
   onSave: () => void;
   isSubmitting: boolean;
+  wilayas: WilayaCommuneData[];
 }
 
-function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmitting }: Tab6Props) {
+function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmitting, wilayas }: Tab6Props) {
   const addRow    = () => setRows((p) => [...p, { wilayaCode: "", commune: "", tap2: "" }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const updateRow = useCallback((i: number, field: keyof TAPRow, val: string) =>
@@ -741,7 +741,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
   const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
   const totalTAP = totalImposable * 0.015
-  const getWilaya = (code: string) => WILAYA_COMMUNE_DATA.find((w) => w.code === code)
+  const getWilaya = (code: string) => wilayas.find((w) => w.code === code)
 
   return (
     <div className="space-y-5">
@@ -780,7 +780,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300"
                       style={{ minWidth: 190 }}>
                       <option value="">- Wilaya -</option>
-                      {WILAYA_COMMUNE_DATA.map((w) => (
+                      {wilayas.map((w) => (
                         <option key={w.code} value={w.code}>{w.code} - {w.wilaya}</option>
                       ))}
                     </select>
@@ -793,10 +793,9 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-300 disabled:opacity-40"
                       style={{ minWidth: 165 }}>
                       <option value="">- Commune -</option>
-                      {(wilaya?.communes ?? []).map((c) => {
-                        const communeCode = String(c)
-                        return <option key={communeCode} value={communeCode}>{communeCode}</option>
-                      })}
+                      {(getWilaya(row.wilayaCode)?.communes ?? []).map((c) => (
+                        <option key={c.id} value={String(c.id)}>{c.nom}</option>
+                      ))}
                     </select>
                   </td>
 
@@ -3728,7 +3727,7 @@ function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tv
             </tr></thead>
             <tbody>
               {tapRows.map((r, i) => {
-                const w = WILAYA_COMMUNE_DATA.find((w) => w.code === r.wilayaCode)
+                const w = wilayas.find((w) => w.code === r.wilayaCode)
                 return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                   <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i+1}</td>
                   <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700, backgroundColor: "#fff", color: "#000" }}>{r.wilayaCode}</td>
@@ -4575,6 +4574,9 @@ export default function NouvelleDeclarationPage() {
   const router    = useRouter()
   const printRef  = useRef<HTMLDivElement>(null)
   const [editQuery, setEditQuery] = useState<{ editId: string; tab: string }>({ editId: "", tab: "" })
+
+  //  Wilayas & Communes (fetched from API) 
+  const { wilayas } = useWilayasCommunes()
 
   //  Regions (fetched from API) 
   const [regions, setRegions] = useState<{ id: number; name: string }[]>([])
@@ -6221,7 +6223,7 @@ export default function NouvelleDeclarationPage() {
                 <CardContent>
                   <TabTAP rows={tapRows} setRows={setTapRows}
                     mois={mois} setMois={setMois} annee={annee} setAnnee={setAnnee}
-                    onSave={handleSave} isSubmitting={isSubmitting} />
+                    onSave={handleSave} isSubmitting={isSubmitting} wilayas={wilayas} />
                 </CardContent>
               </Card>
             )}

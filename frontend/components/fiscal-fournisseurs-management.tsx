@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Plus, Pencil, Trash2, Upload, Download, Search, Loader2 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface FiscalFournisseur {
   id: number
@@ -304,6 +305,8 @@ export function FiscalFournisseursManagement() {
   const [pendingUnchanged, setPendingUnchanged] = useState(0)
   const [pendingDuplicatesNotCreated, setPendingDuplicatesNotCreated] = useState(0)
   const [pendingIgnoredCount, setPendingIgnoredCount] = useState(0)
+  const [pendingDuplicateRows, setPendingDuplicateRows] = useState<FormData[]>([])
+  const [allowDuplicates, setAllowDuplicates] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importSummaryOpen, setImportSummaryOpen] = useState(false)
@@ -318,6 +321,8 @@ export function FiscalFournisseursManagement() {
     setPendingUnchanged(0)
     setPendingDuplicatesNotCreated(0)
     setPendingIgnoredCount(0)
+    setPendingDuplicateRows([])
+    setAllowDuplicates(false)
     setImporting(false)
   }
 
@@ -545,12 +550,13 @@ export function FiscalFournisseursManagement() {
   }
 
   const handleImportConflictConfirm = async () => {
+    const createsToApply = allowDuplicates ? [...pendingImportCreates, ...pendingDuplicateRows] : pendingImportCreates
     await applyImportChanges(
-      pendingImportCreates,
+      createsToApply,
       importConflicts,
       importDecisions,
       pendingUnchanged,
-      pendingDuplicatesNotCreated,
+      allowDuplicates ? pendingUnchanged + importConflicts.length : pendingDuplicatesNotCreated,
       pendingIgnoredCount,
     )
   }
@@ -765,6 +771,7 @@ export function FiscalFournisseursManagement() {
       const idxAuthRc = hasHeader ? headers.findIndex((h) => ["auth n rc", "auth no rc", "auth numero rc"].includes(h)) : -1
 
       const csvRowsByKey = new Map<string, FormData>()
+      const csvDuplicateRows: FormData[] = []
       let ignoredCount = 0
       let duplicateRowsInCsv = 0
       for (const line of lines) {
@@ -794,6 +801,7 @@ export function FiscalFournisseursManagement() {
         const rowKey = uniqKey || normalizeSupplierName(formRow.raisonSociale)
         if (csvRowsByKey.has(rowKey)) {
           duplicateRowsInCsv += 1
+          csvDuplicateRows.push(formRow)
           continue
         }
         csvRowsByKey.set(rowKey, formRow)
@@ -838,7 +846,7 @@ export function FiscalFournisseursManagement() {
 
       const duplicatesNotCreated = duplicateRowsInCsv + unchanged + conflicts.length
 
-      if (conflicts.length > 0) {
+      if (conflicts.length > 0 || duplicateRowsInCsv > 0) {
         const defaults: Record<string, ConflictDecision> = {}
         for (const conflict of conflicts) {
           defaults[String(conflict.existing.id)] = "keep"
@@ -847,8 +855,10 @@ export function FiscalFournisseursManagement() {
         setImportConflicts(conflicts)
         setImportDecisions(defaults)
         setPendingUnchanged(unchanged)
-        setPendingDuplicatesNotCreated(duplicatesNotCreated)
+        setPendingDuplicatesNotCreated(duplicateRowsInCsv + unchanged + conflicts.length)
         setPendingIgnoredCount(ignoredCount)
+        setPendingDuplicateRows(csvDuplicateRows)
+        setAllowDuplicates(false)
         setImportDialogOpen(true)
         return
       }
@@ -1064,6 +1074,20 @@ export function FiscalFournisseursManagement() {
             </p>
             {pendingIgnoredCount > 0 && (
               <p className="text-muted-foreground">{pendingIgnoredCount} ligne(s) CSV ont été ignorée(s) (nom vide).</p>
+            )}
+
+            {pendingDuplicateRows.length > 0 && (
+              <div className="flex items-center gap-2 rounded-md bg-blue-50 p-3">
+                <Checkbox
+                  id="allowDuplicates"
+                  checked={allowDuplicates}
+                  onCheckedChange={(checked) => setAllowDuplicates(checked === true)}
+                  disabled={importing}
+                />
+                <Label htmlFor="allowDuplicates" className="flex-1 cursor-pointer text-sm font-medium">
+                  Permettre la création de {pendingDuplicateRows.length} doublon(s) détecté(s) dans le fichier CSV
+                </Label>
+              </div>
             )}
 
             {importConflicts.map((conflict) => {
