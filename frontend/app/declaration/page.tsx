@@ -4150,6 +4150,390 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
     )
   }
 
+  if (tabKey === "ca_siege") {
+    const rows = decl.caSiegeRows ?? []
+    const g1 = rows.slice(0, 2)
+    const g2 = rows.slice(2, 12)
+    const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
+    const t1ht = g1.reduce((s, r) => s + num(r.ht), 0)
+    const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
+    const t2ht = g2.reduce((s, r) => s + num(r.ht), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            <TableHead className="text-right">TTC</TableHead>
+            <TableHead className="text-right">HT</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {SIEGE_G1_LABELS.map((label, i) => (
+            <TableRow key={`g1-${i}`}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.ttc ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.ht ?? "")}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL 1</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t1ttc)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t1ht)}</TableCell>
+          </TableRow>
+          {SIEGE_G2_LABELS.map((label, i) => (
+            <TableRow key={`g2-${i}`}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i + 2]?.ttc ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i + 2]?.ht ?? "")}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL 2</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t2ttc)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t2ht)}</TableCell>
+          </TableRow>
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL GÉNÉRAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t1ttc + t2ttc)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(t1ht + t2ht)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "irg") {
+    const rows = decl.irgRows ?? []
+    const totalAssiette = rows.reduce((s, r) => s + num(r.assietteImposable), 0)
+    const totalMontant = rows.reduce((s, r) => s + num(r.montant), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            <TableHead className="text-right">Assiette imposable</TableHead>
+            <TableHead className="text-right">Montant</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {IRG_LABELS.map((label, i) => (
+            <TableRow key={label}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.assietteImposable ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.montant ?? "")}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalAssiette)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalMontant)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "taxe2") {
+    const rows = decl.taxe2Rows ?? []
+    const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
+    const totalMontant = rows.reduce((s, r) => s + num(r.montant), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            <TableHead className="text-right">Montant de la base</TableHead>
+            <TableHead className="text-right">Montant de la taxe 2%</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {TAXE2_LABELS.map((label, i) => (
+            <TableRow key={label}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.base ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.montant ?? "")}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalMontant)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "taxe_masters") {
+    const rows = decl.masterRows ?? []
+    const totalHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
+    const totalTaxe = rows.reduce((s, r) => s + (num(r.montantHT) * 0.015), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {[
+              "#",
+              "Date",
+              "Nom du Master",
+              "N° Facture",
+              "Date de la Facture",
+              "Montant HT",
+              "Taxe 1,5%",
+              "Mois",
+              "Observation",
+            ].map((header) => (
+              <TableHead key={header} className={["Montant HT", "Taxe 1,5%"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              <TableCell className="text-center text-xs">{i + 1}</TableCell>
+              <TableCell className="text-xs">{popupText(row.date)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.nomMaster)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.dateFacture)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantHT)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : ""}</TableCell>
+              <TableCell className="text-xs">{popupText(row.mois)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.observation)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell colSpan={5}>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalHT)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
+            <TableCell colSpan={2} />
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "taxe_vehicule") {
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            <TableHead className="text-right">Montant</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell className="text-xs">Taxe de véhicule</TableCell>
+            <TableCell className="text-right text-xs font-semibold">{fmt(decl.taxe11Montant ?? "")}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "taxe_formation") {
+    const rows = decl.taxe12Rows ?? []
+    const total = rows.reduce((s, r) => s + num(r.montant), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            <TableHead className="text-right">Montant</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {TAXE12_LABELS.map((label, i) => (
+            <TableRow key={label}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.montant ?? "")}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(total)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "acompte") {
+    const months = decl.acompteMonths ?? []
+    const yy = String(decl.annee ?? "").slice(-2)
+    const total = months.reduce((s, value) => s + num(value), 0)
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Désignation</TableHead>
+            {MONTH_LABELS_SHORT.map((month) => (
+              <TableHead key={month} className="text-right">{month} {yy}</TableHead>
+            ))}
+            <TableHead className="text-right">TOTAL</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell className="text-xs">Montant</TableCell>
+            {months.map((value, i) => (
+              <TableCell key={i} className="text-right text-xs font-semibold">{fmt(value)}</TableCell>
+            ))}
+            <TableCell className="text-right text-xs font-bold">{fmt(total)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "ibs") {
+    const rows = decl.ibs14Rows ?? []
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {[
+              "#",
+              "N° Facture",
+              "Montant brut devise",
+              "Taux change",
+              "Montant brut dinars",
+              "Montant net devise",
+              "Montant IBS",
+              "Montant net dinars",
+            ].map((header) => (
+              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant brut devise", "Montant brut dinars", "Montant net devise", "Montant IBS", "Montant net dinars"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              <TableCell className="text-center text-xs">{i + 1}</TableCell>
+              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDevise)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDinars)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDevise)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantIBS)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDinars)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell colSpan={2}>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDevise), 0))}</TableCell>
+            <TableCell />
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDinars), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDevise), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantIBS), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDinars), 0))}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "taxe_domicil") {
+    const rows = decl.taxe15Rows ?? []
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {[
+              "#",
+              "N° Facture",
+              "Date facture",
+              "Raison sociale",
+              "Montant net devise",
+              "Monnaie",
+              "Taux change",
+              "Montant dinars",
+              "Taux taxe",
+              "Montant à payer",
+            ].map((header) => (
+              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant net devise", "Montant dinars", "Montant à payer"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              <TableCell className="text-center text-xs">{i + 1}</TableCell>
+              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.dateFacture)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.raisonSociale)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDevise)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.monnaie)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantDinars)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.tauxTaxe)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantAPayer)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell colSpan={4}>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDevise), 0))}</TableCell>
+            <TableCell />
+            <TableCell />
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantDinars), 0))}</TableCell>
+            <TableCell />
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantAPayer), 0))}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "tva_autoliq") {
+    const rows = decl.tva16Rows ?? []
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {[
+              "#",
+              "N° Facture",
+              "Montant brut devises",
+              "Taux change",
+              "Montant brut dinars",
+              "TVA 19%",
+            ].map((header) => (
+              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant brut devises", "Montant brut dinars", "TVA 19%"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              <TableCell className="text-center text-xs">{i + 1}</TableCell>
+              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDevise)}</TableCell>
+              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDinars)}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(row.tva19)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-bold bg-muted">
+            <TableCell colSpan={2}>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDevise), 0))}</TableCell>
+            <TableCell />
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDinars), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.tva19), 0))}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    )
+  }
+
   if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
     return <p className="text-sm text-muted-foreground">Aucune donnée pour ce tableau.</p>
   }

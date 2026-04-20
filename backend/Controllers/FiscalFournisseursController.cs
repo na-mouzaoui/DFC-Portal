@@ -340,6 +340,7 @@ WHERE [Id] = {0}
                 request.Updated,
                 request.Kept,
                 request.Unchanged,
+                request.DuplicatesNotCreated,
                 request.Ignored,
                 request.Errors,
                 request.Source,
@@ -386,6 +387,7 @@ public class FiscalFournisseurImportAuditRequest
     public int Updated { get; set; }
     public int Kept { get; set; }
     public int Unchanged { get; set; }
+    public int DuplicatesNotCreated { get; set; }
     public int Ignored { get; set; }
     public int Errors { get; set; }
     public string? Source { get; set; }

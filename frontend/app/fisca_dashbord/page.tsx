@@ -41,6 +41,7 @@ type Ibs14Row  = {
 }
 type Taxe15Row = { numFacture: string; dateFacture: string; raisonSociale: string; montantNetDevise: string; monnaie: string; tauxChange: string; montantDinars: string; tauxTaxe: string; montantAPayer: string }
 type Tva16Row  = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; tva19: string }
+type FiscalFournisseurOption = { id: number; raisonSociale: string }
 
 const SIEGE_G1_LABELS = ["Encaissement", "Encaissement Exon\u00e9r\u00e9e"]
 const SIEGE_G2_LABELS = [
@@ -52,7 +53,7 @@ const SIEGE_G2_LABELS = [
 
 const IRG_LABELS = [
   "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15%",
-  "Jetons de présence 15%", "Tantieme 15%",
+  "Jetons de presence 10%", "Tantieme 10%",
 ]
 const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
 const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
@@ -84,8 +85,10 @@ interface SavedDeclaration {
   taxe12Rows?: Taxe12Row[]
   acompteMonths?: string[]
   ibs14Rows?: Ibs14Row[]
+  ibsFournisseurId?: string
   taxe15Rows?: Taxe15Row[]
   tva16Rows?: Tva16Row[]
+  tva16FournisseurId?: string
 }
 
 interface ApiFiscalDeclaration {
@@ -298,8 +301,10 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
     taxe12Rows: [],
     acompteMonths: [],
     ibs14Rows: [],
+    ibsFournisseurId: "",
     taxe15Rows: [],
     tva16Rows: [],
+    tva16FournisseurId: "",
   }
 
   switch ((item.tabKey ?? "").trim().toLowerCase()) {
@@ -345,12 +350,14 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
       break
     case "ibs":
       declaration.ibs14Rows = toArray<Ibs14Row>(parsedData.ibs14Rows)
+      declaration.ibsFournisseurId = String(parsedData.ibsFournisseurId ?? "")
       break
     case "taxe_domicil":
       declaration.taxe15Rows = toArray<Taxe15Row>(parsedData.taxe15Rows)
       break
     case "tva_autoliq":
       declaration.tva16Rows = toArray<Tva16Row>(parsedData.tva16Rows)
+      declaration.tva16FournisseurId = String(parsedData.tva16FournisseurId ?? "")
       break
     default:
       break
@@ -638,9 +645,10 @@ function TAPTable({ rows }: { rows: TAPRow[] }) {
 }
 
 function CaSiegeTable({ rows }: { rows: SiegeEncRow[] }) {
-  if (!rows || rows.length < 12) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
-  const g1 = rows.slice(0, 2)
-  const g2 = rows.slice(2, 12)
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
+  const normalizedRows = Array.from({ length: 12 }, (_, i) => rows[i] ?? { ttc: "", ht: "" })
+  const g1 = normalizedRows.slice(0, 2)
+  const g2 = normalizedRows.slice(2, 12)
   const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
   const t1ht  = g1.reduce((s, r) => s + num(r.ht), 0)
   const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
@@ -842,7 +850,7 @@ function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
             "NUMERO DE FACTURE",
             "MONTANT BRUT EN DEVISES",
             "TAUX DE CHANGE\nDATE DU CONTRAT",
-            "MONTANT VRUT EN DINARS",
+            "MONTANT BRUT EN DINARS",
             "MONTANT NET\nTRANSFERABLE EN DEVISES",
             "MONTANT DE L'IBS (Taux ...%)",
             "MONTANT NET\nTRANSFERABLE EN DINARS",
@@ -857,7 +865,6 @@ function Ibs14Table({ rows }: { rows: Ibs14Row[] }) {
             <TableCell>{r.numFacture}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantBrutDevise)}</TableCell>
             <TableCell>{r.tauxChange}</TableCell>
-            <TableCell>{r.dateContrat ?? ""}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantBrutDinars)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantNetDevise)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.montantIBS)}</TableCell>
@@ -1102,6 +1109,7 @@ export default function FiscaDashboardPage() {
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
+  const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   const [, setFiscalPolicyRevision] = useState(0)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const normalizedRole = (user?.role ?? "").trim().toLowerCase()
@@ -1345,6 +1353,57 @@ export default function FiscaDashboardPage() {
     }
 
     loadRegions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, user])
+
+  useEffect(() => {
+    if (!user || status !== "authenticated") {
+      setFiscalFournisseurs([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadFournisseurs = async () => {
+      try {
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+        const response = await fetch(`${API_BASE}/api/fiscal-fournisseurs`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (!response.ok) {
+          if (!cancelled) setFiscalFournisseurs([])
+          return
+        }
+
+        const payload = await response.json().catch(() => null)
+        const nextFournisseurs: FiscalFournisseurOption[] = Array.isArray(payload)
+          ? payload
+              .map((item) => {
+                const raw = item as { id?: unknown; raisonSociale?: unknown }
+                const id = Number(raw.id)
+                const raisonSociale = String(raw.raisonSociale ?? "").trim()
+                if (!Number.isFinite(id) || !raisonSociale) return null
+                return { id, raisonSociale }
+              })
+              .filter((item): item is FiscalFournisseurOption => item !== null)
+          : []
+
+        if (!cancelled) {
+          setFiscalFournisseurs(nextFournisseurs)
+        }
+      } catch {
+        if (!cancelled) setFiscalFournisseurs([])
+      }
+    }
+
+    loadFournisseurs()
 
     return () => {
       cancelled = true
@@ -1638,6 +1697,16 @@ export default function FiscaDashboardPage() {
         drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 43 + layoutShiftY)
         pdf.setFontSize(14)
         drawUnderlinedText(headerTitle, 10, 64 + layoutShiftY)
+
+        // Afficher le fournisseur au-dessus du tableau pour IBS et TVA autoliq
+        if (tabKey === "ibs" || tabKey === "tva_autoliq") {
+          const fournisseurId = tabKey === "ibs" ? decl.ibsFournisseurId : decl.tva16FournisseurId
+          const fournisseurNom = fiscalFournisseurs.find((item) => String(item.id) === String(fournisseurId ?? ""))?.raisonSociale ?? "-"
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          pdf.setFont("times", "normal")
+          pdf.setFontSize(10)
+          pdf.text(`Fournisseur: ${fournisseurNom}`, pageWidth - 10, 70 + layoutShiftY, { align: "right" })
+        }
 
         const rawHeaders = Array.from(tableElement.querySelectorAll("thead th")).map((cell) =>
           String(cell.textContent ?? "").trim(),

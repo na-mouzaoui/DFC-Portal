@@ -72,6 +72,7 @@ interface ImportSummary {
   updated: number
   kept: number
   unchanged: number
+  duplicatesNotCreated: number
   ignored: number
   errors: number
   success: number
@@ -301,6 +302,7 @@ export function FiscalFournisseursManagement() {
   const [importDecisions, setImportDecisions] = useState<Record<string, ConflictDecision>>({})
   const [pendingImportCreates, setPendingImportCreates] = useState<FormData[]>([])
   const [pendingUnchanged, setPendingUnchanged] = useState(0)
+  const [pendingDuplicatesNotCreated, setPendingDuplicatesNotCreated] = useState(0)
   const [pendingIgnoredCount, setPendingIgnoredCount] = useState(0)
   const [importing, setImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
@@ -314,6 +316,7 @@ export function FiscalFournisseursManagement() {
     setImportDecisions({})
     setPendingImportCreates([])
     setPendingUnchanged(0)
+    setPendingDuplicatesNotCreated(0)
     setPendingIgnoredCount(0)
     setImporting(false)
   }
@@ -415,6 +418,7 @@ export function FiscalFournisseursManagement() {
     conflicts: ImportConflict[],
     decisions: Record<string, ConflictDecision>,
     unchangedCount: number,
+    duplicatesNotCreated: number,
     ignoredCount: number,
   ) => {
     setImporting(true)
@@ -492,6 +496,7 @@ export function FiscalFournisseursManagement() {
     if (updated > 0) summary.push(`${updated} modifié(s)`)
     if (kept > 0) summary.push(`${kept} conservé(s)`)
     if (unchangedCount > 0) summary.push(`${unchangedCount} déjà existant(s)`)
+    if (duplicatesNotCreated > 0) summary.push(`${duplicatesNotCreated} doublon(s) non créé(s)`)
     if (ignoredCount > 0) summary.push(`${ignoredCount} ligne(s) ignorée(s)`)
     if (summary.length === 0) summary.push("Aucun changement")
 
@@ -504,6 +509,7 @@ export function FiscalFournisseursManagement() {
           updated,
           kept,
           unchanged: unchangedCount,
+          duplicatesNotCreated,
           ignored: ignoredCount,
           errors,
           source: "csv",
@@ -519,6 +525,7 @@ export function FiscalFournisseursManagement() {
       updated,
       kept,
       unchanged: unchangedCount,
+      duplicatesNotCreated,
       ignored: ignoredCount,
       errors,
       success,
@@ -543,6 +550,7 @@ export function FiscalFournisseursManagement() {
       importConflicts,
       importDecisions,
       pendingUnchanged,
+      pendingDuplicatesNotCreated,
       pendingIgnoredCount,
     )
   }
@@ -758,6 +766,7 @@ export function FiscalFournisseursManagement() {
 
       const csvRowsByKey = new Map<string, FormData>()
       let ignoredCount = 0
+      let duplicateRowsInCsv = 0
       for (const line of lines) {
         const cols = parseCsvLine(line, delimiter)
         const isLegacyFormat = !hasHeader && cols.length <= 3
@@ -782,7 +791,12 @@ export function FiscalFournisseursManagement() {
         }
 
         const uniqKey = buildSupplierUniqKey(formRow.nif, formRow.adresse)
-        csvRowsByKey.set(uniqKey || normalizeSupplierName(formRow.raisonSociale), formRow)
+        const rowKey = uniqKey || normalizeSupplierName(formRow.raisonSociale)
+        if (csvRowsByKey.has(rowKey)) {
+          duplicateRowsInCsv += 1
+          continue
+        }
+        csvRowsByKey.set(rowKey, formRow)
       }
 
       const parsedRows = Array.from(csvRowsByKey.values())
@@ -822,6 +836,8 @@ export function FiscalFournisseursManagement() {
         }
       }
 
+      const duplicatesNotCreated = duplicateRowsInCsv + unchanged + conflicts.length
+
       if (conflicts.length > 0) {
         const defaults: Record<string, ConflictDecision> = {}
         for (const conflict of conflicts) {
@@ -831,12 +847,13 @@ export function FiscalFournisseursManagement() {
         setImportConflicts(conflicts)
         setImportDecisions(defaults)
         setPendingUnchanged(unchanged)
+        setPendingDuplicatesNotCreated(duplicatesNotCreated)
         setPendingIgnoredCount(ignoredCount)
         setImportDialogOpen(true)
         return
       }
 
-      await applyImportChanges(toCreate, [], {}, unchanged, ignoredCount)
+      await applyImportChanges(toCreate, [], {}, unchanged, duplicatesNotCreated, ignoredCount)
     } catch {
       toast({
         title: "Import CSV",
@@ -882,8 +899,9 @@ export function FiscalFournisseursManagement() {
 
       {/* Table */}
       <div className="rounded-md border">
-        <Table>
-          <TableHeader>
+        <div className="max-h-[520px] overflow-y-auto">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead className="w-12">#</TableHead>
               <TableHead>Nom / Raison Sociale</TableHead>
@@ -894,8 +912,8 @@ export function FiscalFournisseursManagement() {
               <TableHead>Auth. N° RC</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
-          </TableHeader>
-          <TableBody>
+            </TableHeader>
+            <TableBody>
             {fetching ? (
               <TableRow><TableCell colSpan={8} className="h-32 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></TableCell></TableRow>
             ) : filtered.length === 0 ? (
@@ -919,8 +937,9 @@ export function FiscalFournisseursManagement() {
                 </TableRow>
               ))
             )}
-          </TableBody>
-        </Table>
+            </TableBody>
+          </Table>
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">{filtered.length} fournisseur{filtered.length !== 1 ? "s" : ""}{search && ` (filtrés sur ${fournisseurs.length} au total)`}</p>
 
@@ -987,8 +1006,9 @@ export function FiscalFournisseursManagement() {
           <div className="space-y-2 text-sm">
             <p>Nombre d'import reussi: <strong>{importSummary?.success ?? 0}</strong></p>
             <p>Nombre d'echec: <strong>{importSummary?.errors ?? 0}</strong></p>
+            <p>Nombre de doublons non crees: <strong>{importSummary?.duplicatesNotCreated ?? 0}</strong></p>
             <p className="text-muted-foreground">
-              Crees: {importSummary?.created ?? 0}, modifies: {importSummary?.updated ?? 0}, conserves: {importSummary?.kept ?? 0}, deja identiques: {importSummary?.unchanged ?? 0}, lignes ignorees: {importSummary?.ignored ?? 0}
+              Crees: {importSummary?.created ?? 0}, modifies: {importSummary?.updated ?? 0}, conserves: {importSummary?.kept ?? 0}, deja identiques: {importSummary?.unchanged ?? 0}, doublons non crees: {importSummary?.duplicatesNotCreated ?? 0}, lignes ignorees (nom/raison sociale vide): {importSummary?.ignored ?? 0}
             </p>
           </div>
 
@@ -1040,7 +1060,7 @@ export function FiscalFournisseursManagement() {
 
           <div className="space-y-3 text-sm">
             <p className="text-muted-foreground">
-              {importConflicts.length} conflit(s) détecté(s), {pendingImportCreates.length} nouveau(x) fournisseur(s), {pendingUnchanged} déjà identique(s).
+              {importConflicts.length} conflit(s) détecté(s), {pendingImportCreates.length} nouveau(x) fournisseur(s), {pendingUnchanged} déjà identique(s), {pendingDuplicatesNotCreated} doublon(s) non créé(s).
             </p>
             {pendingIgnoredCount > 0 && (
               <p className="text-muted-foreground">{pendingIgnoredCount} ligne(s) CSV ont été ignorée(s) (nom vide).</p>

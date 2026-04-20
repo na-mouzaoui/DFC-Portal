@@ -1,10 +1,12 @@
+import { VILLES } from "@/lib/villes"
+
 export type WilayaCommuneEntry = {
   code: string
   wilaya: string
   communes: number[]
 }
 
-const WILAYAS_COMMUNES: WilayaCommuneEntry[] = [
+const RAW_WILAYAS_COMMUNES: WilayaCommuneEntry[] = [
   {
     "code": "01A",
     "wilaya": "ADRAR",
@@ -473,5 +475,70 @@ const WILAYAS_COMMUNES: WilayaCommuneEntry[] = [
     ]
   }
 ]
+
+const normalizeLabel = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .toUpperCase()
+
+const getWilayaCodeFromEntryCode = (entryCode: string) => {
+  const match = entryCode.match(/^\d+/)
+  if (!match) return null
+  const numeric = Number.parseInt(match[0], 10)
+  if (Number.isNaN(numeric) || numeric < 1 || numeric > 69) return null
+  return String(numeric).padStart(2, "0")
+}
+
+const villesByCode = new Map(VILLES.map((v) => [v.code, v.name] as const))
+const villesByLabel = new Map(VILLES.map((v) => [normalizeLabel(v.name), v.name] as const))
+
+const resolveWilayaName = (entry: WilayaCommuneEntry) => {
+  const wilayaCode = getWilayaCodeFromEntryCode(entry.code)
+  if (wilayaCode && villesByCode.has(wilayaCode)) {
+    return villesByCode.get(wilayaCode) as string
+  }
+
+  const byLabel = villesByLabel.get(normalizeLabel(entry.wilaya))
+  if (byLabel) return byLabel
+
+  return entry.wilaya
+}
+
+const completedFromRaw = RAW_WILAYAS_COMMUNES.map((entry) => ({
+  ...entry,
+  wilaya: resolveWilayaName(entry),
+}))
+
+const existingWilayaCodes = new Set(
+  completedFromRaw
+    .map((entry) => getWilayaCodeFromEntryCode(entry.code))
+    .filter((code): code is string => code !== null),
+)
+
+const missingWilayaEntries: WilayaCommuneEntry[] = VILLES
+  .filter((ville) => !existingWilayaCodes.has(ville.code))
+  .map((ville) => ({
+    code: `${ville.code}A`,
+    wilaya: ville.name,
+    communes: [],
+  }))
+
+const sortByCode = (a: WilayaCommuneEntry, b: WilayaCommuneEntry) => {
+  const codeA = getWilayaCodeFromEntryCode(a.code)
+  const codeB = getWilayaCodeFromEntryCode(b.code)
+
+  if (codeA && codeB && codeA !== codeB) {
+    return Number.parseInt(codeA, 10) - Number.parseInt(codeB, 10)
+  }
+
+  if (codeA && !codeB) return -1
+  if (!codeA && codeB) return 1
+  return a.code.localeCompare(b.code)
+}
+
+const WILAYAS_COMMUNES: WilayaCommuneEntry[] = [...completedFromRaw, ...missingWilayaEntries].sort(sortByCode)
 
 export default WILAYAS_COMMUNES
