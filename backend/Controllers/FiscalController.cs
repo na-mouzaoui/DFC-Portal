@@ -629,7 +629,7 @@ ORDER BY l.[Id]", periodeDbId, direction).ToListAsync();
             case "etat_tap":
             {
                 var rows = await _context.Database.SqlQueryRaw<TapPayloadRow>(@"
-SELECT w.[Nom] AS [WilayaCode], c.[Nom] AS [Commune], t.[MontantImposable]
+SELECT w.[Code] AS [WilayaCode], c.[Code] AS [Commune], t.[MontantImposable]
 FROM [dbo].[Tap] t
 INNER JOIN [dbo].[Commune] c ON c.[Id] = t.[CommuneId]
 INNER JOIN [dbo].[Wilaya] w ON w.[Id] = c.[WilayaId]
@@ -1004,24 +1004,6 @@ FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B13';
 
             case "etat_tap":
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[Wilaya] ([Nom])
-SELECT DISTINCT j.[wilayaCode]
-FROM OPENJSON({payload}, '$.tapRows')
-WITH ([wilayaCode] NVARCHAR(100) '$.wilayaCode') AS j
-LEFT JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
-WHERE NULLIF(LTRIM(RTRIM(j.[wilayaCode])), N'') IS NOT NULL AND w.[Id] IS NULL;
-
-INSERT INTO [dbo].[Commune] ([WilayaId], [Nom])
-SELECT DISTINCT w.[Id], j.[commune]
-FROM OPENJSON({payload}, '$.tapRows')
-WITH (
-    [wilayaCode] NVARCHAR(100) '$.wilayaCode',
-    [commune] NVARCHAR(100) '$.commune'
-) AS j
-INNER JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
-LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune]
-WHERE NULLIF(LTRIM(RTRIM(j.[commune])), N'') IS NOT NULL AND c.[Id] IS NULL;
-
 DELETE FROM [dbo].[Tap] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
 
 INSERT INTO [dbo].[Tap] ([PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
@@ -1037,8 +1019,8 @@ WITH (
     [commune] NVARCHAR(100) '$.commune',
     [tap2] NVARCHAR(64) '$.tap2'
 ) AS j
-INNER JOIN [dbo].[Wilaya] w ON w.[Nom] = j.[wilayaCode]
-INNER JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id] AND c.[Nom] = j.[commune];
+INNER JOIN [dbo].[Wilaya] w ON w.[Code] = j.[wilayaCode]
+INNER JOIN [dbo].[Commune] c ON c.[Code] = j.[commune] AND c.[WilayaId] = w.[Id];
 ");
                 break;
 
@@ -1576,11 +1558,11 @@ END
             
             // Fetch all wilayas with their communes
             var query = @"
-                SELECT w.[Id], w.[Nom] as Wilaya,
-                       c.[Id] as CommuneId, c.[Nom] as CommuneName
+                  SELECT w.[Code], w.[Nom] as Wilaya,
+                    c.[Code] as CommuneCode, c.[Code] as CommuneName
                 FROM [dbo].[Wilaya] w
                 LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id]
-                ORDER BY w.[Nom], c.[Nom]
+                  ORDER BY w.[Code], c.[Code]
             ";
             
             var conn = _context.Database.GetDbConnection();
@@ -1590,23 +1572,23 @@ END
                 cmd.CommandText = query;
                 using (var reader = await cmd.ExecuteReaderAsync())
                 {
-                    var wilayasDict = new Dictionary<int, (string nom, List<(int id, string nom)> communes)>();
+                    var wilayasDict = new Dictionary<string, (string nom, List<(string id, string nom)> communes)>();
                     
                     while (await reader.ReadAsync())
                     {
-                        var wilayaId = reader.GetInt32(0);
-                        var wilayaNom = reader.GetString(1);
-                        var communeId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+                        var wilayaId = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? string.Empty;
+                        var wilayaNom = Convert.ToString(reader.GetValue(1), CultureInfo.InvariantCulture) ?? string.Empty;
+                        var communeId = reader.IsDBNull(2) ? null : Convert.ToString(reader.GetValue(2), CultureInfo.InvariantCulture);
                         var communeName = reader.IsDBNull(3) ? null : reader.GetString(3);
                         
                         if (!wilayasDict.ContainsKey(wilayaId))
                         {
-                            wilayasDict[wilayaId] = (wilayaNom, new List<(int, string)>());
+                            wilayasDict[wilayaId] = (wilayaNom, new List<(string, string)>());
                         }
                         
-                        if (communeId.HasValue && !string.IsNullOrEmpty(communeName))
+                        if (!string.IsNullOrWhiteSpace(communeId) && !string.IsNullOrEmpty(communeName))
                         {
-                            wilayasDict[wilayaId].communes.Add((communeId.Value, communeName));
+                            wilayasDict[wilayaId].communes.Add((communeId!, communeName));
                         }
                     }
                     
@@ -1614,7 +1596,7 @@ END
                     {
                         result.Add(new
                         {
-                            code = kvp.Key.ToString(),
+                            code = kvp.Key,
                             wilaya = kvp.Value.nom,
                             communes = kvp.Value.communes.Select(c => new { id = c.id, nom = c.nom }).ToList()
                         });
@@ -2145,34 +2127,43 @@ public class DeclarationRequest
 public sealed class DirectionEncaissementSourceDto
 {
     public string Direction { get; set; } = string.Empty;
+    [Precision(18, 5)]
     public decimal TotalHt { get; set; }
+    [Precision(18, 5)]
     public decimal TotalTtc { get; set; }
 }
 
 public sealed class DirectionAmountSourceDto
 {
     public string Direction { get; set; } = string.Empty;
+    [Precision(18, 5)]
     public decimal Amount { get; set; }
 }
 
 public sealed class DirectionCaTapSourceDto
 {
     public string Direction { get; set; } = string.Empty;
+    [Precision(18, 5)]
     public decimal B12 { get; set; }
+    [Precision(18, 5)]
     public decimal B13 { get; set; }
 }
 
 public sealed class DirectionTapSourceDto
 {
     public string Direction { get; set; } = string.Empty;
+    [Precision(18, 5)]
     public decimal Base { get; set; }
+    [Precision(18, 5)]
     public decimal Taxe { get; set; }
 }
 
 public sealed class DirectionDroitsTimbreSourceDto
 {
     public string Direction { get; set; } = string.Empty;
+    [Precision(18, 5)]
     public decimal TotalCa { get; set; }
+    [Precision(18, 5)]
     public decimal TotalMontant { get; set; }
 }
 

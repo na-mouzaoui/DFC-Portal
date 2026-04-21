@@ -702,7 +702,7 @@ function TabCA({ b12, setB12, b13, setB13, onSave, isSubmitting }: Tab5Props) {
 // 
 type TAPRow = { wilayaCode: string; commune: string; tap2: string }
 type SiegeEncRow = { ttc: string; ht: string }
-type WilayaCommuneData = { code: string; wilaya: string; communes: { id: number; nom: string }[] }
+type WilayaCommuneData = { code: string; wilaya: string; communes: { id: string; nom: string }[] }
 
 const SIEGE_G1_LABELS = ["Encaissement", "Encaissement Exon\u00e9r\u00e9e"]
 const SIEGE_G2_LABELS = [
@@ -794,7 +794,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       style={{ minWidth: 165 }}>
                       <option value="">- Commune -</option>
                       {(getWilaya(row.wilayaCode)?.communes ?? []).map((c) => (
-                        <option key={c.id} value={String(c.id)}>{c.nom}</option>
+                        <option key={c.id} value={String(c.id)}>{c.id}</option>
                       ))}
                     </select>
                   </td>
@@ -3448,6 +3448,7 @@ interface PrintZoneProps {
   direction: string
   mois: string
   annee: string
+  wilayas: { code: string; wilaya: string; communes: { id: string; nom: string }[] }[]
   encRows: EncRow[]
   tvaImmoRows: TvaRow[]
   tvaBiensRows: TvaRow[]
@@ -3466,7 +3467,7 @@ interface PrintZoneProps {
   tva16Rows: Tva16Row[]
 }
 
-function PrintZone({ activeTab, direction, mois, annee, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows, caSiegeRows, irgRows, taxe2Rows, masterRows, taxe11Montant, taxe12Rows, acompteMonths, ibs14Rows, taxe15Rows, tva16Rows }: PrintZoneProps) {
+function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows, caSiegeRows, irgRows, taxe2Rows, masterRows, taxe11Montant, taxe12Rows, acompteMonths, ibs14Rows, taxe15Rows, tva16Rows }: PrintZoneProps) {
   const tab  = TABS.find((t) => t.key === activeTab)!
   const mon  = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const c12  = num(b12) * 0.07
@@ -5931,6 +5932,7 @@ export default function NouvelleDeclarationPage() {
         <>
         <PrintZone
         activeTab={activeTab} direction={effectiveDirection} mois={mois} annee={annee}
+        wilayas={wilayas}
         encRows={encRows} tvaImmoRows={tvaImmoRows} tvaBiensRows={tvaBiensRows}
         timbreRows={timbreRows} b12={b12} b13={b13} tapRows={tapRows}
         caSiegeRows={siegeEncRows}

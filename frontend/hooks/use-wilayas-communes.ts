@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react"
+import { API_BASE } from "@/lib/config"
 
 export interface WilayaCommuneFromApi {
   code: string
   wilaya: string
-  communes: { id: number; nom: string }[]
+  communes: { id: string; nom: string }[]
 }
 
 export const useWilayasCommunes = () => {
@@ -15,8 +16,9 @@ export const useWilayasCommunes = () => {
     const fetchData = async () => {
       try {
         const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-        const response = await fetch("/api/fiscal/wilayas-communes", {
-          headers: { Authorization: `Bearer ${token}` },
+        const response = await fetch(`${API_BASE}/api/fiscal/wilayas-communes`, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!response.ok) throw new Error("Failed to fetch wilayas")
         const data = await response.json()

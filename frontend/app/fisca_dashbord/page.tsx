@@ -609,7 +609,7 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
   )
 }
 
-function TAPTable({ rows, wilayas }: { rows: TAPRow[]; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[] }) {
+function TAPTable({ rows, wilayas }: { rows: TAPRow[]; wilayas: { code: string; wilaya: string; communes: { id: string; nom: string }[] }[] }) {
   const getWilayaName = (code: string) =>
     wilayas.find((entry) => entry.code === code)?.wilaya ?? "-"
 
@@ -954,7 +954,7 @@ function Tva16Table({ rows }: { rows: Tva16Row[] }) {
   )
 }
 
-function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: SavedDeclaration; color: string; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[] }) {
+function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: SavedDeclaration; color: string; wilayas: { code: string; wilaya: string; communes: { id: string; nom: string }[] }[] }) {
   switch (tabKey) {
     case "encaissement":  return <EncTable rows={decl.encRows ?? []} />
     case "tva_immo":      return <TvaTable rows={decl.tvaImmoRows ?? []} totalLabel="TOTAL TVA SUR IMMOBILISATION 445620" />
@@ -978,7 +978,7 @@ function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: S
 
 // aaa Print Zone aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 function DashPrintZone({ decl, tabKey, tabTitle, wilayas }: {
-  decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string; wilayas: { code: string; wilaya: string; communes: { id: number; nom: string }[] }[]
+  decl: SavedDeclaration | null; tabKey: string; tabTitle: string; color: string; wilayas: { code: string; wilaya: string; communes: { id: string; nom: string }[] }[]
 }) {
   if (!decl) return null
   const moisLabel = MONTHS[decl.mois] ?? decl.mois
