@@ -5,108 +5,253 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace CheckFillingAPI.Migrations
 {
-    /// <inheritdoc />
     public partial class RenameFiscalTables : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_FiscalDeclarations_Users_ApprovedByUserId",
-                table: "FiscalDeclarations");
+            // =====================================================
+            // SAFE DROP FOREIGN KEYS — tables externes vers Declaration
+            // =====================================================
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_FiscalDeclarations_Users_UserId",
-                table: "FiscalDeclarations");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
+    ALTER TABLE [DeclarationPayload] DROP CONSTRAINT [FK_DeclarationPayload_Declaration];
+");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_FiscalRecaps_Users_UserId",
-                table: "FiscalRecaps");
+            // =====================================================
+            // SAFE DROP FOREIGN KEYS — anciennes FK sur FiscalDeclarations / FiscalRecaps
+            // =====================================================
 
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_FiscalDeclarations",
-                table: "FiscalDeclarations");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_FiscalDeclarations_Users_ApprovedByUserId')
+    ALTER TABLE FiscalDeclarations DROP CONSTRAINT FK_FiscalDeclarations_Users_ApprovedByUserId;
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_FiscalDeclarations_Users_UserId')
+    ALTER TABLE FiscalDeclarations DROP CONSTRAINT FK_FiscalDeclarations_Users_UserId;
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_FiscalRecaps_Users_UserId')
+    ALTER TABLE FiscalRecaps DROP CONSTRAINT FK_FiscalRecaps_Users_UserId;
+");
 
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_FiscalRecaps",
-                table: "FiscalRecaps");
+            // =====================================================
+            // SAFE DROP FOREIGN KEYS — nouvelles FK (re-run idempotent)
+            // =====================================================
 
-            migrationBuilder.RenameTable(
-                name: "FiscalDeclarations",
-                newName: "Declaration");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Declaration_Users_ApprovedByUserId')
+    ALTER TABLE [Declaration] DROP CONSTRAINT FK_Declaration_Users_ApprovedByUserId;
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Declaration_Users_UserId')
+    ALTER TABLE [Declaration] DROP CONSTRAINT FK_Declaration_Users_UserId;
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_EtatsDeSortie_Users_UserId')
+    ALTER TABLE [EtatsDeSortie] DROP CONSTRAINT FK_EtatsDeSortie_Users_UserId;
+");
 
-            migrationBuilder.RenameTable(
-                name: "FiscalRecaps",
-                newName: "EtatsDeSortie");
+            // =====================================================
+            // SAFE DROP PRIMARY KEYS (par table, pas par nom)
+            // =====================================================
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalDeclarations_UserId_TabKey_Mois_Annee",
-                table: "Declaration",
-                newName: "IX_Declaration_UserId_TabKey_Mois_Annee");
+            migrationBuilder.Sql(@"
+DECLARE @pkName NVARCHAR(256);
+SELECT @pkName = kc.name 
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'FiscalDeclarations';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE FiscalDeclarations DROP CONSTRAINT [' + @pkName + ']');
+");
+            migrationBuilder.Sql(@"
+DECLARE @pkName NVARCHAR(256);
+SELECT @pkName = kc.name 
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'FiscalRecaps';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE FiscalRecaps DROP CONSTRAINT [' + @pkName + ']');
+");
+            migrationBuilder.Sql(@"
+DECLARE @pkName NVARCHAR(256);
+SELECT @pkName = kc.name 
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'Declaration';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE [Declaration] DROP CONSTRAINT [' + @pkName + ']');
+");
+            migrationBuilder.Sql(@"
+DECLARE @pkName NVARCHAR(256);
+SELECT @pkName = kc.name 
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'EtatsDeSortie';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE [EtatsDeSortie] DROP CONSTRAINT [' + @pkName + ']');
+");
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalDeclarations_UserId",
-                table: "Declaration",
-                newName: "IX_Declaration_UserId");
+            // =====================================================
+            // SAFE RENAME TABLES
+            // =====================================================
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalDeclarations_IsApproved",
-                table: "Declaration",
-                newName: "IX_Declaration_IsApproved");
+            migrationBuilder.Sql(@"
+IF OBJECT_ID('dbo.FiscalDeclarations') IS NOT NULL 
+AND OBJECT_ID('dbo.Declaration') IS NULL
+    EXEC sp_rename 'dbo.FiscalDeclarations', 'Declaration';
+");
+            migrationBuilder.Sql(@"
+IF OBJECT_ID('dbo.FiscalRecaps') IS NOT NULL 
+AND OBJECT_ID('dbo.EtatsDeSortie') IS NULL
+    EXEC sp_rename 'dbo.FiscalRecaps', 'EtatsDeSortie';
+");
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalDeclarations_ApprovedByUserId",
-                table: "Declaration",
-                newName: "IX_Declaration_ApprovedByUserId");
+            // =====================================================
+            // RENAME INDEXES
+            // =====================================================
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalRecaps_UserId",
-                table: "EtatsDeSortie",
-                newName: "IX_EtatsDeSortie_UserId");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalDeclarations_UserId_TabKey_Mois_Annee'
+    AND o.name = 'Declaration'
+)
+    EXEC sp_rename 'dbo.Declaration.IX_FiscalDeclarations_UserId_TabKey_Mois_Annee', 'IX_Declaration_UserId_TabKey_Mois_Annee', 'INDEX';
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalDeclarations_UserId'
+    AND o.name = 'Declaration'
+)
+    EXEC sp_rename 'dbo.Declaration.IX_FiscalDeclarations_UserId', 'IX_Declaration_UserId', 'INDEX';
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalDeclarations_IsApproved'
+    AND o.name = 'Declaration'
+)
+    EXEC sp_rename 'dbo.Declaration.IX_FiscalDeclarations_IsApproved', 'IX_Declaration_IsApproved', 'INDEX';
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalDeclarations_ApprovedByUserId'
+    AND o.name = 'Declaration'
+)
+    EXEC sp_rename 'dbo.Declaration.IX_FiscalDeclarations_ApprovedByUserId', 'IX_Declaration_ApprovedByUserId', 'INDEX';
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalRecaps_UserId'
+    AND o.name = 'EtatsDeSortie'
+)
+    EXEC sp_rename 'dbo.EtatsDeSortie.IX_FiscalRecaps_UserId', 'IX_EtatsDeSortie_UserId', 'INDEX';
+");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.objects o ON i.object_id = o.object_id
+    WHERE i.name = 'IX_FiscalRecaps_Key_Mois_Annee'
+    AND o.name = 'EtatsDeSortie'
+)
+    EXEC sp_rename 'dbo.EtatsDeSortie.IX_FiscalRecaps_Key_Mois_Annee', 'IX_EtatsDeSortie_Key_Mois_Annee', 'INDEX';
+");
 
-            migrationBuilder.RenameIndex(
-                name: "IX_FiscalRecaps_Key_Mois_Annee",
-                table: "EtatsDeSortie",
-                newName: "IX_EtatsDeSortie_Key_Mois_Annee");
+            // =====================================================
+            // PRIMARY KEYS RECREATION
+            // =====================================================
 
-            migrationBuilder.AddPrimaryKey(
-                name: "PK_Declaration",
-                table: "Declaration",
-                column: "Id");
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.key_constraints kc
+    JOIN sys.objects o ON kc.parent_object_id = o.object_id
+    WHERE kc.type = 'PK' AND o.name = 'Declaration'
+)
+    ALTER TABLE [Declaration] ADD CONSTRAINT [PK_Declaration] PRIMARY KEY ([Id]);
+");
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.key_constraints kc
+    JOIN sys.objects o ON kc.parent_object_id = o.object_id
+    WHERE kc.type = 'PK' AND o.name = 'EtatsDeSortie'
+)
+    ALTER TABLE [EtatsDeSortie] ADD CONSTRAINT [PK_EtatsDeSortie] PRIMARY KEY ([Id]);
+");
 
-            migrationBuilder.AddPrimaryKey(
-                name: "PK_EtatsDeSortie",
-                table: "EtatsDeSortie",
-                column: "Id");
+            // =====================================================
+            // FOREIGN KEYS RECREATION — Users
+            // =====================================================
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Declaration_Users_ApprovedByUserId",
-                table: "Declaration",
-                column: "ApprovedByUserId",
-                principalTable: "Users",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
+            // Ensure approval workflow columns exist on Declaration before adding FKs
+            migrationBuilder.Sql(@"
+IF COL_LENGTH(N'dbo.Declaration', N'ApprovedByUserId') IS NULL
+    ALTER TABLE [Declaration] ADD [ApprovedByUserId] INT NULL;
+");
+            migrationBuilder.Sql(@"
+IF COL_LENGTH(N'dbo.Declaration', N'ApprovedAt') IS NULL
+    ALTER TABLE [Declaration] ADD [ApprovedAt] datetime2 NULL;
+");
+            migrationBuilder.Sql(@"
+IF COL_LENGTH(N'dbo.Declaration', N'IsApproved') IS NULL
+    ALTER TABLE [Declaration] ADD [IsApproved] bit NOT NULL DEFAULT(0);
+");
+            migrationBuilder.Sql(@"
+IF COL_LENGTH(N'dbo.Declaration', N'UserId') IS NULL
+    ALTER TABLE [Declaration] ADD [UserId] INT NOT NULL DEFAULT(0);
+");
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = 'IX_Declaration_ApprovedByUserId'
+      AND object_id = OBJECT_ID(N'dbo.Declaration')
+)
+    CREATE INDEX [IX_Declaration_ApprovedByUserId] ON [dbo].[Declaration]([ApprovedByUserId]);
+");
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Declaration_Users_UserId",
-                table: "Declaration",
-                column: "UserId",
-                principalTable: "Users",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Declaration_Users_ApprovedByUserId')
+    ALTER TABLE [Declaration] ADD CONSTRAINT [FK_Declaration_Users_ApprovedByUserId]
+        FOREIGN KEY ([ApprovedByUserId]) REFERENCES [Users]([Id]) ON DELETE NO ACTION;
+");
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Declaration_Users_UserId')
+    ALTER TABLE [Declaration] ADD CONSTRAINT [FK_Declaration_Users_UserId]
+        FOREIGN KEY ([UserId]) REFERENCES [Users]([Id]) ON DELETE CASCADE;
+");
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_EtatsDeSortie_Users_UserId')
+    ALTER TABLE [EtatsDeSortie] ADD CONSTRAINT [FK_EtatsDeSortie_Users_UserId]
+        FOREIGN KEY ([UserId]) REFERENCES [Users]([Id]) ON DELETE CASCADE;
+");
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_EtatsDeSortie_Users_UserId",
-                table: "EtatsDeSortie",
-                column: "UserId",
-                principalTable: "Users",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+            // =====================================================
+            // FOREIGN KEY RECREATION — DeclarationPayload -> Declaration
+            // =====================================================
+
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
+    ALTER TABLE [DeclarationPayload] ADD CONSTRAINT [FK_DeclarationPayload_Declaration]
+        FOREIGN KEY ([DeclarationId]) REFERENCES [Declaration]([Id]) ON DELETE CASCADE;
+");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql(@"
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
+    ALTER TABLE [DeclarationPayload] DROP CONSTRAINT [FK_DeclarationPayload_Declaration];
+");
+
             migrationBuilder.DropForeignKey(
                 name: "FK_Declaration_Users_ApprovedByUserId",
                 table: "Declaration");
@@ -198,6 +343,12 @@ namespace CheckFillingAPI.Migrations
                 principalTable: "Users",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
+    ALTER TABLE [DeclarationPayload] ADD CONSTRAINT [FK_DeclarationPayload_Declaration]
+        FOREIGN KEY ([DeclarationId]) REFERENCES [FiscalDeclarations]([Id]) ON DELETE CASCADE;
+");
         }
     }
 }

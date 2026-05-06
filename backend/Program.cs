@@ -28,11 +28,46 @@ builder.Services.AddEndpointsApiExplorer();
 // builder.Services.AddSwaggerGen();
 
 // Database
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("DefaultConnection must be configured in appsettings or environment variables");
+string? ResolveConnectionString(WebApplicationBuilder appBuilder)
+{
+    var connectionString = appBuilder.Configuration.GetConnectionString("DefaultConnection");
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        var fallbackConfig = new ConfigurationBuilder()
+            .SetBasePath(appBuilder.Environment.ContentRootPath)
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build();
+        connectionString = fallbackConfig.GetConnectionString("DefaultConnection");
+    }
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        var outputConfig = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build();
+        connectionString = outputConfig.GetConnectionString("DefaultConnection");
+    }
+
+    if (!string.IsNullOrWhiteSpace(connectionString))
+    {
+        appBuilder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+    }
+
+    return connectionString;
+}
+
+var resolvedConnectionString = ResolveConnectionString(builder);
+Console.WriteLine($"[DEBUG] ResolvedConnectionString: '{resolvedConnectionString ?? "(null)"}'");
+Console.WriteLine($"[DEBUG] Builder config ConnectionStrings:DefaultConnection: '{builder.Configuration.GetConnectionString("DefaultConnection") ?? "(null)"}'");
+if (string.IsNullOrWhiteSpace(resolvedConnectionString))
+{
+    throw new InvalidOperationException("DefaultConnection must be configured in appsettings or environment variables");
+}
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(resolvedConnectionString));
 
 // CORS
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()

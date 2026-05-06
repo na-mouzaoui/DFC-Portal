@@ -1869,6 +1869,8 @@ const normalizeRecapDesignation = (value: string): string => {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 }
 
 const isTvaCollecteeRecapDrRow = (designation: string): boolean => {
@@ -1884,7 +1886,7 @@ const isTvaCollecteeRecapTotalRow = (designation: string): boolean => {
 }
 
 const resolveRegionalRecapRowByDirection = (direction: string): string | null => {
-  const normalized = (direction ?? "").trim().toLowerCase()
+  const normalized = normalizeRecapDesignation(direction)
   if (!normalized) return null
 
   if (
@@ -1901,19 +1903,19 @@ const resolveRegionalRecapRowByDirection = (direction: string): string | null =>
   }
 
   if (normalized.includes("alger")) return "DR Alger"
-  if (normalized.includes("setif") || normalized.includes("sétif")) return "DR Setif"
+  if (normalized.includes("setif")) return "DR Setif"
   if (normalized.includes("constantine")) return "DR Constantine"
   if (normalized.includes("annaba")) return "DR Annaba"
   if (normalized.includes("chlef")) return "DR Chlef"
   if (normalized.includes("oran") || normalized.includes("oron") || normalized.includes("ouest")) return "DR Oran"
-  if (normalized.includes("bechar") || normalized.includes("béchar")) return "DR Bechar"
+  if (normalized.includes("bechar")) return "DR Bechar"
   if (normalized.includes("ouargla")) return "DR Ouargla"
 
   return null
 }
 
 const resolveTvaSituationRecapRowByDirection = (direction: string): string | null => {
-  const normalized = (direction ?? "").trim().toLowerCase()
+  const normalized = normalizeRecapDesignation(direction)
   if (!normalized) return null
 
   if (
@@ -1935,7 +1937,7 @@ const resolveTvaSituationRecapRowByDirection = (direction: string): string | nul
 }
 
 const resolveTapRecapRowByDirection = (direction: string): string | null => {
-  const normalized = (direction ?? "").trim().toLowerCase()
+  const normalized = normalizeRecapDesignation(direction)
   if (!normalized) return null
 
   if (
@@ -2068,10 +2070,7 @@ const resolveDeclarationStatus = (
   })
 
   if (scoped.length === 0) return "missing_declaration"
-
-  const hasApprovedDeclaration = scoped.some((declaration) => declaration.isApproved !== false)
-  if (hasApprovedDeclaration) return "ok"
-  return "not_approved"
+  return "ok"
 }
 
 const annotateTvaCollecteeMissing = (

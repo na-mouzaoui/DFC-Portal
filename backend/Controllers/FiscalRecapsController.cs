@@ -368,20 +368,21 @@ WHERE [designiation] = {designation}");
         }
     }
 
-    private async Task<string> ExecuteRowsJsonQueryAsync(string sql, params SqlParameter[] parameters)
-    {
-        await using var connection = _context.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync();
+   private async Task<string> ExecuteRowsJsonQueryAsync(string sql, params SqlParameter[] parameters)
+{
+    var connectionString = _context.Database.GetConnectionString();
+    
+    await using var connection = new SqlConnection(connectionString);
+    await connection.OpenAsync();
 
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        foreach (var parameter in parameters)
-            command.Parameters.Add(parameter);
+    await using var command = connection.CreateCommand();
+    command.CommandText = sql;
+    foreach (var parameter in parameters)
+        command.Parameters.Add(parameter);
 
-        var result = await command.ExecuteScalarAsync();
-        return result?.ToString() ?? "[]";
-    }
+    var result = await command.ExecuteScalarAsync();
+    return result?.ToString() ?? "[]";
+}
 
     private async Task<string> BuildRowsJsonFromDedicatedTablesAsync(string key, int? periodeId)
     {

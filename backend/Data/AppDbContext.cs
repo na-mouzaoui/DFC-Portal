@@ -23,7 +23,6 @@ public class AppDbContext : DbContext
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
-        // Apply explicit precision for all decimal properties, including raw SQL DTO projections.
         configurationBuilder.Properties<decimal>().HavePrecision(18, 5);
         configurationBuilder.Properties<decimal?>().HavePrecision(18, 5);
     }
@@ -118,7 +117,7 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.User)
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
+                  .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Bank)
                   .WithMany()
                   .HasForeignKey(e => e.BankId)
@@ -127,7 +126,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PositionsJson).IsRequired();
         });
 
-        // Periode configuration (normalized fiscal schema V2)
+        // FiscalPeriode configuration
         modelBuilder.Entity<FiscalPeriode>(entity =>
         {
             entity.ToTable("Periode");
@@ -137,7 +136,7 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("UX_Periode_Mois_Annee");
         });
 
-        // Declaration header configuration (normalized fiscal schema V2)
+        // FiscalDeclarationHeader configuration
         modelBuilder.Entity<FiscalDeclarationHeader>(entity =>
         {
             entity.ToTable("Declaration", t => t.HasCheckConstraint("CK_Declaration_Statut", "[Statut] IN ('PENDING', 'APPROVED')"));
@@ -165,7 +164,7 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("IX_Declaration_Worklist");
         });
 
-        // Recap registry configuration
+        // Recap configuration
         modelBuilder.Entity<Recap>(entity =>
         {
             entity.ToTable("Recap");
@@ -187,58 +186,20 @@ public class AppDbContext : DbContext
             entity.Property(e => e.IsGenerated).HasDefaultValue(true);
         });
 
-        // Seed data
         SeedData(modelBuilder);
     }
 
     private void SeedData(ModelBuilder modelBuilder)
     {
-        // Tous les utilisateurs ont le même mot de passe: 
         var seedCreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        // Hash BCrypt pour ""
         const string passwordHash = "$2a$11$3f1y0aSd2iVFhKoWi60oVuwBiNQb913o5x94e0pYXB9eaqvHXW1By";
 
         modelBuilder.Entity<User>().HasData(
-            new User
-            {
-                Id = 1,
-                Email = "test@gmail.com",
-                PasswordHash = passwordHash,
-                FirstName = "Test",
-                LastName = "User",
-                Direction = "Test",
-                PhoneNumber = "0661000000",
-                Role = "admin",
-                CreatedAt = seedCreatedAt
-            },
-            new User
-            {
-                Id = 2,
-                Email = "admin@test.com",
-                PasswordHash = passwordHash,
-                FirstName = "Admin",
-                LastName = "Test",
-                Direction = "Administration",
-                PhoneNumber = "0661999999",
-                Role = "admin",
-                CreatedAt = seedCreatedAt
-            },
-            new User
-            {
-                Id = 3,
-                Email = "admin@gmail.com",
-                PasswordHash = passwordHash,
-                FirstName = "Admin",
-                LastName = "Gmail",
-                Direction = "Administration",
-                PhoneNumber = "0661999998",
-                Role = "admin",
-                CreatedAt = seedCreatedAt
-            }
+            new User { Id = 1, Email = "test@gmail.com", PasswordHash = passwordHash, FirstName = "Test", LastName = "User", Direction = "Test", PhoneNumber = "0661000000", Role = "admin", CreatedAt = seedCreatedAt },
+            new User { Id = 2, Email = "admin@test.com", PasswordHash = passwordHash, FirstName = "Admin", LastName = "Test", Direction = "Administration", PhoneNumber = "0661999999", Role = "admin", CreatedAt = seedCreatedAt },
+            new User { Id = 3, Email = "admin@gmail.com", PasswordHash = passwordHash, FirstName = "Admin", LastName = "Gmail", Direction = "Administration", PhoneNumber = "0661999998", Role = "admin", CreatedAt = seedCreatedAt }
         );
 
-        // Seed default banks
         var defaultPositions = System.Text.Json.JsonSerializer.Serialize(new BankPositions
         {
             City = new FieldPosition { X = 50, Y = 100, Width = 150, FontSize = 14 },
@@ -254,14 +215,11 @@ public class AppDbContext : DbContext
             new Bank { Id = 3, Code = "BEA", Name = "BEA - Banque Extérieure d'Algérie", PositionsJson = defaultPositions, CreatedAt = seedCreatedAt }
         );
 
-        // Seed default regions
         modelBuilder.Entity<Region>().HasData(
             new Region { Id = 1, Name = "nord", VillesJson = "[\"Alger\", \"Tipaza\", \"Boumerdes\", \"Blida\", \"Ain Defla\"]", CreatedAt = seedCreatedAt },
             new Region { Id = 2, Name = "sud", VillesJson = "[\"Ouargla\", \"Ghardaia\", \"Tamanrasset\", \"Adrar\", \"Illizi\"]", CreatedAt = seedCreatedAt },
             new Region { Id = 3, Name = "est", VillesJson = "[\"Constantine\", \"Annaba\", \"Sétif\", \"Batna\", \"Guelma\"]", CreatedAt = seedCreatedAt },
             new Region { Id = 4, Name = "ouest", VillesJson = "[\"Oran\", \"Tlemcen\", \"Sidi Bel Abbès\", \"Mostaganem\", \"Mascara\"]", CreatedAt = seedCreatedAt }
         );
-
     }
 }
-

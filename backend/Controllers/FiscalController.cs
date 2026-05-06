@@ -2264,7 +2264,6 @@ internal sealed class TaxeFormationPayloadRow
 
 internal sealed class AcomptePayloadRow
 {
-    public int Id { get; set; }
     public int? MonthIndex { get; set; }
     [Precision(18, 5)]
     public decimal? Montant { get; set; }
