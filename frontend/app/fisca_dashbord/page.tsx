@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2, BarChart3 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
@@ -1109,6 +1110,7 @@ export default function FiscaDashboardPage() {
   const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
+  const [viewMode, setViewMode] = useState<"indicateurs" | "recap">("indicateurs")
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   const [, setFiscalPolicyRevision] = useState(0)
@@ -2012,6 +2014,36 @@ export default function FiscaDashboardPage() {
     return true
   })
 
+  const getRecapTotals = () => {
+    if (!filteredRecaps || !Array.isArray(filteredRecaps)) {
+      return { totalTtc: 0, totalExonere: 0, totalFactures: 0, totalVehicule: 0 }
+    }
+
+    let totalTtc = 0
+    let totalExonere = 0
+    let totalFactures = 0
+    let totalVehicule = 0
+
+    for (const recap of filteredRecaps) {
+      if (!recap.rows || !Array.isArray(recap.rows)) continue
+      for (const row of recap.rows) {
+        const ttcVal = num(row.ttc ?? row.TTC ?? row.montant_ttc ?? "")
+        const exonereVal = num(row.exonere ?? row.exonéré ?? row.exonere ?? "")
+        const factureVal = num(row.nbFactures ?? row.nb_factures ?? row.factures ?? "")
+        const vehiculeVal = num(row.vehicule ?? row.taxe_vehicule ?? row.montant ?? "")
+
+        if (ttcVal) totalTtc += ttcVal
+        if (exonereVal) totalExonere += exonereVal
+        if (factureVal) totalFactures += factureVal
+        if (vehiculeVal) totalVehicule += vehiculeVal
+      }
+    }
+
+    return { totalTtc, totalExonere, totalFactures, totalVehicule }
+  }
+
+  const recapTotals = getRecapTotals()
+
   const handleViewRecap = (recap: SavedRecap) => {
     setViewRecap(recap)
     setShowRecapDialog(true)
@@ -2309,6 +2341,9 @@ export default function FiscaDashboardPage() {
           selectedYear={reminderFilterAnnee}
           onMonthChange={setReminderFilterMois}
           onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          recapTotals={recapTotals}
         />
 
         {/* Recent declarations */}

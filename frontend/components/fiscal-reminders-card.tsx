@@ -1,12 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { AlertCircle, CheckCircle2, Hourglass, ClipboardList, FileClock, ShieldCheck, Filter, Building2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, Hourglass, ClipboardList, FileClock, ShieldCheck, Filter, Building2, FileText, Wallet, Car } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Switch } from "@/components/ui/switch"
 import { formatTabKey, ReminderData } from "@/lib/fiscal-reminders"
 
 const normalizeDirectionKey = (value: string) => {
@@ -27,6 +28,14 @@ interface RemindersCardProps {
   selectedYear?: string
   onMonthChange?: (value: string) => void
   onYearChange?: (value: string) => void
+  viewMode?: "indicateurs" | "recap"
+  onViewModeChange?: (mode: "indicateurs" | "recap") => void
+  recapTotals?: {
+    totalTtc: number
+    totalExonere: number
+    totalFactures: number
+    totalVehicule: number
+  }
 }
 
 const MONTH_OPTIONS = [
@@ -70,6 +79,9 @@ export function RemindersCard({
   selectedYear = "",
   onMonthChange,
   onYearChange,
+  viewMode = "indicateurs",
+  onViewModeChange,
+  recapTotals,
 }: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedDirection, setSelectedDirection] = useState("all")
@@ -182,10 +194,30 @@ export function RemindersCard({
     )
   }
 
+  const fmtNumber = (v: number | string) => {
+    if (v === "" || isNaN(Number(v))) return "0"
+    const num = Number(v)
+    const [intPart, decPart] = num.toFixed(2).split(".")
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+    return `${formattedInt},${decPart}`
+  }
+
   return (
     <div className="space-y-3">
       <div className="space-y-3">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="view-mode-toggle"
+                checked={viewMode === "recap"}
+                onCheckedChange={(checked) => onViewModeChange?.(checked ? "recap" : "indicateurs")}
+              />
+              <span className="text-sm font-medium">
+                {viewMode === "recap" ? "Recap" : "Indicateurs"}
+              </span>
+            </div>
+          </div>
           <Button onClick={() => setShowFilters(!showFilters)} variant="outline" size="sm" className="gap-2">
             <Filter className="h-4 w-4" style={{ color: "#e82c2a" }} />
             {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
@@ -195,7 +227,7 @@ export function RemindersCard({
         {showFilters && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Filtres indicateurs</CardTitle>
+              <CardTitle className="text-base">Filtres {viewMode === "recap" ? "recap" : "indicateurs"}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -252,7 +284,56 @@ export function RemindersCard({
         )}
       </div>
 
-      <ReminderKpiRow reminders={remindersForDisplay} directionStatus={directionStatus} />
+      {viewMode === "recap" && recapTotals ? (
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <p className="text-sm font-medium text-muted-foreground">
+              Récapitulatif global
+            </p>
+            <p className="text-sm font-medium text-muted-foreground">
+              Période: {selectedMonth && selectedYear ? `${selectedMonth}/${selectedYear}` : "-"}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-4 min-w-[800px] gap-3">
+              <div>
+                <IndicatorBrick
+                  label="Montant TTC"
+                  value={fmtNumber(recapTotals.totalTtc)}
+                  icon={<Wallet className="h-4 w-4 text-blue-500" />}
+                  valueClassName="text-blue-600"
+                />
+              </div>
+              <div>
+                <IndicatorBrick
+                  label="Montant Exonéré"
+                  value={fmtNumber(recapTotals.totalExonere)}
+                  icon={<FileText className="h-4 w-4 text-purple-500" />}
+                  valueClassName="text-purple-600"
+                />
+              </div>
+              <div>
+                <IndicatorBrick
+                  label="Total Factures"
+                  value={String(recapTotals.totalFactures)}
+                  icon={<FileText className="h-4 w-4 text-emerald-500" />}
+                  valueClassName="text-emerald-600"
+                />
+              </div>
+              <div>
+                <IndicatorBrick
+                  label="Total Véhicule"
+                  value={fmtNumber(recapTotals.totalVehicule)}
+                  icon={<Car className="h-4 w-4 text-amber-500" />}
+                  valueClassName="text-amber-600"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <ReminderKpiRow reminders={remindersForDisplay} directionStatus={directionStatus} />
+      )}
 
       {hasActiveReminder ? (
         <div className="rounded-md bg-red-700 px-3 py-2">
