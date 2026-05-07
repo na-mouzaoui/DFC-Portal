@@ -28,14 +28,9 @@ interface RemindersCardProps {
   selectedYear?: string
   onMonthChange?: (value: string) => void
   onYearChange?: (value: string) => void
-  viewMode?: "indicateurs" | "recap"
-  onViewModeChange?: (mode: "indicateurs" | "recap") => void
-  recapTotals?: {
-    totalTtc: number
-    totalExonere: number
-    totalFactures: number
-    totalVehicule: number
-  }
+  viewMode?: "indicateurs" | "consolidation"
+  onViewModeChange?: (mode: "indicateurs" | "consolidation") => void
+  allRecaps?: Array<{ id: string; key: string; title: string; mois: string; annee: string; createdAt: string; rows: Record<string, string>[] }>
 }
 
 const MONTH_OPTIONS = [
@@ -79,12 +74,60 @@ export function RemindersCard({
   selectedYear = "",
   onMonthChange,
   onYearChange,
-  viewMode = "indicateurs",
+viewMode = "indicateurs",
   onViewModeChange,
-  recapTotals,
+  allRecaps = [],
 }: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedDirection, setSelectedDirection] = useState("all")
+
+  const consolidationTotals = (() => {
+    if (!allRecaps || allRecaps.length === 0) {
+      return { totalTtc: 0, totalExonere: 0, totalFactures: 0, totalVehicule: 0 }
+    }
+
+    let totalTtc = 0
+    let totalExonere = 0
+    let totalFactures = 0
+    let totalVehicule = 0
+    const filterM = consolidationMonth
+    const filterY = consolidationYear
+    const filterD = consolidationDirection.toLowerCase()
+
+    const parseNum = (v: unknown) => {
+      const raw = String(v ?? "").trim()
+      if (!raw) return 0
+      const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+      const parsed = parseFloat(standardized)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    for (const recap of allRecaps) {
+      if (filterM && recap.mois !== filterM) continue
+      if (filterY && recap.annee !== filterY) continue
+
+      if (!recap.rows || !Array.isArray(recap.rows)) continue
+
+      for (const row of recap.rows) {
+        if (filterD) {
+          const rowDirection = (row.direction ?? row.Direction ?? "").toLowerCase()
+          if (!rowDirection.includes(filterD)) continue
+        }
+
+        const ttcVal = parseNum(row.ttc ?? row.TTC ?? row.montant_ttc)
+        const exonereVal = parseNum(row.exonere ?? row.exonéré ?? row.exonere)
+        const factureVal = parseNum(row.nbFactures ?? row.nb_factures ?? row.factures)
+        const vehiculeVal = parseNum(row.vehicule ?? row.taxe_vehicule ?? row.montant)
+
+        if (ttcVal) totalTtc += ttcVal
+        if (exonereVal) totalExonere += exonereVal
+        if (factureVal) totalFactures += factureVal
+        if (vehiculeVal) totalVehicule += vehiculeVal
+      }
+    }
+
+    return { totalTtc, totalExonere, totalFactures, totalVehicule }
+  })()
   const normalizedRole = userRole.trim().toLowerCase()
   const isAdmin = normalizedRole === "admin"
   const isGlobalRole = normalizedRole === "direction" || normalizedRole === "global" || normalizedRole === "globale"
@@ -114,7 +157,7 @@ export function RemindersCard({
         .filter(([direction]) => direction.length > 0),
     )
 
-    const upToDateDirections = availableDirectionOptions.reduce((count, direction) => {
+    const upToDateDirections = availableDirectionOptions.reduce((count: number, direction: string) => {
       const reminder = remindersByDirection.get(normalizeDirectionKey(direction))
       if (!reminder) {
         return count
@@ -146,8 +189,8 @@ export function RemindersCard({
 
       // Retourner les rappels du backend pour chaque direction, sans modification
       return availableDirectionOptions
-        .map((direction) => remindersByDirection.get(normalizeDirectionKey(direction)))
-        .filter((reminder) => reminder !== undefined) as ReminderData[]
+        .map((direction: string) => remindersByDirection.get(normalizeDirectionKey(direction)))
+        .filter((reminder: ReminderData | undefined) => reminder !== undefined) as ReminderData[]
     }
 
     // Pour les non-admins ou quand une direction est sélectionnée, retourner les rappels directement
@@ -210,11 +253,11 @@ export function RemindersCard({
             <div className="flex items-center gap-2">
               <Switch
                 id="view-mode-toggle"
-                checked={viewMode === "recap"}
-                onCheckedChange={(checked) => onViewModeChange?.(checked ? "recap" : "indicateurs")}
+                checked={viewMode === "consolidation"}
+                onCheckedChange={(checked) => onViewModeChange?.(checked ? "consolidation" : "indicateurs")}
               />
               <span className="text-sm font-medium">
-                {viewMode === "recap" ? "Recap" : "Indicateurs"}
+                {viewMode === "consolidation" ? "Consolidation" : "Indicateurs"}
               </span>
             </div>
           </div>
@@ -227,7 +270,7 @@ export function RemindersCard({
         {showFilters && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Filtres {viewMode === "recap" ? "recap" : "indicateurs"}</CardTitle>
+              <CardTitle className="text-base">Filtres {viewMode === "consolidation" ? "consolidation" : "indicateurs"}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -284,14 +327,14 @@ export function RemindersCard({
         )}
       </div>
 
-      {viewMode === "recap" && recapTotals ? (
+      {viewMode === "consolidation" && consolidationTotals ? (
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <p className="text-sm font-medium text-muted-foreground">
               Récapitulatif global
             </p>
             <p className="text-sm font-medium text-muted-foreground">
-              Période: {selectedMonth && selectedYear ? `${selectedMonth}/${selectedYear}` : "-"}
+              Période: {consolidationMonth && consolidationYear ? `${consolidationMonth}/${consolidationYear}` : "-"}
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -299,7 +342,7 @@ export function RemindersCard({
               <div>
                 <IndicatorBrick
                   label="Montant TTC"
-                  value={fmtNumber(recapTotals.totalTtc)}
+                  value={fmtNumber(consolidationTotals.totalTtc)}
                   icon={<Wallet className="h-4 w-4 text-blue-500" />}
                   valueClassName="text-blue-600"
                 />
@@ -307,7 +350,7 @@ export function RemindersCard({
               <div>
                 <IndicatorBrick
                   label="Montant Exonéré"
-                  value={fmtNumber(recapTotals.totalExonere)}
+                  value={fmtNumber(consolidationTotals.totalExonere)}
                   icon={<FileText className="h-4 w-4 text-purple-500" />}
                   valueClassName="text-purple-600"
                 />
@@ -315,7 +358,7 @@ export function RemindersCard({
               <div>
                 <IndicatorBrick
                   label="Total Factures"
-                  value={String(recapTotals.totalFactures)}
+                  value={String(consolidationTotals.totalFactures)}
                   icon={<FileText className="h-4 w-4 text-emerald-500" />}
                   valueClassName="text-emerald-600"
                 />
@@ -323,7 +366,7 @@ export function RemindersCard({
               <div>
                 <IndicatorBrick
                   label="Total Véhicule"
-                  value={fmtNumber(recapTotals.totalVehicule)}
+                  value={fmtNumber(consolidationTotals.totalVehicule)}
                   icon={<Car className="h-4 w-4 text-amber-500" />}
                   valueClassName="text-amber-600"
                 />

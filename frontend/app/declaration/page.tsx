@@ -1595,7 +1595,7 @@ type ExistingDeclarationPreview = {
 
 type RecapMode = "declaration" | "etats_sortie"
 
-type RecapKey = "tva_collectee" | "tva_a_payer" | "tva_situation" | "droits_timbre" | "tacp7" | "tnfdal1" | "tap15" | "masters15" | "g50"
+type RecapKey = "tva_collectee" | "tva_a_payer" | "tva_situation" | "droits_timbre" | "tacp7" | "tnfdal1" | "tap15" | "masters15" | "g50" | "g50_annuel"
 
 type RecapColumn = {
   key: string
@@ -1691,6 +1691,14 @@ const RECAP_TABS: RecapDefinition[] = [
   {
     key: "g50",
     title: "RECAP DECLARATION G50",
+    columns: [
+      { key: "designation", label: "Designation" },
+      { key: "montant", label: "Montant", right: true },
+    ],
+  },
+  {
+    key: "g50_annuel",
+    title: "RECAP ANNUEL G50",
     columns: [
       { key: "designation", label: "Designation" },
       { key: "montant", label: "Montant", right: true },
@@ -2810,6 +2818,141 @@ const recalcMasters15RecapRows = (rows: Record<string, string>[]): Record<string
   return nextRows
 }
 
+const buildG50AnnualRecapRows = (
+  annee: string,
+  declarations: ApiFiscalDeclaration[],
+  sourcesByMonth: Record<string, RecapSourcesResponse>,
+): Record<string, string>[] => {
+  const monthlySources = MONTHS.map((month) => sourcesByMonth[month.value]).filter(Boolean)
+
+  const values = {
+    acompte: 0,
+    tvaCollectee: 0,
+    tvaDeductible: 0,
+    tvaAPayer: 0,
+    droitsTimbre: 0,
+    tacp7: 0,
+    tnfpdal1: 0,
+    irgSalaire: 0,
+    autreIrg: 0,
+    taxeFormation: 0,
+    taxeVehicule: 0,
+    tap: 0,
+    taxe2: 0,
+    masters15: 0,
+  }
+
+  for (const sources of monthlySources) {
+    const tvaAPayerRows = buildTvaAPayerRecapRows(
+      buildTvaCollecteeRecapRows(sources),
+      buildTvaSituationRecapRows(sources),
+    )
+    const tvaSituationRows = buildTvaSituationRecapRows(sources)
+    const droitsTimbreRows = buildDroitsTimbreRecapRows(sources)
+    const tapRows = buildTap15RecapRows(sources)
+
+    values.tvaCollectee += getRecapRowAmount(tvaAPayerRows, "Total", "collectee")
+    values.tvaDeductible += getRecapRowAmount(tvaSituationRows, "Total", "totalDed")
+    values.tvaAPayer += getRecapRowAmount(tvaAPayerRows, "Total", "payer")
+    values.droitsTimbre += getRecapRowAmount(droitsTimbreRows, "Total", "montant")
+    values.tap += getRecapRowAmount(tapRows, "Total", "taxe")
+  }
+
+  for (const declaration of declarations) {
+    if (declaration.annee !== annee) continue
+
+    const payload = parseFiscalDataPayload(declaration.dataJson)
+
+    if (declaration.tabKey === "acompte") {
+      const months = Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : []
+      values.acompte += months.reduce((sum, value) => sum + parseRecapAmount(value), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "ca_tap") {
+      const b12 = parseRecapAmount(payload.b12)
+      const b13 = parseRecapAmount(payload.b13)
+      values.tacp7 += b12 * 0.07
+      values.tnfpdal1 += b13 * 0.01
+      continue
+    }
+
+    if (declaration.tabKey === "irg") {
+      const rows = Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : []
+      values.irgSalaire += parseRecapAmount(rows[0]?.montant)
+      values.autreIrg += rows.slice(1).reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_formation") {
+      const rows = Array.isArray(payload.taxe12Rows) ? (payload.taxe12Rows as Taxe12Row[]) : []
+      values.taxeFormation += rows.reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_vehicule") {
+      values.taxeVehicule += parseRecapAmount(payload.taxe11Montant)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe2") {
+      const rows = Array.isArray(payload.taxe2Rows) ? (payload.taxe2Rows as Taxe2Row[]) : []
+      values.taxe2 += rows.reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      continue
+    }
+
+    if (declaration.tabKey === "taxe_masters") {
+      const rows = Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : []
+      values.masters15 += rows.reduce((sum, row) => {
+        const taxe = parseRecapAmount(row.taxe15)
+        if (taxe > 0) return sum + taxe
+        return sum + (parseRecapAmount(row.montantHT) * 0.015)
+      }, 0)
+      continue
+    }
+  }
+
+  const totalDeclarationG50 = values.acompte
+    + values.tvaCollectee
+    + values.tvaDeductible
+    + values.tvaAPayer
+    + values.droitsTimbre
+    + values.tacp7
+    + values.tnfpdal1
+    + values.irgSalaire
+    + values.autreIrg
+    + values.taxeFormation
+    + values.taxeVehicule
+    + values.tap
+    + values.taxe2
+
+  const totalGeneral = totalDeclarationG50 + values.masters15
+
+  const amountByDesignation = new Map<string, number>([
+    ["acompte provisionel", values.acompte],
+    ["tva collectee", values.tvaCollectee],
+    ["tva deductible", values.tvaDeductible],
+    ["total tva a payer (voir la piece)", values.tvaAPayer],
+    ["droit de timbre", values.droitsTimbre],
+    ["tacp 7%", values.tacp7],
+    ["tnfpdal 1%", values.tnfpdal1],
+    ["irg salaire", values.irgSalaire],
+    ["autre irg", values.autreIrg],
+    ["taxe de formation", values.taxeFormation],
+    ["taxe vehicule", values.taxeVehicule],
+    ["la tap", values.tap],
+    ["taxe 2%", values.taxe2],
+    ["total declaration g 50 (voir la piece)", totalDeclarationG50],
+    ["taxe 1,5% sur masters (voir la piece)", values.masters15],
+    ["total", totalGeneral],
+  ])
+
+  return G50_RECAP_ROWS.map((designation) => ({
+    designation,
+    montant: formatRecapAmount(amountByDesignation.get(normalizeRecapDesignation(designation)) ?? 0),
+  }))
+}
+
 const getRecapRowAmount = (rows: Record<string, string>[], designation: string, key: string): number => {
   const normalized = normalizeRecapDesignation(designation)
   const row = rows.find((item) => normalizeRecapDesignation(String(item.designation ?? "")) === normalized)
@@ -3145,7 +3288,7 @@ const isFiscalTabKey = (value: string): value is FiscalTabKey => {
 }
 
 const isRecapKey = (value: string): value is RecapKey => {
-  return ["tva_collectee", "tva_a_payer", "tva_situation", "droits_timbre", "tacp7", "tnfdal1", "tap15", "masters15", "g50"].includes(value)
+  return ["tva_collectee", "tva_a_payer", "tva_situation", "droits_timbre", "tacp7", "tnfdal1", "tap15", "masters15", "g50", "g50_annuel"].includes(value)
 }
 
 const normalizeMonthValue = (value: string) => {
@@ -4689,6 +4832,7 @@ export default function NouvelleDeclarationPage() {
     tapByDirection: [],
     droitsTimbreByDirection: [],
   })
+  const [annualRecapSourcesByMonth, setAnnualRecapSourcesByMonth] = useState<Record<string, RecapSourcesResponse>>({})
   const [showExistingDeclarationDialog, setShowExistingDeclarationDialog] = useState(false)
   const [recapRowsByKey, setRecapRowsByKey] = useState<Record<RecapKey, Record<string, string>[]>>({
     tva_collectee: [],
@@ -4979,6 +5123,58 @@ export default function NouvelleDeclarationPage() {
   }, [annee, mois, status])
 
   useEffect(() => {
+    if (status !== "authenticated") return
+
+    let cancelled = false
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+
+    const loadAnnualSources = async () => {
+      try {
+        const responses = await Promise.all(
+          MONTHS.map(async (month) => {
+            const response = await fetch(
+              `${API_BASE}/api/fiscal/recap-sources?mois=${encodeURIComponent(month.value)}&annee=${encodeURIComponent(annee)}`,
+              {
+                credentials: "include",
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+              },
+            )
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const payload = await response.json()
+            return {
+              month: month.value,
+              sources: {
+                encaissementByDirection: Array.isArray(payload?.encaissementByDirection) ? payload.encaissementByDirection : [],
+                tvaImmoByDirection: Array.isArray(payload?.tvaImmoByDirection) ? payload.tvaImmoByDirection : [],
+                tvaBiensByDirection: Array.isArray(payload?.tvaBiensByDirection) ? payload.tvaBiensByDirection : [],
+                caTapByDirection: Array.isArray(payload?.caTapByDirection) ? payload.caTapByDirection : [],
+                tapByDirection: Array.isArray(payload?.tapByDirection) ? payload.tapByDirection : [],
+                droitsTimbreByDirection: Array.isArray(payload?.droitsTimbreByDirection) ? payload.droitsTimbreByDirection : [],
+              },
+            }
+          }),
+        )
+
+        if (cancelled) return
+
+        const nextMap: Record<string, RecapSourcesResponse> = {}
+        for (const item of responses) {
+          nextMap[item.month] = item.sources
+        }
+        setAnnualRecapSourcesByMonth(nextMap)
+      } catch {
+        if (!cancelled) setAnnualRecapSourcesByMonth({})
+      }
+    }
+
+    loadAnnualSources()
+    return () => {
+      cancelled = true
+    }
+  }, [annee, status])
+
+  useEffect(() => {
     const collecteeRows = annotateTvaCollecteeMissing(
       buildTvaCollecteeRecapRows(recapSources),
       fiscalDeclarations,
@@ -5033,6 +5229,7 @@ export default function NouvelleDeclarationPage() {
       droitsTimbreRows,
       tap15Rows,
     )
+    const g50AnnualRows = buildG50AnnualRecapRows(annee, fiscalDeclarations, annualRecapSourcesByMonth)
 
     setRecapRowsByKey({
       tva_collectee: blankZeroManualRecapCells("tva_collectee", collecteeRows),
@@ -5044,8 +5241,9 @@ export default function NouvelleDeclarationPage() {
       tacp7: blankZeroManualRecapCells("tacp7", tacp7Rows),
       droits_timbre: droitsTimbreRows,
       g50: g50Rows,
+      g50_annuel: g50AnnualRows,
     })
-  }, [annee, fiscalDeclarations, mois, recapSources])
+  }, [annee, annualRecapSourcesByMonth, fiscalDeclarations, mois, recapSources])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {

@@ -1102,6 +1102,10 @@ export default function FiscaDashboardPage() {
   const [filterDateTo, setFilterDateTo] = useState("")
   const [recapFilterMois, setRecapFilterMois] = useState("")
   const [recapFilterAnnee, setRecapFilterAnnee] = useState("")
+  const [recapFilterDirection, setRecapFilterDirection] = useState("")
+  const [consolidationFilterMois, setConsolidationFilterMois] = useState(initialFiscalPeriod.mois)
+  const [consolidationFilterAnnee, setConsolidationFilterAnnee] = useState(initialFiscalPeriod.annee)
+  const [consolidationFilterDirection, setConsolidationFilterDirection] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
@@ -1110,7 +1114,7 @@ export default function FiscaDashboardPage() {
   const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
-  const [viewMode, setViewMode] = useState<"indicateurs" | "recap">("indicateurs")
+  const [viewMode, setViewMode] = useState<"indicateurs" | "consolidation">("indicateurs")
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   const [, setFiscalPolicyRevision] = useState(0)
@@ -2000,49 +2004,15 @@ export default function FiscaDashboardPage() {
     return sortDir === "asc" ? cmp : -cmp
   })
 
-  const recentRecaps = [...recaps].sort((a, b) => {
-    const ta = new Date(a.createdAt).getTime()
-    const tb = new Date(b.createdAt).getTime()
-    return tb - ta
-  })
+  const recentRecaps = recaps
 
-  const hasActiveRecapFilters = !!(recapFilterMois || recapFilterAnnee)
+  const hasActiveRecapFilters = !!(recapFilterMois || recapFilterAnnee || recapFilterDirection)
 
   const filteredRecaps = recentRecaps.filter((recap) => {
     if (recapFilterMois && recap.mois !== recapFilterMois) return false
     if (recapFilterAnnee && recap.annee !== recapFilterAnnee) return false
     return true
   })
-
-  const getRecapTotals = () => {
-    if (!filteredRecaps || !Array.isArray(filteredRecaps)) {
-      return { totalTtc: 0, totalExonere: 0, totalFactures: 0, totalVehicule: 0 }
-    }
-
-    let totalTtc = 0
-    let totalExonere = 0
-    let totalFactures = 0
-    let totalVehicule = 0
-
-    for (const recap of filteredRecaps) {
-      if (!recap.rows || !Array.isArray(recap.rows)) continue
-      for (const row of recap.rows) {
-        const ttcVal = num(row.ttc ?? row.TTC ?? row.montant_ttc ?? "")
-        const exonereVal = num(row.exonere ?? row.exonéré ?? row.exonere ?? "")
-        const factureVal = num(row.nbFactures ?? row.nb_factures ?? row.factures ?? "")
-        const vehiculeVal = num(row.vehicule ?? row.taxe_vehicule ?? row.montant ?? "")
-
-        if (ttcVal) totalTtc += ttcVal
-        if (exonereVal) totalExonere += exonereVal
-        if (factureVal) totalFactures += factureVal
-        if (vehiculeVal) totalVehicule += vehiculeVal
-      }
-    }
-
-    return { totalTtc, totalExonere, totalFactures, totalVehicule }
-  }
-
-  const recapTotals = getRecapTotals()
 
   const handleViewRecap = (recap: SavedRecap) => {
     setViewRecap(recap)
@@ -2343,7 +2313,14 @@ export default function FiscaDashboardPage() {
           onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          recapTotals={recapTotals}
+          consolidationTotals={consolidationTotals}
+          consolidationMonth={consolidationFilterMois}
+          consolidationYear={consolidationFilterAnnee}
+          onConsolidationMonthChange={setConsolidationFilterMois}
+          onConsolidationYearChange={(value) => setConsolidationFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          consolidationDirection={consolidationFilterDirection}
+          onConsolidationDirectionChange={setConsolidationFilterDirection}
+          allRecaps={recaps}
         />
 
         {/* Recent declarations */}
@@ -2627,6 +2604,19 @@ export default function FiscaDashboardPage() {
                     onChange={(event) => setRecapFilterAnnee(event.target.value)}
                     className="w-full border rounded px-2 py-1.5 text-xs"
                   />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-muted-foreground block mb-1">Direction</label>
+                  <select
+                    value={recapFilterDirection}
+                    onChange={(event) => setRecapFilterDirection(event.target.value)}
+                    className="w-full border rounded px-2 py-1.5 text-xs"
+                  >
+                    <option value="">Toutes les directions</option>
+                    {reminderDirectionOptions.map((direction) => (
+                      <option key={direction} value={direction}>{direction}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
