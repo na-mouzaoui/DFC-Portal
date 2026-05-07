@@ -291,6 +291,25 @@ WHERE [designiation] = {designation}");
             return;
         }
 
+        if (normalizedKey == "g50_annuel")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[G50Annuel] WHERE [id_periode] = {periodeId}");
+            foreach (var row in rows.EnumerateArray())
+            {
+                var designation = row.TryGetProperty("designation", out var d) ? d.ToString() : string.Empty;
+                if (string.IsNullOrWhiteSpace(designation)) continue;
+                var montant = row.TryGetProperty("montant", out var montantElement) ? ParseDecimal(montantElement) : 0m;
+
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[G50Annuel] ([id_designiation_encaissement], [id_periode], [Montant])
+SELECT [id], {periodeId}, {montant}
+FROM [dbo].[G50_lignes]
+WHERE [designiation] = {designation}");
+            }
+
+            return;
+        }
+
         if (normalizedKey == "masters15")
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[MasterRecap] WHERE [id_periode] = {periodeId}");
@@ -359,6 +378,12 @@ WHERE [designiation] = {designation}");
         if (normalizedKey == "g50")
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[G50] WHERE [id_periode] = {periodeId}");
+            return;
+        }
+
+        if (normalizedKey == "g50_annuel")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[G50Annuel] WHERE [id_periode] = {periodeId}");
             return;
         }
 
@@ -524,6 +549,21 @@ SELECT (
 )", new SqlParameter("@periodeId", periodeId.Value));
         }
 
+        if (normalizedKey == "g50_annuel")
+        {
+            return await ExecuteRowsJsonQueryAsync(@"
+SELECT (
+    SELECT l.[designiation] AS [designation],
+           ISNULL(r.[Montant], 0) AS [montant]
+    FROM [dbo].[G50_lignes] l
+    LEFT JOIN [dbo].[G50Annuel] r
+      ON r.[id_designiation_encaissement] = l.[id]
+     AND r.[id_periode] = @periodeId
+    ORDER BY l.[id]
+    FOR JSON PATH
+)", new SqlParameter("@periodeId", periodeId.Value));
+        }
+
         if (normalizedKey == "masters15")
         {
             return await ExecuteRowsJsonQueryAsync(@"
@@ -584,6 +624,7 @@ SELECT (
                 recap.Title,
                 recap.Mois,
                 recap.Annee,
+                recap.Direction,
                 RowsJson = rowsJson,
                 recap.FormulasJson,
                 recap.IsGenerated,
@@ -687,6 +728,7 @@ SELECT (
             existing.Title,
             existing.Mois,
             existing.Annee,
+            existing.Direction,
             RowsJson = rowsJson,
             existing.FormulasJson,
             existing.IsGenerated,

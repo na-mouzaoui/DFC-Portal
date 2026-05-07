@@ -30,6 +30,12 @@ interface RemindersCardProps {
   onYearChange?: (value: string) => void
   viewMode?: "indicateurs" | "consolidation"
   onViewModeChange?: (mode: "indicateurs" | "consolidation") => void
+  consolidationMonth?: string
+  consolidationYear?: string
+  consolidationDirection?: string
+  onConsolidationMonthChange?: (value: string) => void
+  onConsolidationYearChange?: (value: string) => void
+  onConsolidationDirectionChange?: (value: string) => void
   allRecaps?: Array<{ id: string; key: string; title: string; mois: string; annee: string; createdAt: string; rows: Record<string, string>[] }>
 }
 
@@ -76,6 +82,12 @@ export function RemindersCard({
   onYearChange,
 viewMode = "indicateurs",
   onViewModeChange,
+  consolidationMonth = "",
+  consolidationYear = "",
+  consolidationDirection = "",
+  onConsolidationMonthChange,
+  onConsolidationYearChange,
+  onConsolidationDirectionChange,
   allRecaps = [],
 }: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
@@ -276,7 +288,14 @@ viewMode = "indicateurs",
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Mois</p>
-                  <Select value={selectedMonth} onValueChange={(value) => onMonthChange?.(value)}>
+                  <Select
+                    value={viewMode === "consolidation" ? consolidationMonth : selectedMonth}
+                    onValueChange={(value) =>
+                      viewMode === "consolidation"
+                        ? onConsolidationMonthChange?.(value)
+                        : onMonthChange?.(value)
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selectionner un mois" />
                     </SelectTrigger>
@@ -298,15 +317,31 @@ viewMode = "indicateurs",
                     min={2000}
                     max={2100}
                     placeholder="ex: 2026"
-                    value={selectedYear}
-                    onChange={(event) => onYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    value={viewMode === "consolidation" ? consolidationYear : selectedYear}
+                    onChange={(event) => {
+                      const nextValue = event.target.value.replace(/\D/g, "").slice(0, 4)
+                      if (viewMode === "consolidation") {
+                        onConsolidationYearChange?.(nextValue)
+                      } else {
+                        onYearChange?.(nextValue)
+                      }
+                    }}
                   />
                 </div>
 
                 {isAdmin && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Direction</p>
-                    <Select value={selectedDirection} onValueChange={setSelectedDirection}>
+                    <Select
+                      value={viewMode === "consolidation" ? consolidationDirection || "all" : selectedDirection}
+                      onValueChange={(value) => {
+                        if (viewMode === "consolidation") {
+                          onConsolidationDirectionChange?.(value === "all" ? "" : value)
+                          return
+                        }
+                        setSelectedDirection(value)
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Tout" />
                       </SelectTrigger>

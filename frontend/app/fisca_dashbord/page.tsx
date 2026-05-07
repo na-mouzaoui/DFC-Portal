@@ -198,6 +198,10 @@ const RECAP_COLUMN_DEFINITIONS: Record<string, RecapColumnMeta[]> = {
     { key: "designation", label: "Désignation" },
     { key: "montant", label: "Montant", right: true },
   ],
+  g50_annuel: [
+    { key: "designation", label: "Désignation" },
+    { key: "montant", label: "Montant", right: true },
+  ],
 }
 
 const getRecapColumns = (recap: SavedRecap): RecapColumnMeta[] => {
@@ -1103,6 +1107,7 @@ export default function FiscaDashboardPage() {
   const [recapFilterMois, setRecapFilterMois] = useState("")
   const [recapFilterAnnee, setRecapFilterAnnee] = useState("")
   const [recapFilterDirection, setRecapFilterDirection] = useState("")
+  const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
   const [consolidationFilterMois, setConsolidationFilterMois] = useState(initialFiscalPeriod.mois)
   const [consolidationFilterAnnee, setConsolidationFilterAnnee] = useState(initialFiscalPeriod.annee)
   const [consolidationFilterDirection, setConsolidationFilterDirection] = useState("")
@@ -1111,7 +1116,6 @@ export default function FiscaDashboardPage() {
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
   const [reminders, setReminders] = useState<ReminderData[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
-  const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
   const [viewMode, setViewMode] = useState<"indicateurs" | "consolidation">("indicateurs")
@@ -2313,7 +2317,6 @@ export default function FiscaDashboardPage() {
           onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          consolidationTotals={consolidationTotals}
           consolidationMonth={consolidationFilterMois}
           consolidationYear={consolidationFilterAnnee}
           onConsolidationMonthChange={setConsolidationFilterMois}

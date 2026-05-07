@@ -38,49 +38,80 @@ IF OBJECT_ID(N'[dbo].[Tap]', N'U') IS NOT NULL AND COL_LENGTH('dbo.Tap', 'Commun
 ");
 
             migrationBuilder.Sql(@"
+IF COL_LENGTH('dbo.Wilaya', 'Code') IS NOT NULL AND COL_LENGTH('dbo.Commune', 'WilayaCode') IS NOT NULL
+BEGIN
+    EXEC(N'
 UPDATE c
 SET c.[WilayaId] = w.[Id]
 FROM [dbo].[Commune] c
 INNER JOIN [dbo].[Wilaya] w ON w.[Code] = c.[WilayaCode]
 WHERE c.[WilayaId] IS NULL;
+');
+END
 
-IF OBJECT_ID(N'[dbo].[Tap]', N'U') IS NOT NULL AND COL_LENGTH('dbo.Tap', 'CommuneCode') IS NOT NULL
+IF OBJECT_ID(N'[dbo].[Tap]', N'U') IS NOT NULL
+AND COL_LENGTH('dbo.Tap', 'CommuneCode') IS NOT NULL
+AND COL_LENGTH('dbo.Commune', 'Code') IS NOT NULL
 BEGIN
-    UPDATE t
-    SET t.[CommuneId] = c.[Id]
-    FROM [dbo].[Tap] t
-    INNER JOIN [dbo].[Commune] c ON c.[Code] = t.[CommuneCode]
-    WHERE t.[CommuneId] IS NULL;
+    EXEC(N'
+UPDATE t
+SET t.[CommuneId] = c.[Id]
+FROM [dbo].[Tap] t
+INNER JOIN [dbo].[Commune] c ON c.[Code] = t.[CommuneCode]
+WHERE t.[CommuneId] IS NULL;
+');
 END
 ");
 
             migrationBuilder.Sql(@"
-IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE [name] = N'PK_Commune')
-    ALTER TABLE [dbo].[Commune] DROP CONSTRAINT [PK_Commune];
+DECLARE @pkName NVARCHAR(256);
+SELECT @pkName = kc.name
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'Wilaya';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE [dbo].[Wilaya] DROP CONSTRAINT [' + @pkName + ']');
 
-IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE [name] = N'PK__Wilaya__A25C5AA6CD29647B')
-    ALTER TABLE [dbo].[Wilaya] DROP CONSTRAINT [PK__Wilaya__A25C5AA6CD29647B];
+SELECT @pkName = kc.name
+FROM sys.key_constraints kc
+JOIN sys.objects o ON kc.parent_object_id = o.object_id
+WHERE kc.type = 'PK' AND o.name = 'Commune';
+IF @pkName IS NOT NULL
+    EXEC('ALTER TABLE [dbo].[Commune] DROP CONSTRAINT [' + @pkName + ']');
 
-IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE [name] = N'PK_Wilaya')
+IF NOT EXISTS (
+    SELECT 1 FROM sys.key_constraints kc
+    JOIN sys.objects o ON kc.parent_object_id = o.object_id
+    WHERE kc.type = 'PK' AND o.name = 'Wilaya'
+)
     ALTER TABLE [dbo].[Wilaya] ADD CONSTRAINT [PK_Wilaya] PRIMARY KEY ([Id]);
 
-IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE [name] = N'PK_Commune')
+IF NOT EXISTS (
+    SELECT 1 FROM sys.key_constraints kc
+    JOIN sys.objects o ON kc.parent_object_id = o.object_id
+    WHERE kc.type = 'PK' AND o.name = 'Commune'
+)
     ALTER TABLE [dbo].[Commune] ADD CONSTRAINT [PK_Commune] PRIMARY KEY ([Id]);
 ");
 
             migrationBuilder.Sql(@"
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_Wilaya_Code' AND object_id = OBJECT_ID(N'[dbo].[Wilaya]'))
+IF COL_LENGTH('dbo.Wilaya', 'Code') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_Wilaya_Code' AND object_id = OBJECT_ID(N'[dbo].[Wilaya]'))
     CREATE UNIQUE INDEX [UX_Wilaya_Code] ON [dbo].[Wilaya]([Code]);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_Commune_Code' AND object_id = OBJECT_ID(N'[dbo].[Commune]'))
+IF COL_LENGTH('dbo.Commune', 'Code') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_Commune_Code' AND object_id = OBJECT_ID(N'[dbo].[Commune]'))
     CREATE UNIQUE INDEX [UX_Commune_Code] ON [dbo].[Commune]([Code]);
 
-IF EXISTS (SELECT 1 FROM [dbo].[Commune] WHERE [WilayaId] IS NULL)
-    THROW 51000, 'Migration blocked: some Commune rows cannot be mapped to Wilaya.Id.', 1;
+IF COL_LENGTH('dbo.Commune', 'WilayaId') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM [dbo].[Commune] WHERE [WilayaId] IS NULL)
+        THROW 51000, 'Migration blocked: some Commune rows cannot be mapped to Wilaya.Id.', 1;
 
-ALTER TABLE [dbo].[Commune] ALTER COLUMN [WilayaId] INT NOT NULL;
+    ALTER TABLE [dbo].[Commune] ALTER COLUMN [WilayaId] INT NOT NULL;
+END
 
-IF OBJECT_ID(N'[dbo].[Tap]', N'U') IS NOT NULL
+IF OBJECT_ID(N'[dbo].[Tap]', N'U') IS NOT NULL AND COL_LENGTH('dbo.Tap', 'CommuneId') IS NOT NULL
 BEGIN
     IF EXISTS (SELECT 1 FROM [dbo].[Tap] WHERE [CommuneId] IS NULL)
         THROW 51000, 'Migration blocked: some Tap rows cannot be mapped to Commune.Id.', 1;

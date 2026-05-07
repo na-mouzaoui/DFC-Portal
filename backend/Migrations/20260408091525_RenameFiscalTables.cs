@@ -239,7 +239,9 @@ IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_EtatsDeSortie_Use
             // =====================================================
 
             migrationBuilder.Sql(@"
-IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
+IF OBJECT_ID(N'dbo.DeclarationPayload', N'U') IS NOT NULL
+AND OBJECT_ID(N'dbo.Declaration', N'U') IS NOT NULL
+AND NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_DeclarationPayload_Declaration')
     ALTER TABLE [DeclarationPayload] ADD CONSTRAINT [FK_DeclarationPayload_Declaration]
         FOREIGN KEY ([DeclarationId]) REFERENCES [Declaration]([Id]) ON DELETE CASCADE;
 ");
