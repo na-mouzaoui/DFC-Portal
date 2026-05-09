@@ -1108,9 +1108,13 @@ export default function FiscaDashboardPage() {
   const [recapFilterAnnee, setRecapFilterAnnee] = useState("")
   const [recapFilterDirection, setRecapFilterDirection] = useState("")
   const initialFiscalPeriod = useMemo(() => getCurrentFiscalPeriod(), [])
-  const [consolidationFilterMois, setConsolidationFilterMois] = useState(initialFiscalPeriod.mois)
-  const [consolidationFilterAnnee, setConsolidationFilterAnnee] = useState(initialFiscalPeriod.annee)
-  const [consolidationFilterDirection, setConsolidationFilterDirection] = useState("")
+  const [consolidationTabKey, setConsolidationTabKey] = useState<string>("encaissement")
+  const [consolidationStartMois, setConsolidationStartMois] = useState(initialFiscalPeriod.mois)
+  const [consolidationStartAnnee, setConsolidationStartAnnee] = useState(initialFiscalPeriod.annee)
+  const [consolidationEndMois, setConsolidationEndMois] = useState(initialFiscalPeriod.mois)
+  const [consolidationEndAnnee, setConsolidationEndAnnee] = useState(initialFiscalPeriod.annee)
+  const [consolidationDirections, setConsolidationDirections] = useState<string[]>([])
+  const [consolidationSupplierId, setConsolidationSupplierId] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
@@ -2200,21 +2204,9 @@ export default function FiscaDashboardPage() {
       return value.trim()
     }
 
-    const declarationDirections = declarations
-      .map((declaration) => normalizeDirection(declaration.direction ?? ""))
-      .filter(Boolean)
-
-    if (declarationDirections.length > 0) {
-      return Array.from(new Set(declarationDirections)).sort((a, b) => a.localeCompare(b, "fr"))
-    }
-
-    const fallbackDirections = [
-      ...reminders.map((reminder) => normalizeDirection(reminder.direction ?? "")),
-      ...regions.map((region) => normalizeDirection(region.name)),
-      "Siège",
-    ].filter(Boolean)
-
-    return Array.from(new Set(fallbackDirections)).sort((a, b) => a.localeCompare(b, "fr"))
+    const regionDirections = regions.map((region) => normalizeDirection(region.name)).filter(Boolean)
+    const merged = new Set<string>([...regionDirections, "Siège"])
+    return Array.from(merged).sort((a, b) => a.localeCompare(b, "fr"))
   })()
 
   const viewTab = DASH_TABS.find((t) => t.key === viewTabKey)
@@ -2317,13 +2309,23 @@ export default function FiscaDashboardPage() {
           onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          consolidationMonth={consolidationFilterMois}
-          consolidationYear={consolidationFilterAnnee}
-          onConsolidationMonthChange={setConsolidationFilterMois}
-          onConsolidationYearChange={(value) => setConsolidationFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
-          consolidationDirection={consolidationFilterDirection}
-          onConsolidationDirectionChange={setConsolidationFilterDirection}
-          allRecaps={recaps}
+          consolidationTabKey={consolidationTabKey}
+          onConsolidationTabChange={setConsolidationTabKey}
+          consolidationStartMonth={consolidationStartMois}
+          consolidationStartYear={consolidationStartAnnee}
+          consolidationEndMonth={consolidationEndMois}
+          consolidationEndYear={consolidationEndAnnee}
+          onConsolidationStartMonthChange={setConsolidationStartMois}
+          onConsolidationStartYearChange={(value) => setConsolidationStartAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          onConsolidationEndMonthChange={setConsolidationEndMois}
+          onConsolidationEndYearChange={(value) => setConsolidationEndAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          consolidationDirections={consolidationDirections}
+          onConsolidationDirectionsChange={setConsolidationDirections}
+          consolidationSupplierId={consolidationSupplierId}
+          onConsolidationSupplierChange={setConsolidationSupplierId}
+          consolidationTabOptions={DASH_TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
+          consolidationDeclarations={declarations}
+          fiscalFournisseurs={fiscalFournisseurs}
         />
 
         {/* Recent declarations */}

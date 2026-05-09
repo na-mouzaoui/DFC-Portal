@@ -915,9 +915,8 @@ WHERE NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'') IS NOT NULL
   AND NOT EXISTS (
         SELECT 1
         FROM [dbo].[Fournisseur] f
-        WHERE f.[Nom] = NULLIF(LTRIM(RTRIM(j.[nomRaisonSociale])), N'')
-          AND ISNULL(f.[NIF], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[nif])), N''), N'')
-          AND ISNULL(f.[Adresse], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[adresse])), N''), N'')
+                WHERE ISNULL(f.[NIF], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[nif])), N''), N'')
+                    AND ISNULL(f.[Adresse], N'') = ISNULL(NULLIF(LTRIM(RTRIM(j.[adresse])), N''), N'')
   );
 
 DELETE t
@@ -1238,7 +1237,8 @@ WITH ([raisonSociale] NVARCHAR(255) '$.raisonSociale') AS j
 WHERE NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N'') IS NOT NULL
   AND NOT EXISTS (
       SELECT 1 FROM [dbo].[Fournisseur] f
-      WHERE f.[Nom] = NULLIF(LTRIM(RTRIM(j.[raisonSociale])), N'')
+            WHERE ISNULL(f.[NIF], N'') = N''
+                AND ISNULL(f.[Adresse], N'') = N''
   );
 
 DELETE FROM [dbo].[Domiciliation] WHERE [PeriodeId] = {periodeId};
