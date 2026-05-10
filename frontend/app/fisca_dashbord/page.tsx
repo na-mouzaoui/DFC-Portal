@@ -1122,7 +1122,7 @@ export default function FiscaDashboardPage() {
   const [remindersLoading, setRemindersLoading] = useState(true)
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
-  const [viewMode, setViewMode] = useState<"indicateurs" | "consolidation">("indicateurs")
+  const [viewMode, setViewMode] = useState<"indicateurs" | "recap">("indicateurs")
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   const [, setFiscalPolicyRevision] = useState(0)
@@ -2306,26 +2306,9 @@ export default function FiscaDashboardPage() {
           selectedMonth={reminderFilterMois}
           selectedYear={reminderFilterAnnee}
           onMonthChange={setReminderFilterMois}
-          onYearChange={(value) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          onYearChange={(value: string) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
           viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          consolidationTabKey={consolidationTabKey}
-          onConsolidationTabChange={setConsolidationTabKey}
-          consolidationStartMonth={consolidationStartMois}
-          consolidationStartYear={consolidationStartAnnee}
-          consolidationEndMonth={consolidationEndMois}
-          consolidationEndYear={consolidationEndAnnee}
-          onConsolidationStartMonthChange={setConsolidationStartMois}
-          onConsolidationStartYearChange={(value) => setConsolidationStartAnnee(value.replace(/\D/g, "").slice(0, 4))}
-          onConsolidationEndMonthChange={setConsolidationEndMois}
-          onConsolidationEndYearChange={(value) => setConsolidationEndAnnee(value.replace(/\D/g, "").slice(0, 4))}
-          consolidationDirections={consolidationDirections}
-          onConsolidationDirectionsChange={setConsolidationDirections}
-          consolidationSupplierId={consolidationSupplierId}
-          onConsolidationSupplierChange={setConsolidationSupplierId}
-          consolidationTabOptions={DASH_TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
-          consolidationDeclarations={declarations}
-          fiscalFournisseurs={fiscalFournisseurs}
+          onViewModeChange={(mode) => setViewMode(mode)}
         />
 
         {/* Recent declarations */}

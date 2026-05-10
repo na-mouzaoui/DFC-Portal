@@ -1578,6 +1578,14 @@ type ApiFiscalRecap = {
   rowsJson?: string
 }
 
+type MonthlyG50RecapRowsByKey = {
+  tap15: Record<string, string>[]
+  tacp7: Record<string, string>[]
+  tnfdal1: Record<string, string>[]
+  masters15: Record<string, string>[]
+  g50: Record<string, string>[]
+}
+
 type RecapEncaissementSource = { direction: string; totalHt: number; totalTtc: number }
 type RecapAmountSource = { direction: string; amount: number }
 type RecapCaTapSource = { direction: string; b12: number; b13: number }
@@ -1849,7 +1857,7 @@ const G50_RECAP_ROWS = [
   "ACOMPTE PROVISIONEL",
   "TVA COLLECTEE",
   "TVA DEDUCTIBLE",
-  "Total TVA a Payer (Voir la Piece)",
+  "Total TVA a Payer ",
   "DROIT DE TIMBRE",
   "TACP 7%",
   "TNFPDAL 1%",
@@ -1859,8 +1867,8 @@ const G50_RECAP_ROWS = [
   "TAXE VEHICULE",
   "LA TAP",
   "TAXE 2%",
-  "Total Declaration G 50 (Voir la Piece)",
-  "TAXE 1,5% SUR MASTERS (Voir la Piece)",
+  "Total Declaration G 50 ",
+  "TAXE 1,5% SUR MASTERS ",
   "Total",
 ] as const
 
@@ -1883,6 +1891,7 @@ const formatRecapAmount = (value: number): string => {
 const normalizeRecapDesignation = (value: string): string => {
   return (value ?? "")
     .trim()
+    .replace(/\s*\([^)]*\)\s*/g, " ") // Remove text in parentheses
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -1975,7 +1984,7 @@ const resolveTapRecapRowByDirection = (direction: string): string | null => {
   return resolveRegionalRecapRowByDirection(direction)
 }
 
-const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
+const parseFiscalDataPayload = (dataJson?: string): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(dataJson ?? "{}")
     if (parsed && typeof parsed === "object") {
@@ -1986,6 +1995,15 @@ const parseFiscalDataPayload = (dataJson: string): Record<string, unknown> => {
   }
 
   return {}
+}
+
+const parseRecapRowsJson = (rowsJson?: string): Record<string, string>[] => {
+  try {
+    const parsed = JSON.parse(rowsJson ?? "[]")
+    return Array.isArray(parsed) ? (parsed as Record<string, string>[]) : []
+  } catch {
+    return []
+  }
 }
 
 const isRegionalDrRecapRow = (designation: string): boolean => {
@@ -2264,12 +2282,15 @@ const annotateG50Missing = (
   tvaAPayerRows: Record<string, string>[],
   tvaSituationRows: Record<string, string>[],
   droitsTimbreRows: Record<string, string>[],
-  tapRows: Record<string, string>[],
+  monthlyRecapRowsByKey: MonthlyG50RecapRowsByKey,
 ): Record<string, string>[] => {
   const tvaAPayerTotal = tvaAPayerRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
   const tvaSituationTotal = tvaSituationRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
   const droitsTimbreTotal = droitsTimbreRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
-  const tapTotal = tapRows.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const tap15Total = monthlyRecapRowsByKey.tap15.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const tacp7Total = monthlyRecapRowsByKey.tacp7.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const tnfdal1Total = monthlyRecapRowsByKey.tnfdal1.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
+  const masters15Total = monthlyRecapRowsByKey.masters15.find((row) => normalizeRecapDesignation(safeString(row.designation)) === "total")
 
   return clearRecapMissingMeta(rows).map((row) => {
     const normalized = normalizeRecapDesignation(safeString(row.designation))
@@ -2282,7 +2303,7 @@ const annotateG50Missing = (
       reason = tvaAPayerTotal ? (getRecapMissingReason(tvaAPayerTotal, "collectee") ?? "ok") : "missing_declaration"
     } else if (normalized === "tva deductible") {
       reason = tvaSituationTotal ? (getRecapMissingReason(tvaSituationTotal, "totalDed") ?? "ok") : "missing_declaration"
-    } else if (normalized === "total tva a payer (voir la piece)") {
+    } else if (normalized === "total tva a payer ") {
       reason = tvaAPayerTotal ? (getRecapMissingReason(tvaAPayerTotal, "payer") ?? "ok") : "missing_declaration"
     } else if (normalized === "droit de timbre") {
       reason = droitsTimbreTotal ? (getRecapMissingReason(droitsTimbreTotal, "montant") ?? "ok") : "missing_declaration"
@@ -2295,25 +2316,30 @@ const annotateG50Missing = (
     } else if (normalized === "taxe vehicule") {
       reason = resolveDeclarationStatus(declarations, "taxe_vehicule", mois, annee)
     } else if (normalized === "la tap") {
-      reason = tapTotal ? (getRecapMissingReason(tapTotal, "taxe") ?? "ok") : "missing_declaration"
+      reason = tap15Total ? (getRecapMissingReason(tap15Total, "taxe") ?? "ok") : "missing_declaration"
+    } else if (normalized === "tacp 7%") {
+      reason = tacp7Total ? (getRecapMissingReason(tacp7Total, "taxe") ?? "ok") : "missing_declaration"
+    } else if (normalized === "tnfpdal 1%") {
+      reason = tnfdal1Total ? (getRecapMissingReason(tnfdal1Total, "taxe") ?? "ok") : "missing_declaration"
     } else if (normalized === "taxe 2%") {
       reason = resolveDeclarationStatus(declarations, "taxe2", mois, annee)
-    } else if (normalized === "taxe 1,5% sur masters (voir la piece)") {
-      reason = resolveDeclarationStatus(declarations, "taxe_masters", mois, annee)
-    } else if (normalized === "total declaration g 50 (voir la piece)" || normalized === "total") {
+    } else if (normalized === "taxe 1,5% sur masters ") {
+      reason = masters15Total ? (getRecapMissingReason(masters15Total, "taxe") ?? "ok") : "missing_declaration"
+    } else if (normalized === "total declaration g 50 " || normalized === "total") {
       const componentReasons = [
         resolveDeclarationStatus(declarations, "acompte", mois, annee),
         resolveDeclarationStatus(declarations, "encaissement", mois, annee),
         resolveDeclarationStatus(declarations, "tva_immo", mois, annee),
         resolveDeclarationStatus(declarations, "tva_biens", mois, annee),
         resolveDeclarationStatus(declarations, "droits_timbre", mois, annee),
-        resolveDeclarationStatus(declarations, "ca_tap", mois, annee),
+        tap15Total ? "ok" : "missing_declaration",
+        tacp7Total ? "ok" : "missing_declaration",
+        tnfdal1Total ? "ok" : "missing_declaration",
+        masters15Total ? "ok" : "missing_declaration",
         resolveDeclarationStatus(declarations, "irg", mois, annee),
         resolveDeclarationStatus(declarations, "taxe_formation", mois, annee),
         resolveDeclarationStatus(declarations, "taxe_vehicule", mois, annee),
-        resolveDeclarationStatus(declarations, "etat_tap", mois, annee),
         resolveDeclarationStatus(declarations, "taxe2", mois, annee),
-        resolveDeclarationStatus(declarations, "taxe_masters", mois, annee),
       ].filter((status) => status !== "ok") as RecapMissingReason[]
 
       if (componentReasons.length > 0) {
@@ -2847,6 +2873,34 @@ const buildG50AnnualRecapRows = (
     }
   }
 
+  // FIX: Recalculate the 3 problematic lines from details instead of using saved 0 values
+  const tvaCollectee = amountsByDesignation.get("tva collectee") ?? 0
+  const tvaDeductible = amountsByDesignation.get("tva deductible") ?? 0
+  const tvaAPayer = tvaCollectee - tvaDeductible
+  
+  const acompte = amountsByDesignation.get("acompte provisionel") ?? 0
+  const droitsTimbre = amountsByDesignation.get("droit de timbre") ?? 0
+  const tacp7 = amountsByDesignation.get("tacp 7") ?? 0
+  const tnfpdal1 = amountsByDesignation.get("tnfpdal 1") ?? 0
+  const irgSalaire = amountsByDesignation.get("irg salaire") ?? 0
+  const autreIrg = amountsByDesignation.get("autre irg") ?? 0
+  const taxeFormation = amountsByDesignation.get("taxe de formation") ?? 0
+  const taxeVehicule = amountsByDesignation.get("taxe vehicule") ?? 0
+  const tap = amountsByDesignation.get("la tap") ?? 0
+  const taxe2 = amountsByDesignation.get("taxe 2") ?? 0
+  
+  const totalDeclarationG50 = acompte + tvaCollectee + tvaDeductible + tvaAPayer + droitsTimbre + tacp7 + tnfpdal1 + irgSalaire + autreIrg + taxeFormation + taxeVehicule + tap + taxe2
+  
+  // FIX: Recalculate masters15 from the total (not from saved 0 value)
+  const totalGeneral = amountsByDesignation.get("total") ?? 0
+  const masters15 = totalGeneral - totalDeclarationG50
+
+  // Update the map with recalculated values
+  amountsByDesignation.set("total tva a payer", tvaAPayer)
+  amountsByDesignation.set("total declaration g 50", totalDeclarationG50)
+  amountsByDesignation.set("taxe 1 5 sur masters", masters15)
+  amountsByDesignation.set("total", totalGeneral)
+
   const rows = G50_RECAP_ROWS.map((designation) => ({
     designation,
     montant: formatRecapAmount(amountsByDesignation.get(normalizeRecapDesignation(designation)) ?? 0),
@@ -2870,6 +2924,7 @@ const buildG50RecapRows = (
   annee: string,
   declarations: ApiFiscalDeclaration[],
   sources: RecapSourcesResponse,
+  monthlyRecapRowsByKey: MonthlyG50RecapRowsByKey,
 ): Record<string, string>[] => {
   const tvaAPayerRows = buildTvaAPayerRecapRows(
     buildTvaCollecteeRecapRows(sources),
@@ -2877,7 +2932,10 @@ const buildG50RecapRows = (
   )
   const tvaSituationRows = buildTvaSituationRecapRows(sources)
   const droitsTimbreRows = buildDroitsTimbreRecapRows(sources)
-  const tapRows = buildTap15RecapRows(sources)
+
+  const tacp7Total = getRecapRowAmount(monthlyRecapRowsByKey.tacp7, "Total", "taxe")
+  const tnfpdal1Total = getRecapRowAmount(monthlyRecapRowsByKey.tnfdal1, "Total", "taxe")
+  const tapTotal = getRecapRowAmount(monthlyRecapRowsByKey.tap15, "Total", "taxe")
 
   const values = {
     acompte: 0,
@@ -2885,33 +2943,28 @@ const buildG50RecapRows = (
     tvaDeductible: getRecapRowAmount(tvaSituationRows, "Total", "totalDed"),
     tvaAPayer: getRecapRowAmount(tvaAPayerRows, "Total", "payer"),
     droitsTimbre: getRecapRowAmount(droitsTimbreRows, "Total", "montant"),
-    tacp7: 0,
-    tnfpdal1: 0,
+    tacp7: tacp7Total,
+    tnfpdal1: tnfpdal1Total,
     irgSalaire: 0,
     autreIrg: 0,
     taxeFormation: 0,
     taxeVehicule: 0,
-    tap: getRecapRowAmount(tapRows, "Total", "taxe"),
+    tap: tapTotal,
     taxe2: 0,
     masters15: 0,
   }
 
+  let taxe2DeclarationCount = 0
+  let mastersDeclarationCount = 0
+
   for (const declaration of declarations) {
     if (declaration.mois !== mois || declaration.annee !== annee) continue
 
-    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
 
     if (declaration.tabKey === "acompte") {
       const months = Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : []
       values.acompte += months.reduce((sum, value) => sum + parseRecapAmount(value), 0)
-      continue
-    }
-
-    if (declaration.tabKey === "ca_tap") {
-      const b12 = parseRecapAmount(payload.b12)
-      const b13 = parseRecapAmount(payload.b13)
-      values.tacp7 += b12 * 0.07
-      values.tnfpdal1 += b13 * 0.01
       continue
     }
 
@@ -2934,20 +2987,19 @@ const buildG50RecapRows = (
     }
 
     if (declaration.tabKey === "taxe2") {
+      taxe2DeclarationCount++
       const rows = Array.isArray(payload.taxe2Rows) ? (payload.taxe2Rows as Taxe2Row[]) : []
       values.taxe2 += rows.reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
       continue
     }
 
     if (declaration.tabKey === "taxe_masters") {
+      mastersDeclarationCount++
       const rows = Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : []
-      values.masters15 += rows.reduce((sum, row) => {
-        const taxe = parseRecapAmount(row.taxe15)
-        if (taxe > 0) return sum + taxe
-        return sum + (parseRecapAmount(row.montantHT) * 0.015)
-      }, 0)
+      values.masters15 += rows.reduce((sum, row) => sum + parseRecapAmount(row.montantHT) * 0.015, 0)
       continue
     }
+
   }
 
   const totalDeclarationG50 = values.acompte
@@ -2970,18 +3022,18 @@ const buildG50RecapRows = (
     ["acompte provisionel", values.acompte],
     ["tva collectee", values.tvaCollectee],
     ["tva deductible", values.tvaDeductible],
-    ["total tva a payer (voir la piece)", values.tvaAPayer],
+    ["total tva a payer", values.tvaAPayer],
     ["droit de timbre", values.droitsTimbre],
-    ["tacp 7%", values.tacp7],
-    ["tnfpdal 1%", values.tnfpdal1],
+    ["tacp 7", values.tacp7],
+    ["tnfpdal 1", values.tnfpdal1],
     ["irg salaire", values.irgSalaire],
     ["autre irg", values.autreIrg],
     ["taxe de formation", values.taxeFormation],
     ["taxe vehicule", values.taxeVehicule],
     ["la tap", values.tap],
-    ["taxe 2%", values.taxe2],
-    ["total declaration g 50 (voir la piece)", totalDeclarationG50],
-    ["taxe 1,5% sur masters (voir la piece)", values.masters15],
+    ["taxe 2", values.taxe2],
+    ["total declaration g 50", totalDeclarationG50],
+    ["taxe 1 5 sur masters", values.masters15],
     ["total", totalGeneral],
   ])
 
@@ -3077,7 +3129,7 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
   if (recapKey === "g50" && columnKey === "montant") {
     if (row === "tva collectee") return "TVA collectee = TVA_a_payer.Total(colonne TVA collectee)"
     if (row === "tva deductible") return "TVA deductible = TVA_situation.Total = (TVA immo + TVA biens)"
-    if (row === "total tva a payer (voir la piece)") return "TVA a payer = TVA_a_payer.Total(colonne TVA a payer) = (TVA collectee - TVA deductible)"
+    if (row === "total tva a payer ") return "TVA a payer = TVA_a_payer.Total(colonne TVA a payer) = (TVA collectee - TVA deductible)"
     if (row === "droit de timbre") return "Droit de timbre = Droits_timbre.Total"
     if (row === "tacp 7%") return "TACP 7% = SUM(CA_TAP.B12) * (7 / 100)"
     if (row === "tnfpdal 1%") return "TNFPDAL 1% = SUM(CA_TAP.B13) * (1 / 100)"
@@ -3087,8 +3139,8 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
     if (row === "taxe vehicule") return "Taxe vehicule = SUM(Tableau taxe vehicule)"
     if (row === "la tap") return "LA TAP = TAP_1.5%.Total"
     if (row === "taxe 2%") return "Taxe 2% = SUM(Tableau taxe 2%.montant)"
-    if (row === "total declaration g 50 (voir la piece)") return "Total declaration G50 = (Acompte + TVA collectee + TVA deductible + TVA a payer + Droit de timbre + TACP 7% + TNFPDAL 1% + IRG salaire + Autre IRG + Taxe formation + Taxe vehicule + LA TAP + Taxe 2%)"
-    if (row === "taxe 1,5% sur masters (voir la piece)") return "Taxe masters = SUM( IF(taxe15 > 0, taxe15, montantHT * (1.5 / 100)) )"
+    if (row === "total declaration g 50 ") return "Total declaration G50 = (Acompte + TVA collectee + TVA deductible + TVA a payer + Droit de timbre + TACP 7% + TNFPDAL 1% + IRG salaire + Autre IRG + Taxe formation + Taxe vehicule + LA TAP + Taxe 2%)"
+    if (row === "taxe 1,5% sur masters ") return "Taxe masters = SUM( IF(taxe15 > 0, taxe15, montantHT * (1.5 / 100)) )"
     if (row === "total") return "Total general = (Total declaration G50) + (Taxe 1.5% sur masters)"
     return "Saisie manuelle"
   }
@@ -4742,6 +4794,13 @@ export default function NouvelleDeclarationPage() {
     tapByDirection: [],
     droitsTimbreByDirection: [],
   })
+  const [monthlyG50RecapRowsByKey, setMonthlyG50RecapRowsByKey] = useState<MonthlyG50RecapRowsByKey>({
+    tap15: [],
+    tacp7: [],
+    tnfdal1: [],
+    masters15: [],
+    g50: [],
+  })
   const [annualRecapSourcesByMonth, setAnnualRecapSourcesByMonth] = useState<Record<string, RecapSourcesResponse>>({})
   const [g50AnnualRecaps, setG50AnnualRecaps] = useState<Array<{ mois: string; annee: string; rows: Record<string, string>[]; direction?: string }>>([])
   const [g50AnnualMissingPeriods, setG50AnnualMissingPeriods] = useState<string[]>([])
@@ -4872,7 +4931,7 @@ export default function NouvelleDeclarationPage() {
       direction: existingDeclarationMatch.direction,
       mois: existingDeclarationMatch.mois,
       annee: existingDeclarationMatch.annee,
-      data: parseFiscalDataPayload(existingDeclarationMatch.dataJson),
+      data: parseFiscalDataPayload(safeString(existingDeclarationMatch.dataJson)),
     }
   }, [existingDeclarationMatch])
 
@@ -4995,6 +5054,74 @@ export default function NouvelleDeclarationPage() {
 
     let cancelled = false
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+    const normalizedExpectedDirection = normalizeRecapDesignation(safeString(effectiveDirection))
+    const expectedDirection = ["all", "tout", "tous"].includes(normalizedExpectedDirection)
+      ? ""
+      : normalizedExpectedDirection
+
+    const loadMonthlyG50Recaps = async () => {
+      try {
+        const recapKeyByStateKey: Array<[keyof MonthlyG50RecapRowsByKey, string]> = [
+          ["tap15", "tap15"],
+          ["tacp7", "tacp7"],
+          ["tnfdal1", "tnfdal1"],
+          ["masters15", "masters15"],
+          ["g50", "g50"],
+        ]
+
+        const entries = await Promise.all(
+          recapKeyByStateKey.map(async ([stateKey, recapKey]) => {
+            const response = await fetch(
+              `${API_BASE}/api/fiscal-recaps?key=${encodeURIComponent(recapKey)}&mois=${encodeURIComponent(mois)}&annee=${encodeURIComponent(annee)}`,
+              {
+                credentials: "include",
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+              },
+            )
+
+            if (!response.ok) return [stateKey, [] as Record<string, string>[]] as const
+
+            const payload = await response.json().catch(() => [])
+            const recaps = Array.isArray(payload) ? (payload as ApiFiscalRecap[]) : []
+            const selected = recaps
+              .map((item) => ({
+                ...item,
+                rows: parseRecapRowsJson(item.rowsJson),
+              }))
+              .find((item) => {
+                if (!expectedDirection) return true
+                const normalizedDirection = normalizeRecapDesignation(safeString(item.direction))
+                return !normalizedDirection
+                  || normalizedDirection === expectedDirection
+                  || normalizedDirection.includes(expectedDirection)
+                  || expectedDirection.includes(normalizedDirection)
+              })
+
+            return [stateKey, selected?.rows ?? []] as const
+          }),
+        )
+
+        if (cancelled) return
+
+        const nextRows: MonthlyG50RecapRowsByKey = {
+          tap15: [],
+          tacp7: [],
+          tnfdal1: [],
+          masters15: [],
+          g50: [],
+        }
+
+        for (const [stateKey, rows] of entries) {
+          nextRows[stateKey] = rows
+        }
+
+        setMonthlyG50RecapRowsByKey(nextRows)
+      } catch {
+        if (!cancelled) {
+          setMonthlyG50RecapRowsByKey({ tap15: [], tacp7: [], tnfdal1: [], masters15: [], g50: [] })
+        }
+      }
+    }
 
     const loadRecapSources = async () => {
       try {
@@ -5029,11 +5156,12 @@ export default function NouvelleDeclarationPage() {
       }
     }
 
+    loadMonthlyG50Recaps()
     loadRecapSources()
     return () => {
       cancelled = true
     }
-  }, [annee, mois, status])
+  }, [annee, effectiveDirection, mois, status])
 
   useEffect(() => {
     if (status !== "authenticated") return
@@ -5107,7 +5235,10 @@ export default function NouvelleDeclarationPage() {
         const payload = await response.json().catch(() => null)
         if (cancelled) return
 
-        const expectedDirection = normalizeRecapDesignation(safeString(effectiveDirection))
+        const normalizedExpectedDirection = normalizeRecapDesignation(safeString(effectiveDirection))
+        const expectedDirection = ["all", "tout", "tous"].includes(normalizedExpectedDirection)
+          ? ""
+          : normalizedExpectedDirection
 
         const recaps = Array.isArray(payload)
           ? (payload as ApiFiscalRecap[])
@@ -5195,14 +5326,14 @@ export default function NouvelleDeclarationPage() {
       annee,
     )
     const g50Rows = annotateG50Missing(
-      buildG50RecapRows(mois, annee, fiscalDeclarations, recapSources),
+      buildG50RecapRows(mois, annee, fiscalDeclarations, recapSources, monthlyG50RecapRowsByKey),
       fiscalDeclarations,
       mois,
       annee,
       recapRows,
       situationRows,
       droitsTimbreRows,
-      tap15Rows,
+      monthlyG50RecapRowsByKey,
     )
     const g50Annual = buildG50AnnualRecapRows(annee, g50AnnualRecaps)
 
@@ -5219,7 +5350,7 @@ export default function NouvelleDeclarationPage() {
       g50_annuel: g50Annual.rows,
     })
     setG50AnnualMissingPeriods(g50Annual.missingMonths)
-  }, [annee, annualRecapSourcesByMonth, fiscalDeclarations, g50AnnualRecaps, mois, recapSources])
+  }, [annee, annualRecapSourcesByMonth, fiscalDeclarations, g50AnnualRecaps, mois, monthlyG50RecapRowsByKey, recapSources])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {
@@ -5906,6 +6037,57 @@ export default function NouvelleDeclarationPage() {
         })
         return
       }
+
+      const createdPayload = await createResponse.json().catch(() => null)
+      const savedDeclarationId = Number(
+        (createdPayload && typeof createdPayload === "object" && "Id" in createdPayload
+          ? (createdPayload as { Id?: unknown }).Id
+          : undefined) ?? editingDeclarationId ?? declarationId,
+      )
+
+      setFiscalDeclarations((prev) => {
+        const savedDeclaration: ApiFiscalDeclaration = {
+          id: Number.isFinite(savedDeclarationId) ? savedDeclarationId : Number(declarationId),
+          tabKey: activeTab,
+          mois,
+          annee,
+          direction: saveDirection,
+          dataJson: requestPayload.dataJson,
+          isApproved: false,
+          statut: "PENDING",
+        }
+
+        const next = prev.filter((item) => Number(item.id) !== savedDeclaration.id)
+        return [savedDeclaration, ...next]
+      })
+
+      try {
+        const recapResponse = await fetch(`${apiBase}/api/fiscal/recap-sources?mois=${encodeURIComponent(mois)}&annee=${encodeURIComponent(annee)}`, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+
+        if (recapResponse.ok) {
+          const payload = await recapResponse.json().catch(() => null)
+          const nextSources: RecapSourcesResponse = {
+            encaissementByDirection: Array.isArray(payload?.encaissementByDirection) ? payload.encaissementByDirection : [],
+            tvaImmoByDirection: Array.isArray(payload?.tvaImmoByDirection) ? payload.tvaImmoByDirection : [],
+            tvaBiensByDirection: Array.isArray(payload?.tvaBiensByDirection) ? payload.tvaBiensByDirection : [],
+            caTapByDirection: Array.isArray(payload?.caTapByDirection) ? payload.caTapByDirection : [],
+            tapByDirection: Array.isArray(payload?.tapByDirection) ? payload.tapByDirection : [],
+            droitsTimbreByDirection: Array.isArray(payload?.droitsTimbreByDirection) ? payload.droitsTimbreByDirection : [],
+          }
+
+          setRecapSources(nextSources)
+          setAnnualRecapSourcesByMonth((prev) => ({
+            ...prev,
+            [mois]: nextSources,
+          }))
+        }
+      } catch {
+        // Keep the saved declaration; the next page refresh will recover recap sources.
+      }
+
     } catch (error) {
       try {
         localStorage.setItem("fiscal_declarations", JSON.stringify(existingDeclarations))
@@ -5933,7 +6115,7 @@ export default function NouvelleDeclarationPage() {
 
 
   const buildSavedDeclarationFromApi = useCallback((declaration: ApiFiscalDeclaration): SavedDeclaration => {
-    const payload = parseFiscalDataPayload(declaration.dataJson)
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
     const saved: SavedDeclaration = {
       id: String(declaration.id),
       createdAt: new Date().toISOString(),

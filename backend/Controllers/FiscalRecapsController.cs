@@ -589,8 +589,6 @@ SELECT (
         var userId = GetCurrentUserId();
         if (userId <= 0) return Unauthorized();
 
-        var role = await GetCurrentUserRoleAsync(userId);
-
         IQueryable<Recap> query = _context.Recaps.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(key))
@@ -601,11 +599,6 @@ SELECT (
 
         if (!string.IsNullOrWhiteSpace(annee))
             query = query.Where(r => r.Annee == annee.Trim());
-
-        if (role == "regionale" || role == "direction")
-        {
-            query = query.Where(r => r.UserId == userId);
-        }
 
         var infos = await query
             .OrderByDescending(r => r.CreatedAt)

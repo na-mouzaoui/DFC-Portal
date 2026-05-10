@@ -559,7 +559,7 @@ export function CheckForm({ user }: CheckFormProps) {
           bankPdfUrl: normalizedPdfUrl,
           positions
         })
-        const blob = new Blob([pdfBytes], { type: "application/pdf" })
+        const blob = new Blob([pdfBytes as unknown as ArrayBuffer], { type: "application/pdf" })
         const url = URL.createObjectURL(blob)
         setGeneratedPdfUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev)
