@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2, BarChart3 } from "lucide-react"
+import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil, Clock3, CalendarDays, Building2, BarChart3, Wallet, FileText } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
@@ -1122,7 +1122,7 @@ export default function FiscaDashboardPage() {
   const [remindersLoading, setRemindersLoading] = useState(true)
   const [reminderFilterMois, setReminderFilterMois] = useState(initialFiscalPeriod.mois)
   const [reminderFilterAnnee, setReminderFilterAnnee] = useState(initialFiscalPeriod.annee)
-  const [viewMode, setViewMode] = useState<"indicateurs" | "recap">("indicateurs")
+  const [viewMode, setViewMode] = useState<"indicateurs" | "consolidation">("indicateurs")
   const [regions, setRegions] = useState<Array<{ id: number; name: string }>>([])
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   const [, setFiscalPolicyRevision] = useState(0)
@@ -1133,6 +1133,15 @@ export default function FiscaDashboardPage() {
   const isAdminRole = normalizedRole === "admin"
   const canApproveRegionalDeclarations = normalizedRole === "regionale" && !!user?.isRegionalApprover
   const canApproveFinanceDeclarations = isFinanceRole && !!user?.isFinanceApprover
+
+  const normalizeDirectionKey = (value: string) => {
+    const normalized = (value ?? "").trim().toLowerCase()
+    if (!normalized) return ""
+    if (normalized === "siege" || normalized === "siège" || normalized.includes("siege") || normalized.includes("siège")) {
+      return "siège"
+    }
+    return normalized
+  }
 
   useEffect(() => {
     if (!user || status !== "authenticated") return
@@ -1424,6 +1433,80 @@ export default function FiscaDashboardPage() {
       cancelled = true
     }
   }, [status, user])
+
+  const consolidationTotals = useMemo(() => {
+    const toPeriodIndex = (month: string, year: string) => {
+      const m = Number(month)
+      const y = Number(year)
+      if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12) return 0
+      return y * 100 + m
+    }
+
+    const startIndex = toPeriodIndex(consolidationStartMois, consolidationStartAnnee)
+    const endIndex = toPeriodIndex(consolidationEndMois, consolidationEndAnnee)
+    const minPeriod = startIndex && endIndex ? Math.min(startIndex, endIndex) : 0
+    const maxPeriod = startIndex && endIndex ? Math.max(startIndex, endIndex) : 999999
+    const selectedDirections = new Set(consolidationDirections.map((direction) => normalizeDirectionKey(direction)))
+
+    const scopedDeclarations = declarations.filter((decl) => {
+      const declarationPeriod = toPeriodIndex(decl.mois, decl.annee)
+      if (!declarationPeriod || declarationPeriod < minPeriod || declarationPeriod > maxPeriod) return false
+
+      if (selectedDirections.size > 0) {
+        const declarationDirection = normalizeDirectionKey(decl.direction ?? "")
+        if (!selectedDirections.has(declarationDirection)) return false
+      }
+
+      if (consolidationTabKey && consolidationTabKey !== "all") {
+        const declarationTab = String(decl.tabKey ?? "").trim().toLowerCase()
+        if (declarationTab !== consolidationTabKey) return false
+      }
+
+      if (consolidationSupplierId) {
+        const ibsSupplierId = String(decl.ibsFournisseurId ?? "")
+        const tvaSupplierId = String(decl.tva16FournisseurId ?? "")
+        if (ibsSupplierId !== consolidationSupplierId && tvaSupplierId !== consolidationSupplierId) return false
+      }
+
+      return true
+    })
+
+    return scopedDeclarations.reduce(
+      (acc, decl) => {
+        acc.totalTtc += (decl.encRows ?? []).reduce((sum, row) => sum + resolveEncaissementAmounts(row).ttc, 0)
+        acc.totalTtc += (decl.caSiegeRows ?? []).reduce((sum, row) => sum + num(row.ttc), 0)
+
+        acc.totalExonere += (decl.encRows ?? []).reduce((sum, row) => {
+          const designation = (row.designation ?? "").trim().toLowerCase()
+          if (designation.includes("exon")) {
+            return sum + resolveEncaissementAmounts(row).ttc
+          }
+          return sum
+        }, 0)
+
+        acc.totalFactures += (decl.tvaImmoRows?.length ?? 0)
+        acc.totalFactures += (decl.tvaBiensRows?.length ?? 0)
+        acc.totalFactures += (decl.masterRows?.length ?? 0)
+        acc.totalFactures += (decl.ibs14Rows?.length ?? 0)
+        acc.totalFactures += (decl.taxe15Rows?.length ?? 0)
+        acc.totalFactures += (decl.tva16Rows?.length ?? 0)
+
+        acc.totalVehicule += num(decl.taxe11Montant)
+
+        return acc
+      },
+      { totalTtc: 0, totalExonere: 0, totalFactures: 0, totalVehicule: 0 },
+    )
+  }, [
+    consolidationDirections,
+    consolidationEndAnnee,
+    consolidationEndMois,
+    consolidationStartAnnee,
+    consolidationStartMois,
+    consolidationSupplierId,
+    consolidationTabKey,
+    declarations,
+  ])
 
   if (isLoading || !user || status !== "authenticated") {
     return (
@@ -1985,6 +2068,220 @@ export default function FiscaDashboardPage() {
 
   const hasActiveFilters = !!(filterType || filterMois || filterAnnee || filterDirection || filterStatus || filterDateFrom || filterDateTo)
 
+  const consolidationSummary = (() => {
+    const tabKey = consolidationTabKey
+    const showSupplierFilter = tabKey === "ibs" || tabKey === "taxe_domicil" || tabKey === "tva_autoliq"
+
+    const parseNum = (v: unknown) => {
+      const raw = String(v ?? "").trim()
+      if (!raw) return 0
+      const standardized = raw.replace(/\s/g, "").replace(/,/g, ".")
+      const parsed = parseFloat(standardized)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    const periodLabel = `${MONTHS[consolidationStartMois] || consolidationStartMois}/${consolidationStartAnnee} - ${MONTHS[consolidationEndMois] || consolidationEndMois}/${consolidationEndAnnee}`
+
+    const targetTabs = tabKey === "all"
+      ? DASH_TABS.map((t) => t.key)
+      : [tabKey]
+
+    let totalTtc = 0
+    let totalExonere = 0
+    let totalFactures = 0
+    let totalVehicule = 0
+    let totalTVA = 0
+    let totalTimbre = 0
+    let totalTAP = 0
+    let totalTaxe2 = 0
+    let totalMasters = 0
+    let totalIRG1 = 0
+    let totalIRG2 = 0
+    let totalIRG3 = 0
+    let totalIRG4 = 0
+    let totalIRG5 = 0
+    let totalFormation1 = 0
+    let totalFormation2 = 0
+    let totalTaxe1Pct = 0
+    let totalTaxe7Pct = 0
+
+    for (const decl of declarations) {
+      if (!targetTabs.includes(getDeclarationType(decl).key)) continue
+
+      const declMois = decl.mois
+      const declAnnee = decl.annee
+      const startKey = consolidationStartAnnee + consolidationStartMois
+      const endKey = consolidationEndAnnee + consolidationEndMois
+      const declKey = declAnnee + declMois
+      if (declKey < startKey || declKey > endKey) continue
+
+      if (consolidationDirections.length > 0) {
+        const declDir = (decl.direction ?? "").trim().toLowerCase()
+        if (!consolidationDirections.some((d) => declDir.includes(d.toLowerCase()))) continue
+      }
+
+      if (showSupplierFilter && consolidationSupplierId) {
+        const supplierId = decl.ibsFournisseurId || decl.tva16FournisseurId || ""
+        if (String(supplierId) !== String(consolidationSupplierId)) continue
+      }
+
+      if (tabKey === "all" || tabKey === "encaissement") {
+        for (const row of decl.encRows ?? []) {
+          const ht = parseNum(row.ht ?? "")
+          const ttc = ht > 0 ? ht * 1.19 : parseNum(row.ttc ?? "")
+          totalTtc += ttc
+          const exonere = parseNum(row.exonere ?? "")
+          totalExonere += exonere
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "tva_immo" || tabKey === "tva_biens") {
+        const rows = tabKey === "tva_immo" ? decl.tvaImmoRows : decl.tvaBiensRows
+        for (const row of rows ?? []) {
+          const ht = parseNum(row.montantHT)
+          const tva = parseNum(row.tva)
+          totalTVA += ht + tva
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "droits_timbre") {
+        for (const row of decl.timbreRows ?? []) {
+          totalTimbre += parseNum(row.droitTimbre)
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "etat_tap") {
+        for (const row of decl.tapRows ?? []) {
+          totalTAP += parseNum(row.tap2) * 0.015
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "taxe2") {
+        for (const row of decl.taxe2Rows ?? []) {
+          totalTaxe2 += parseNum(row.montant)
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "taxe_masters") {
+        for (const row of decl.masterRows ?? []) {
+          totalMasters += parseNum(row.montantHT) * 0.015
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "taxe_vehicule") {
+        totalVehicule += parseNum(decl.taxe11Montant)
+      }
+
+      if (tabKey === "all" || tabKey === "irg") {
+        const labels = IRG_LABELS
+        const rows = decl.irgRows ?? []
+        if (rows[0]) totalIRG1 += parseNum(rows[0].montant)
+        if (rows[1]) totalIRG2 += parseNum(rows[1].montant)
+        if (rows[2]) totalIRG3 += parseNum(rows[2].montant)
+        if (rows[3]) totalIRG4 += parseNum(rows[3].montant)
+        if (rows[4]) totalIRG5 += parseNum(rows[4].montant)
+      }
+
+      if (tabKey === "all" || tabKey === "taxe_formation") {
+        const rows = decl.taxe12Rows ?? []
+        if (rows[0]) totalFormation1 += parseNum(rows[0].montant)
+        if (rows[1]) totalFormation2 += parseNum(rows[1].montant)
+      }
+
+      if (tabKey === "all" || tabKey === "ca_tap") {
+        totalTaxe1Pct += parseNum(decl.b13) * 0.01
+        totalTaxe7Pct += parseNum(decl.b12) * 0.07
+      }
+
+      if (tabKey === "all" || tabKey === "ca_siege") {
+        for (const row of decl.caSiegeRows ?? []) {
+          totalTtc += parseNum(row.ttc)
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "ibs") {
+        for (const row of decl.ibs14Rows ?? []) {
+          totalTVA += parseNum(row.montantIBS)
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "taxe_domicil") {
+        for (const row of decl.taxe15Rows ?? []) {
+          totalTVA += parseNum(row.montantAPayer)
+        }
+      }
+
+      if (tabKey === "all" || tabKey === "tva_autoliq") {
+        for (const row of decl.tva16Rows ?? []) {
+          totalTVA += parseNum(row.tva19)
+        }
+      }
+
+      totalFactures += 1
+    }
+
+    const fmt = (v: number) => {
+      const [intPart, decPart] = v.toFixed(2).split(".")
+      const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+      return `${formattedInt},${decPart}`
+    }
+
+    const tiles: Array<{
+      label: string
+      value: string
+      icon: React.ReactNode
+      valueClassName?: string
+      tooltipLines?: string[]
+    }> = []
+
+    if (tabKey === "all" || tabKey === "encaissement" || tabKey === "ca_siege") {
+      tiles.push(
+        { label: "Montant TTC", value: fmt(totalTtc), icon: <Wallet className="h-4 w-4 text-blue-500" />, valueClassName: "text-blue-600" },
+        { label: "Montant Exonéré", value: fmt(totalExonere), icon: <FileText className="h-4 w-4 text-purple-500" />, valueClassName: "text-purple-600" }
+      )
+    }
+
+    if (tabKey === "all" || tabKey === "ca_tap") {
+      tiles.push(
+        { label: "Taxe 1%", value: fmt(totalTaxe1Pct), icon: <Wallet className="h-4 w-4 text-emerald-500" />, valueClassName: "text-emerald-600" },
+        { label: "Taxe 7%", value: fmt(totalTaxe7Pct), icon: <Wallet className="h-4 w-4 text-orange-500" />, valueClassName: "text-orange-600" }
+      )
+    }
+
+    if (tabKey === "all" || tabKey === "irg") {
+      tiles.push(
+        { label: IRG_LABELS[0] || "IRG 1", value: fmt(totalIRG1), icon: <Wallet className="h-4 w-4 text-teal-500" />, valueClassName: "text-teal-600" },
+        { label: IRG_LABELS[1] || "IRG 2", value: fmt(totalIRG2), icon: <Wallet className="h-4 w-4 text-teal-500" />, valueClassName: "text-teal-600" },
+        { label: IRG_LABELS[2] || "IRG 3", value: fmt(totalIRG3), icon: <Wallet className="h-4 w-4 text-teal-500" />, valueClassName: "text-teal-600" },
+        { label: IRG_LABELS[3] || "IRG 4", value: fmt(totalIRG4), icon: <Wallet className="h-4 w-4 text-teal-500" />, valueClassName: "text-teal-600" },
+        { label: IRG_LABELS[4] || "IRG 5", value: fmt(totalIRG5), icon: <Wallet className="h-4 w-4 text-teal-500" />, valueClassName: "text-teal-600" }
+      )
+    }
+
+    if (tabKey === "all" || tabKey === "taxe_formation") {
+      tiles.push(
+        { label: TAXE12_LABELS[0] || "Formation 1%", value: fmt(totalFormation1), icon: <Wallet className="h-4 w-4 text-indigo-500" />, valueClassName: "text-indigo-600" },
+        { label: TAXE12_LABELS[1] || "Apprentissage 1%", value: fmt(totalFormation2), icon: <Wallet className="h-4 w-4 text-indigo-500" />, valueClassName: "text-indigo-600" }
+      )
+    }
+
+    if (tabKey === "all" || tabKey === "tva_immo" || tabKey === "tva_biens" || tabKey === "droits_timbre" || tabKey === "etat_tap" || tabKey === "taxe2" || tabKey === "taxe_masters" || tabKey === "taxe_vehicule" || tabKey === "ibs" || tabKey === "taxe_domicil" || tabKey === "tva_autoliq") {
+      tiles.push({
+        label: "Total Final",
+        value: fmt(tabKey === "droits_timbre" ? totalTimbre : tabKey === "etat_tap" ? totalTAP : tabKey === "taxe2" ? totalTaxe2 : tabKey === "taxe_masters" ? totalMasters : tabKey === "taxe_vehicule" ? totalVehicule : totalTVA),
+        icon: <Wallet className="h-4 w-4 text-red-500" />,
+        valueClassName: "text-red-600"
+      })
+    }
+
+    return {
+      title: tabKey === "all" ? "Récapitulatif global" : (DASH_TABS.find((t) => t.key === tabKey)?.title || tabKey),
+      periodLabel,
+      showSupplierFilter,
+      tiles: tiles.length > 0 ? tiles : [{ label: "Aucune donnée", value: "0,00", icon: <Wallet className="h-4 w-4 text-gray-400" /> }]
+    }
+  })()
+
   const filteredDeclarations = declarations.filter((decl) => {
     const declType = getDeclarationType(decl)
     if (filterType && declType.key !== filterType) return false
@@ -2309,6 +2606,22 @@ export default function FiscaDashboardPage() {
           onYearChange={(value: string) => setReminderFilterAnnee(value.replace(/\D/g, "").slice(0, 4))}
           viewMode={viewMode}
           onViewModeChange={(mode) => setViewMode(mode)}
+          consolidationSummary={consolidationSummary}
+          onConsolidationTabChange={setConsolidationTabKey}
+          consolidationStartMonth={consolidationStartMois}
+          consolidationStartYear={consolidationStartAnnee}
+          consolidationEndMonth={consolidationEndMois}
+          consolidationEndYear={consolidationEndAnnee}
+          onConsolidationStartMonthChange={setConsolidationStartMois}
+          onConsolidationStartYearChange={(value: string) => setConsolidationStartAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          onConsolidationEndMonthChange={setConsolidationEndMois}
+          onConsolidationEndYearChange={(value: string) => setConsolidationEndAnnee(value.replace(/\D/g, "").slice(0, 4))}
+          consolidationDirections={consolidationDirections}
+          onConsolidationDirectionsChange={setConsolidationDirections}
+          consolidationSupplierId={consolidationSupplierId}
+          onConsolidationSupplierChange={setConsolidationSupplierId}
+          consolidationTabOptions={DASH_TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
+          fiscalFournisseurs={fiscalFournisseurs}
         />
 
         {/* Recent declarations */}

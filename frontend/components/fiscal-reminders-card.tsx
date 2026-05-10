@@ -28,14 +28,36 @@ interface RemindersCardProps {
   selectedYear?: string
   onMonthChange?: (value: string) => void
   onYearChange?: (value: string) => void
-  viewMode?: "indicateurs" | "recap"
-  onViewModeChange?: (mode: "indicateurs" | "recap") => void
-  recapTotals?: {
-    totalTtc: number
-    totalExonere: number
-    totalFactures: number
-    totalVehicule: number
+  viewMode?: "indicateurs" | "consolidation"
+  onViewModeChange?: (mode: "indicateurs" | "consolidation") => void
+  consolidationSummary?: {
+    title: string
+    periodLabel: string
+    showSupplierFilter?: boolean
+    tiles: Array<{
+      label: string
+      value: string
+      icon: React.ReactNode
+      valueClassName?: string
+      tooltipLines?: string[]
+    }>
   }
+  consolidationTabKey?: string
+  onConsolidationTabChange?: (value: string) => void
+  consolidationStartMonth?: string
+  consolidationStartYear?: string
+  consolidationEndMonth?: string
+  consolidationEndYear?: string
+  onConsolidationStartMonthChange?: (value: string) => void
+  onConsolidationStartYearChange?: (value: string) => void
+  onConsolidationEndMonthChange?: (value: string) => void
+  onConsolidationEndYearChange?: (value: string) => void
+  consolidationDirections?: string[]
+  onConsolidationDirectionsChange?: (values: string[]) => void
+  consolidationSupplierId?: string
+  onConsolidationSupplierChange?: (value: string) => void
+  consolidationTabOptions?: Array<{ key: string; label: string }>
+  fiscalFournisseurs?: Array<{ id: number; raisonSociale: string }>
 }
 
 const MONTH_OPTIONS = [
@@ -89,7 +111,23 @@ export function RemindersCard({
   onYearChange,
   viewMode = "indicateurs",
   onViewModeChange,
-  recapTotals,
+  consolidationSummary,
+  consolidationTabKey = "encaissement",
+  onConsolidationTabChange,
+  consolidationStartMonth = "",
+  consolidationStartYear = "",
+  consolidationEndMonth = "",
+  consolidationEndYear = "",
+  onConsolidationStartMonthChange,
+  onConsolidationStartYearChange,
+  onConsolidationEndMonthChange,
+  onConsolidationEndYearChange,
+  consolidationDirections = [],
+  onConsolidationDirectionsChange,
+  consolidationSupplierId = "",
+  onConsolidationSupplierChange,
+  consolidationTabOptions = [],
+  fiscalFournisseurs = [],
 }: RemindersCardProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedDirection, setSelectedDirection] = useState("all")
@@ -181,6 +219,12 @@ export function RemindersCard({
     return formatDeadlineDate(lastDeadline.deadline)
   }, [remindersForDisplay])
 
+  const selectedConsolidationDirectionsLabel = useMemo(() => {
+    if (consolidationDirections.length === 0) return "Toutes les directions"
+    if (consolidationDirections.length <= 2) return consolidationDirections.join(", ")
+    return `${consolidationDirections.length} directions sélectionnées`
+  }, [consolidationDirections])
+
   if (loading) {
     return (
       <Card className="border-yellow-200 bg-yellow-50">
@@ -205,11 +249,11 @@ export function RemindersCard({
             <div className="flex items-center gap-2">
               <Switch
                 id="view-mode-toggle"
-                checked={viewMode === "recap"}
-                onCheckedChange={(checked) => onViewModeChange?.(checked ? "recap" : "indicateurs")}
+                checked={viewMode === "consolidation"}
+                onCheckedChange={(checked) => onViewModeChange?.(checked ? "consolidation" : "indicateurs")}
               />
               <span className="text-sm font-medium">
-                {viewMode === "recap" ? "Recap" : "Indicateurs"}
+                {viewMode === "consolidation" ? "Consolidation" : "Indicateurs"}
               </span>
             </div>
           </div>
@@ -222,107 +266,184 @@ export function RemindersCard({
         {showFilters && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Filtres {viewMode === "recap" ? "recap" : "indicateurs"}</CardTitle>
+              <CardTitle className="text-base">Filtres {viewMode === "consolidation" ? "consolidation" : "indicateurs"}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Mois</p>
-                  <Select value={selectedMonth} onValueChange={(value) => onMonthChange?.(value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selectionner un mois" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MONTH_OPTIONS.map((month) => (
-                        <SelectItem key={month.value} value={month.value}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Annee</p>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={2000}
-                    max={2100}
-                    placeholder="ex: 2026"
-                    value={selectedYear}
-                    onChange={(event) => onYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                  />
-                </div>
-
-                {isAdmin && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Direction</p>
-                    <Select value={selectedDirection} onValueChange={setSelectedDirection}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Tout" />
+{viewMode === "consolidation" ? (
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">Tableau</label>
+                    <Select value={consolidationTabKey || "encaissement"} onValueChange={(value) => onConsolidationTabChange?.(value)} className="w-40">
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Tous les tableaux" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Tout</SelectItem>
+                        {consolidationTabOptions.map((tab) => (
+                          <SelectItem key={tab.key} value={tab.key}>{tab.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">Période début</label>
+                    <div className="flex items-center gap-1">
+                      <Select value={consolidationStartMonth} onValueChange={(value) => onConsolidationStartMonthChange?.(value)} className="w-28">
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Mois" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTH_OPTIONS.map((month) => (
+                            <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={2000}
+                        max={2100}
+                        placeholder="2026"
+                        value={consolidationStartYear}
+                        className="h-8 w-20 text-xs text-center"
+                        onChange={(event) => onConsolidationStartYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">Période fin</label>
+                    <div className="flex items-center gap-1">
+                      <Select value={consolidationEndMonth} onValueChange={(value) => onConsolidationEndMonthChange?.(value)} className="w-28">
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Mois" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTH_OPTIONS.map((month) => (
+                            <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={2000}
+                        max={2100}
+                        placeholder="2026"
+                        value={consolidationEndYear}
+                        className="h-8 w-20 text-xs text-center"
+                        onChange={(event) => onConsolidationEndYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                      />
+                    </div>
+                  </div>
+                  {consolidationSummary?.showSupplierFilter && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Fournisseur</label>
+                      <Select value={consolidationSupplierId || "__all__"} onValueChange={(value) => onConsolidationSupplierChange?.(value === "__all__" ? "" : value)} className="w-44">
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Tous les fournisseurs" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Tous les fournisseurs</SelectItem>
+                          {fiscalFournisseurs.map((fournisseur) => (
+                            <SelectItem key={String(fournisseur.id)} value={String(fournisseur.id)}>{fournisseur.raisonSociale}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="ml-auto space-y-1">
+                    <label className="text-xs font-medium text-slate-600">Direction</label>
+                    <Select value={consolidationDirections[0] || "__all__"} onValueChange={(value) => onConsolidationDirectionsChange?.(value === "__all__" ? [] : [value])} className="w-44">
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Toutes les directions" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Toutes les directions</SelectItem>
                         {availableDirectionOptions.map((direction) => (
-                          <SelectItem key={direction} value={direction}>
-                            {direction}
+                          <SelectItem key={direction} value={direction}>{direction}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Mois</p>
+                    <Select value={selectedMonth} onValueChange={(value) => onMonthChange?.(value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selectionner un mois" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONTH_OPTIONS.map((month) => (
+                          <SelectItem key={month.value} value={month.value}>
+                            {month.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-              </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Annee</p>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={2000}
+                      max={2100}
+                      placeholder="ex: 2026"
+                      value={selectedYear}
+                      onChange={(event) => onYearChange?.(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    />
+                  </div>
+
+                  {isAdmin && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Direction</p>
+                      <Select value={selectedDirection} onValueChange={setSelectedDirection}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Tout" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Tout</SelectItem>
+                          {availableDirectionOptions.map((direction) => (
+                            <SelectItem key={direction} value={direction}>
+                              {direction}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
       </div>
 
-      {viewMode === "recap" && recapTotals ? (
+      {viewMode === "consolidation" && consolidationSummary ? (
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <p className="text-sm font-medium text-muted-foreground">
-              Récapitulatif global
+              {consolidationSummary.title}
             </p>
             <p className="text-sm font-medium text-muted-foreground">
-              Période: {selectedMonth && selectedYear ? `${selectedMonth}/${selectedYear}` : "-"}
+              Période: {consolidationSummary.periodLabel}
             </p>
           </div>
           <div className="overflow-x-auto">
-            <div className="grid grid-cols-4 min-w-[800px] gap-3">
-              <div>
-                <IndicatorBrick
-                  label="Montant TTC"
-                  value={fmtNumber(recapTotals.totalTtc)}
-                  icon={<Wallet className="h-4 w-4 text-blue-500" />}
-                  valueClassName="text-blue-600"
-                />
-              </div>
-              <div>
-                <IndicatorBrick
-                  label="Montant Exonéré"
-                  value={fmtNumber(recapTotals.totalExonere)}
-                  icon={<FileText className="h-4 w-4 text-purple-500" />}
-                  valueClassName="text-purple-600"
-                />
-              </div>
-              <div>
-                <IndicatorBrick
-                  label="Total Factures"
-                  value={String(recapTotals.totalFactures)}
-                  icon={<FileText className="h-4 w-4 text-emerald-500" />}
-                  valueClassName="text-emerald-600"
-                />
-              </div>
-              <div>
-                <IndicatorBrick
-                  label="Total Véhicule"
-                  value={fmtNumber(recapTotals.totalVehicule)}
-                  icon={<Car className="h-4 w-4 text-amber-500" />}
-                  valueClassName="text-amber-600"
-                />
-              </div>
+            <div className={`grid gap-3 min-w-[720px] ${consolidationSummary.tiles.length <= 2 ? "grid-cols-2" : consolidationSummary.tiles.length <= 4 ? "grid-cols-4" : "grid-cols-5"}`}>
+              {consolidationSummary.tiles.map((tile) => (
+                <div key={tile.label}>
+                  <IndicatorBrick
+                    label={tile.label}
+                    value={tile.value}
+                    icon={tile.icon}
+                    valueClassName={tile.valueClassName}
+                    tooltipLines={tile.tooltipLines}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>
