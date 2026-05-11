@@ -1473,9 +1473,11 @@ export default function FiscaDashboardPage() {
 
     return scopedDeclarations.reduce(
       (acc, decl) => {
+        // Calcul du TTC total (encaissements + CA siège)
         acc.totalTtc += (decl.encRows ?? []).reduce((sum, row) => sum + resolveEncaissementAmounts(row).ttc, 0)
         acc.totalTtc += (decl.caSiegeRows ?? []).reduce((sum, row) => sum + num(row.ttc), 0)
 
+        // Calcul du montant exonéré : on additionne le TTC des lignes dont la désignation contient "exon"
         acc.totalExonere += (decl.encRows ?? []).reduce((sum, row) => {
           const designation = (row.designation ?? "").trim().toLowerCase()
           if (designation.includes("exon")) {
@@ -2127,11 +2129,13 @@ export default function FiscaDashboardPage() {
 
       if (tabKey === "all" || tabKey === "encaissement") {
         for (const row of decl.encRows ?? []) {
-          const ht = parseNum(row.ht ?? "")
-          const ttc = ht > 0 ? ht * 1.19 : parseNum(row.ttc ?? "")
+          const { ttc } = resolveEncaissementAmounts(row)
           totalTtc += ttc
-          const exonere = parseNum(row.exonere ?? "")
-          totalExonere += exonere
+          // Vérifier si la ligne est exonérée (désignation contient "exon")
+          const designation = (row.designation ?? "").trim().toLowerCase()
+          if (designation.includes("exon")) {
+            totalExonere += ttc
+          }
         }
       }
 
@@ -2173,7 +2177,6 @@ export default function FiscaDashboardPage() {
       }
 
       if (tabKey === "all" || tabKey === "irg") {
-        const labels = IRG_LABELS
         const rows = decl.irgRows ?? []
         if (rows[0]) totalIRG1 += parseNum(rows[0].montant)
         if (rows[1]) totalIRG2 += parseNum(rows[1].montant)
@@ -3162,5 +3165,3 @@ export default function FiscaDashboardPage() {
     </LayoutWrapper>
   )
 }
-
-
