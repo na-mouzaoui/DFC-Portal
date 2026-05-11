@@ -585,32 +585,37 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
   const totalBase = num(b12) + num(b13)
   const totalTaxe = num(b12) * 0.07 + num(b13) * 0.01
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {["DESIGNATIONS", "CA HT SOUMIS", "TAXE A VERSER"].map((h) => (
-            <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        <TableRow>
-          <TableCell>CA RECHARGEMENT SOUMIS A 7%</TableCell>
-          <TableCell className="text-right font-semibold">{fmt(b12)}</TableCell>
-          <TableCell className="text-right font-semibold">{fmt(num(b12) * 0.07)}</TableCell>
-        </TableRow>
-        <TableRow>
-          <TableCell>CA GLOBAL SOUMIS A 1%</TableCell>
-          <TableCell className="text-right font-semibold">{fmt(b13)}</TableCell>
-          <TableCell className="text-right font-semibold">{fmt(num(b13) * 0.01)}</TableCell>
-        </TableRow>
-        <TableRow className="font-bold bg-muted">
-          <TableCell>TOTAL</TableCell>
-          <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
-          <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {["DESIGNATIONS", "CA HT SOUMIS", "TAXE A VERSER"].map((h) => (
+              <TableHead key={h} className={h !== "DESIGNATIONS" ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>CA RECHARGEMENT SOUMIS A 7%</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(b12)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(b12) * 0.07)}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>CA GLOBAL SOUMIS A 1%</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(b13)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(num(b13) * 0.01)}</TableCell>
+          </TableRow>
+          <TableRow className="font-bold bg-muted">
+            <TableCell>TOTAL</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalBase)}</TableCell>
+            <TableCell className="text-right font-bold">{fmt(totalTaxe)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+      <p className="mt-2 text-xs text-muted-foreground italic">
+        NB: (*) LE CHIFFRE D'AFFAIRES GLOBAL SOUMIS A 1% DOIT CORRESPONDRE AU CHIFFRE D'AFFAIRES COMPTABILISE
+      </p>
+    </div>
   )
 }
 
@@ -1890,7 +1895,6 @@ export default function FiscaDashboardPage() {
           },
           headStyles: {
             fillColor: [45, 179, 75],
-            textColor: [255, 255, 255],
             font: "helvetica",
             fontStyle: "bold",
             fontSize: tabKey === "ibs" ? 8 : 9,
@@ -1952,14 +1956,20 @@ export default function FiscaDashboardPage() {
 
             if (isTotalRow) {
               data.cell.styles.fillColor = [45, 179, 75]
-              data.cell.styles.textColor = [255, 255, 255]
+              data.cell.styles.textColor = [0, 0, 0]
               data.cell.styles.fontStyle = "bold"
             }
           },
           horizontalPageBreak: true,
           horizontalPageBreakRepeat: [0],
         })
-
+        if (tabKey === "ca_tap") {
+          const noteY = (pdf as any).lastAutoTable?.finalY + 10 || 100
+          pdf.setFont("times", "italic")
+          pdf.setFontSize(9)
+          pdf.setTextColor(100, 100, 100)
+          pdf.text("NB: (*) LE CHIFFRE D'AFFAIRES GLOBAL SOUMIS A 1% DOIT CORRESPONDRE AU CHIFFRE D'AFFAIRES COMPTABILISE", 10, noteY)
+        }
         const blobUrl = URL.createObjectURL(pdf.output("blob"))
         window.open(blobUrl, "_blank")
       } catch (err) {
@@ -2419,7 +2429,7 @@ export default function FiscaDashboardPage() {
           },
           headStyles: {
             fillColor: [45, 179, 75],
-            textColor: [255, 255, 255],
+            textColor: [0, 0, 0],
             fontStyle: "bold",
             halign: "center",
           },
@@ -2450,7 +2460,7 @@ export default function FiscaDashboardPage() {
 
             if (isTotalRow) {
               data.cell.styles.fillColor = [45, 179, 75]
-              data.cell.styles.textColor = [255, 255, 255]
+              data.cell.styles.textColor = [0, 0, 0]
               data.cell.styles.fontStyle = "bold"
             }
 

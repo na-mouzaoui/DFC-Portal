@@ -211,7 +211,14 @@ public class FiscalController : ControllerBase
         "acompte",
         "ibs",
         "taxe_domicil",
-        "tva_autoliq"
+
+        "taxe_formation",
+        "acompte",
+        "ibs",
+        "taxe_domicil",
+        "tva_autoliq",
+        "tnfdal1",
+        "tacp7"
     };
 
     private static readonly HashSet<string> RegionalManageableTabs = new(RegionalManageableTabOrder, StringComparer.OrdinalIgnoreCase);

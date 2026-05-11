@@ -22,6 +22,8 @@ export const FINANCE_FISCAL_TAB_KEYS = [
   "ibs",
   "taxe_domicil",
   "tva_autoliq",
+  "tnfdal1",
+  "tacp7",
 ] as const
 
 const normalizeRole = (role?: string | null) => (role ?? "").trim().toLowerCase()
