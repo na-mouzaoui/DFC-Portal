@@ -146,13 +146,48 @@ interface Tab1Props { rows: EncRow[]; setRows: React.Dispatch<React.SetStateActi
   isSubmitting: boolean;
 }
 
+
 function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
-  const update    = (i: number, field: keyof EncRow, val: string) =>
+  const update = (i: number, field: keyof EncRow, val: string) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)))
+
+  const updatePostPrepaidFromTTC = (i: number, ttcValue: string) => {
+    if (i !== 0) return
+    const ttc = num(ttcValue)
+    const ht = ttc / 1.19
+    setRows((p) =>
+      p.map((r, idx) =>
+        idx === i ? { ...r, ht: ht.toFixed(2), ttc: ttcValue } : r
+      )
+    )
+  }
+
+  const updateExonereFromHT = (i: number, htValue: string) => {
+    if (i !== 1) return
+    setRows((p) =>
+      p.map((r, idx) =>
+        idx === i ? { ...r, ht: htValue } : r
+      )
+    )
+  }
+
+  const updateFromTTC = (i: number, ttcValue: string) => {
+    if (i < 2) return
+    const ttc = num(ttcValue)
+    const ht = ttc / 1.19
+    setRows((p) =>
+      p.map((r, idx) =>
+        idx === i ? { ...r, ht: ht.toFixed(2), ttc: ttcValue } : r
+      )
+    )
+  }
 
   const totals = useMemo(() => {
     const ht = rows.reduce((s, r) => s + num(r.ht), 0)
-    const tva = ht * 0.19
+    const tva = rows.reduce((s, r, idx) => {
+      if (idx === 1) return s + 0
+      return s + (num(r.ht) * 0.19)
+    }, 0)
     return { ht, tva, ttc: ht + tva }
   }, [rows])
 
@@ -172,27 +207,96 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
           </thead>
           <tbody>
             {rows.map((row, i) => {
+              const isExonere = i === 1
               const ht = num(row.ht)
-              const tva = ht * 0.19
-              const ttc = ht + tva
+              const tva = isExonere ? 0 : ht * 0.19
+              const ttc = isExonere ? ht : ht + tva
+
               return (
                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
                   <td className="px-1 py-1 border-b">
-                    <Input value={row.designation} readOnly
-                      className="h-7 px-2 text-xs bg-gray-50" placeholder="Designation" style={{ minWidth: 200 }} />
+                    <Input
+                      value={row.designation}
+                      readOnly
+                      className="h-7 px-2 text-xs bg-gray-50"
+                      placeholder="Designation"
+                      style={{ minWidth: 200 }}
+                    />
                   </td>
+
+                  {/* Colonne HT */}
                   <td className="px-1 py-1 border-b">
-                    <AmountInput value={row.ht}
-                      onChange={(e) => update(i, "ht", e.target.value)}
-                      className="h-7 px-2 text-xs" placeholder="0.00" style={{ minWidth: 130 }} />
+                    {isExonere ? (
+                      // EXONERE : saisie directe en HT avec AmountInput
+                      <AmountInput
+                        min={0}
+                        step="0.01"
+                        value={row.ht}
+                        onChange={(e) => updateExonereFromHT(i, e.target.value)}
+                        className="h-7 px-2 text-xs"
+                        placeholder="0,00"
+                        style={{ minWidth: 130 }}
+                      />
+                    ) : (
+                      // Autres lignes : HT calculé, lecture seule
+                      <Input
+                        value={ht === 0 ? "" : fmt(ht)}
+                        readOnly
+                        className="h-7 px-2 text-xs bg-gray-100"
+                        placeholder="0,00"
+                        style={{ minWidth: 130 }}
+                      />
+                    )}
                   </td>
-                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
-                    {row.ht ? fmt(tva) : "-"}
+
+                  {/* Colonne TVA */}
+                  <td className="px-1 py-1 border-b">
+                    <Input
+                      value={tva === 0 ? "" : fmt(tva)}
+                      readOnly
+                      className="h-7 px-2 text-xs bg-gray-100"
+                      placeholder="0,00"
+                      style={{ minWidth: 130 }}
+                    />
                   </td>
-                  <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">
-                    {row.ht ? fmt(ttc) : "-"}
+
+                  {/* Colonne TTC */}
+                  <td className="px-1 py-1 border-b">
+                    {isExonere ? (
+                      // EXONERE : TTC = HT, lecture seule
+                      <Input
+                        value={ttc === 0 ? "" : fmt(ttc)}
+                        readOnly
+                        className="h-7 px-2 text-xs bg-gray-100"
+                        placeholder="0,00"
+                        style={{ minWidth: 130 }}
+                      />
+                    ) : i === 0 ? (
+                      // POST/PRE PAID : saisie TTC avec AmountInput
+                      <AmountInput
+                        min={0}
+                        step="0.01"
+                        value={row.ttc ?? (ht === 0 ? "" : fmt(ttc))}
+                        onChange={(e) => updatePostPrepaidFromTTC(i, e.target.value)}
+                        className="h-7 px-2 text-xs"
+                        placeholder="0,00"
+                        style={{ minWidth: 130 }}
+                      />
+                    ) : (
+                      // Autres lignes : saisie TTC avec AmountInput
+                      <AmountInput
+                        min={0}
+                        step="0.01"
+                        value={row.ttc ?? (ht === 0 ? "" : fmt(ttc))}
+                        onChange={(e) => updateFromTTC(i, e.target.value)}
+                        className="h-7 px-2 text-xs"
+                        placeholder="0,00"
+                        style={{ minWidth: 130 }}
+                      />
+                    )}
                   </td>
+
                   <td className="px-2 py-1 text-center border-b text-gray-300">-</td>
                 </tr>
               )
@@ -201,16 +305,15 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
           <tfoot>
             <tr className="bg-green-100 font-semibold">
               <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totals.ht)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{fmt(totals.tva)}</td>
-              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{fmt(totals.ttc)}</td>
+              <td className="px-3 py-2 text-xs border-t text-right">{totals.ht === 0 ? "" : fmt(totals.ht)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{totals.tva === 0 ? "" : fmt(totals.tva)}</td>
+              <td className="px-3 py-2 text-xs text-gray-700 border-t text-right">{totals.ttc === 0 ? "" : fmt(totals.ttc)}</td>
               <td className="border-t" />
             </tr>
           </tfoot>
         </table>
       </div>
       <div className="flex justify-between items-center">
-        <p className="text-xs text-muted-foreground">Lignes fixes: la designation n'est pas modifiable.</p>
         <Button size="sm" onClick={onSave} disabled={isSubmitting}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
@@ -848,26 +951,71 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 // 
 interface Tab7Props { rows: SiegeEncRow[]; setRows: React.Dispatch<React.SetStateAction<SiegeEncRow[]>>; onSave: () => void; isSubmitting: boolean }
 function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
-  const upd = (i: number, v: string) =>
+
+  const upd = (i: number, field: "ttc" | "ht", v: string) =>
     setRows((prev) =>
       prev.map((r, idx) => {
         if (idx !== i) return r
 
-        const ttcValue = v
-        const ttcNumeric = num(ttcValue)
-        const htValue = (ttcValue ?? "").trim() === "" ? "" : (ttcNumeric / 1.19).toFixed(2)
+        // Ligne 1 "Encaissement Exonérée" : TTC verrouillé, HT éditable
+        if (i === 1) {
+          if (field === "ht") return { ...r, ht: v }
+          return r // ignorer toute modif TTC
+        }
 
-        return { ...r, ttc: ttcValue, ht: htValue }
+        // Ligne 0 "Encaissement" : HT = (TTC_encaissement - HT_exonérée) / 1.19
+        if (i === 0) {
+          const ttcNumeric = num(v)
+          const exonereeHT = num(prev[1].ht)
+          const htValue = v.trim() === "" ? "" : ((ttcNumeric - exonereeHT) / 1.19).toFixed(2)
+          return { ...r, ttc: v, ht: htValue }
+        }
+
+        // Autres lignes : comportement normal TTC → HT
+        const ttcNumeric = num(v)
+        const htValue = v.trim() === "" ? "" : (ttcNumeric / 1.19).toFixed(2)
+        return { ...r, ttc: v, ht: htValue }
       }),
     )
+
+  // Recalculer HT ligne 0 si HT exonérée change (pour garder la cohérence)
+  const recalcLigne0AfterExo = (newExoHT: string) =>
+    setRows((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== 0) return r
+        const ttcNumeric = num(r.ttc)
+        const exoHT = num(newExoHT)
+        const htValue = (r.ttc ?? "").trim() === "" ? "" : ((ttcNumeric - exoHT) / 1.19).toFixed(2)
+        return { ...r, ht: htValue }
+      }),
+    )
+
+  const updExo = (v: string) => {
+    setRows((prev) =>
+      prev.map((r, idx) => {
+        if (idx === 1) return { ...r, ht: v }
+        if (idx === 0) {
+          const ttcNumeric = num(r.ttc)
+          const exoHT = num(v)
+          const htValue = (r.ttc ?? "").trim() === "" ? "" : ((ttcNumeric - exoHT) / 1.19).toFixed(2)
+          return { ...r, ht: htValue }
+        }
+        return r
+      }),
+    )
+  }
+
   const g1 = rows.slice(0, 2)
   const g2 = rows.slice(2, 12)
   const t1ttc = g1.reduce((s, r) => s + num(r.ttc), 0)
-  const t1ht  = g1.reduce((s, r) => s + (num(r.ttc) / 1.19), 0)
+  const t1ht  = rows[0] && rows[1]
+    ? num(rows[0].ht) + num(rows[1].ht)
+    : 0
   const t2ttc = g2.reduce((s, r) => s + num(r.ttc), 0)
   const t2ht  = g2.reduce((s, r) => s + (num(r.ttc) / 1.19), 0)
   const totalRow: React.CSSProperties = { background: "#f3f4f6", fontWeight: 700 }
   const grandRow: React.CSSProperties = { background: "#dcfce7", fontWeight: 700 }
+
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
@@ -883,22 +1031,68 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
             {SIEGE_G1_LABELS.map((lbl, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i].ttc} onChange={(e) => upd(i, e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right bg-gray-100" value={(rows[i].ttc ?? "").trim() === "" ? "" : (num(rows[i].ttc) / 1.19).toFixed(2)} readOnly placeholder="0.00" style={{ minWidth: 130 }} /></td>
+
+                {/* Colonne TTC */}
+                <td className="px-1 py-1 border-b">
+                  {i === 1 ? (
+                    // Exonérée : TTC verrouillé, toujours vide
+                    <AmountInput min={0} step="0.01"
+                      className="h-7 px-2 text-xs text-right bg-gray-100 cursor-not-allowed"
+                      value="" readOnly placeholder="—"
+                      style={{ minWidth: 130 }} />
+                  ) : (
+                    <AmountInput min={0} step="0.01"
+                      className="h-7 px-2 text-xs text-right"
+                      value={rows[i].ttc}
+                      onChange={(e) => upd(i, "ttc", e.target.value)}
+                      placeholder="0.00" style={{ minWidth: 130 }} />
+                  )}
+                </td>
+
+                {/* Colonne HT */}
+                <td className="px-1 py-1 border-b">
+                  {i === 1 ? (
+                    // Exonérée : HT éditable, et met à jour HT de la ligne 0
+                    <AmountInput min={0} step="0.01"
+                      className="h-7 px-2 text-xs text-right"
+                      value={rows[1].ht ?? ""}
+                      onChange={(e) => updExo(e.target.value)}
+                      placeholder="0.00" style={{ minWidth: 130 }} />
+                  ) : (
+                    // Ligne 0 : HT calculé automatiquement
+                    <AmountInput min={0} step="0.01"
+                      className="h-7 px-2 text-xs text-right bg-gray-100"
+                      value={rows[i].ht ?? ""}
+                      readOnly placeholder="0.00"
+                      style={{ minWidth: 130 }} />
+                  )}
+                </td>
               </tr>
             ))}
+
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 1</td>
               <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ttc)}</td>
               <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t1ht)}</td>
             </tr>
+
             {SIEGE_G2_LABELS.map((lbl, i) => (
               <tr key={i + 2} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-4 py-1 text-xs border-b">{lbl}</td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right" value={rows[i + 2].ttc} onChange={(e) => upd(i + 2, e.target.value)} placeholder="0.00" style={{ minWidth: 130 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right bg-gray-100" value={(rows[i + 2].ttc ?? "").trim() === "" ? "" : (num(rows[i + 2].ttc) / 1.19).toFixed(2)} readOnly placeholder="0.00" style={{ minWidth: 130 }} /></td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right"
+                    value={rows[i + 2].ttc}
+                    onChange={(e) => upd(i + 2, "ttc", e.target.value)}
+                    placeholder="0.00" style={{ minWidth: 130 }} />
+                </td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput min={0} step="0.01" className="h-7 px-2 text-xs text-right bg-gray-100"
+                    value={(rows[i + 2].ttc ?? "").trim() === "" ? "" : (num(rows[i + 2].ttc) / 1.19).toFixed(2)}
+                    readOnly placeholder="0.00" style={{ minWidth: 130 }} />
+                </td>
               </tr>
             ))}
+
             <tr style={totalRow}>
               <td className="px-4 py-2 text-xs border-b font-bold">TOTAL 2</td>
               <td className="px-3 py-2 text-xs border-b text-right font-bold">{fmt(t2ttc)}</td>
@@ -921,13 +1115,12 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
     </div>
   )
 }
-
 // 
 // TAB 8 - SITUATION IRG
 // 
 type IrgRow = { assietteImposable: string; montant: string }
 const IRG_LABELS = [
-  "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15%",
+  "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15 % (consultants, athlètes, …)",
   "Jetons de presence 10%", "Tantieme 10%",
 ]
 const IRG_AUTO_RATES: Array<number | null> = [null, 0.10, 0.15, 0.10, 0.10]
@@ -992,16 +1185,29 @@ function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
 }
 
 // 
-// TAB 9 - SITUATION TAXE 2%
-// 
+/// TAB 9 - SITUATION TAXE 2%
 type Taxe2Row = { base: string; montant: string }
 const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
+
 interface Tab9Props { rows: Taxe2Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe2Row[]>>; onSave: () => void; isSubmitting: boolean }
+
 function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
-  const upd = (i: number, f: keyof Taxe2Row, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+  const upd = (i: number, v: string) =>
+    setRows((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r;
+        const baseVal = parseFloat(v) || 0;
+        return {
+          ...r,
+          base: v,
+          montant: (baseVal * 0.02).toFixed(2), // ✅ Calcul automatique 2%
+        };
+      })
+    );
+
   const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
   const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
+
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
@@ -1016,9 +1222,35 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
           <tbody>
             {TAXE2_LABELS.map((lbl, i) => (
               <tr key={i} className="bg-white">
-                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>{lbl}</td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>
+                  {lbl}
+                </td>
+
+                {/* ✅ Base : éditable */}
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    className="h-7 px-2 text-xs"
+                    value={rows[i].base}
+                    onChange={(e) => upd(i, e.target.value)}
+                    placeholder="0.00"
+                    style={{ minWidth: 150 }}
+                  />
+                </td>
+
+                {/* ✅ Montant taxe : calculé automatiquement, lecture seule */}
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    className="h-7 px-2 text-xs bg-gray-50 text-gray-500"
+                    value={rows[i].montant}
+                    readOnly
+                    placeholder="0.00"
+                    style={{ minWidth: 150 }}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1032,9 +1264,14 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
         </table>
       </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
-          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={isSubmitting}
+          className="gap-1.5"
+          style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}
+        >
+          <Save size={13} /> {isSubmitting ? "Enregistrement..." : "Enregistrer"}
         </Button>
       </div>
     </div>
@@ -6793,10 +7030,3 @@ export default function NouvelleDeclarationPage() {
     </LayoutWrapper>
   )
 }
-
-
-
-
-
-
-
