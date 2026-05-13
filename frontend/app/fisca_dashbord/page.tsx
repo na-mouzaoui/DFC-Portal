@@ -30,6 +30,8 @@ type IrgRow    = { assietteImposable: string; montant: string }
 type Taxe2Row  = { base: string; montant: string }
 type MasterRow = { date: string; nomMaster: string; numFacture: string; dateFacture: string; montantHT: string; taxe15: string; mois: string; observation: string }
 type Taxe12Row = { montant: string }
+type Tnfdal1Row = { designation: string; caHt: string; taxe: string }
+type Tacp7Row = { designation: string; base: string; taxe: string }
 type Ibs14Row  = {
   numFacture: string
   montantBrutDevise: string
@@ -90,6 +92,8 @@ interface SavedDeclaration {
   taxe15Rows?: Taxe15Row[]
   tva16Rows?: Tva16Row[]
   tva16FournisseurId?: string
+  tnfdal1Rows?: Tnfdal1Row[]
+  tacp7Rows?: Tacp7Row[]
 }
 
 interface ApiFiscalDeclaration {
@@ -310,6 +314,8 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
     taxe15Rows: [],
     tva16Rows: [],
     tva16FournisseurId: "",
+    tnfdal1Rows: [],
+    tacp7Rows: [],
   }
 
   switch ((item.tabKey ?? "").trim().toLowerCase()) {
@@ -364,6 +370,12 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
       declaration.tva16Rows = toArray<Tva16Row>(parsedData.tva16Rows)
       declaration.tva16FournisseurId = String(parsedData.tva16FournisseurId ?? "")
       break
+    case "tnfdal1":
+      declaration.tnfdal1Rows = toArray<Tnfdal1Row>(parsedData.tnfdal1Rows)
+      break
+    case "tacp7":
+      declaration.tacp7Rows = toArray<Tacp7Row>(parsedData.tacp7Rows)
+      break
     default:
       break
   }
@@ -394,6 +406,8 @@ const DASH_TABS = [
   { key: "ibs",           label: "14 a IBS Fournisseurs Etrangers", color: "#7c2d12", title: "IBS SUR FOURNISSEURS ETRANGERS" },
   { key: "taxe_domicil",  label: "15 a Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
   { key: "tva_autoliq",   label: "16 a TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
+  { key: "tnfdal1",       label: "17 a N17 TNFDAL 1%",       color: "#0ea5e9", title: "N17 - TNFDAL 1%" },
+  { key: "tacp7",         label: "18 a N18 TACP 7%",         color: "#22c55e", title: "N18 - TACP 7%" },
 ]
 
 const DECLARATION_TYPE_LABELS: Record<string, string> = {
@@ -413,6 +427,8 @@ const DECLARATION_TYPE_LABELS: Record<string, string> = {
   ibs: "IBS Fournisseurs Etrangers",
   taxe_domicil: "Taxe Domiciliation",
   tva_autoliq: "TVA Auto Liquidation",
+  tnfdal1: "N17 TNFDAL 1%",
+  tacp7: "N18 TACP 7%",
 }
 
 // aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -829,6 +845,54 @@ function Taxe12Table({ rows }: { rows: Taxe12Row[] }) {
   )
 }
 
+function Tnfdal1Table({ rows }: { rows: Tnfdal1Row[] }) {
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {"Désignation|Chiffres d'Affaires HT|Montant du TNFDAL 1%".split("|").map((h) => (
+            <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, i) => (
+          <TableRow key={i}>
+            <TableCell>{row.designation || "-"}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(row.caHt)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(row.taxe)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function Tacp7Table({ rows }: { rows: Tacp7Row[] }) {
+  if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {"Désignation|Montant des Recharges HT|Montant du TACP 7%".split("|").map((h) => (
+            <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, i) => (
+          <TableRow key={i}>
+            <TableCell>{row.designation || "-"}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(row.base)}</TableCell>
+            <TableCell className="text-right font-semibold">{fmt(row.taxe)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
 function AcompteTable({ months, annee }: { months: string[]; annee: string }) {
   if (!months || months.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const yy = annee.slice(-2)
@@ -982,6 +1046,8 @@ function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: S
     case "ibs":           return <Ibs14Table rows={decl.ibs14Rows ?? []} />
     case "taxe_domicil":  return <Taxe15Table rows={decl.taxe15Rows ?? []} />
     case "tva_autoliq":   return <Tva16Table rows={decl.tva16Rows ?? []} />
+    case "tnfdal1":       return <Tnfdal1Table rows={decl.tnfdal1Rows ?? []} />
+    case "tacp7":         return <Tacp7Table rows={decl.tacp7Rows ?? []} />
     default:              return null
   }
 }
@@ -1584,8 +1650,7 @@ export default function FiscaDashboardPage() {
     setViewTabKey(tabKey)
     setShowDialog(true)
   }
-
-  const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
+const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     setPrintDecl(decl)
     setViewTabKey(tabKey)
     setTimeout(async () => {
@@ -1615,6 +1680,13 @@ export default function FiscaDashboardPage() {
             : tableTitle
         const headerTitle = `${pdfTableTitle} ${periodText}`.trim()
         const layoutShiftY = tabKey === "ca_siege" ? -10 : 0
+        const g50Tabs = new Set(["encaissement", "droits_timbre", "ca_tap", "etat_tap"])
+        const g50TableNumbers: Record<string, number> = {
+          encaissement: 1,
+          droits_timbre: 4,
+          ca_tap: 5,
+          etat_tap: 6,
+        }
 
         if (tabKey === "tva_immo" || tabKey === "tva_biens") {
           const rows = tabKey === "tva_immo" ? (decl.tvaImmoRows ?? []) : (decl.tvaBiensRows ?? [])
@@ -1783,6 +1855,62 @@ export default function FiscaDashboardPage() {
           pdf.line(x, y + 0.6, x + width, y + 0.6)
         }
 
+        const drawG50Header = (logoImg: HTMLImageElement | null) => {
+          const pageWidth = pdf.internal.pageSize.getWidth()
+
+          const drawBox = (x: number, y: number, w: number, h: number) => {
+            pdf.setDrawColor(0, 0, 0)
+            pdf.setLineWidth(0.35)
+            pdf.rect(x, y, w, h)
+          }
+
+          const write = (
+            text: string,
+            x: number,
+            y: number,
+            style: "normal" | "bold" = "normal",
+            size = 10,
+            align: "left" | "center" | "right" = "left",
+          ) => {
+            pdf.setFont("helvetica", style)
+            pdf.setFontSize(size)
+            pdf.text(text, x, y, { align })
+          }
+
+          if (logoImg) {
+            pdf.addImage(logoImg, "PNG", 10, 10, 38, 16)
+          }
+
+          // Left box: ATM MOBILIS / DR
+          drawBox(10, 30, 70, 16)
+          pdf.line(10, 38, 80, 38)
+          write("ATM MOBILIS", 12, 36, "bold", 9)
+          write(`DR : ${decl.direction || ""}`, 12, 44.5, "bold", 9)
+
+          // Right box: Declaration month/year
+          drawBox(pageWidth - 80, 30, 70, 16)
+          pdf.line(pageWidth - 80, 38, pageWidth - 10, 38)
+          write(`Déclaration Mois : ${periodText.split(" ")[0] ?? ""}`, pageWidth - 78, 36, "bold", 9)
+          write(`Année : ${decl.annee ?? ""}`, pageWidth - 78, 44.5, "bold", 9)
+
+          // Center title box
+          const titleBoxW = 140
+          const titleBoxX = (pageWidth - titleBoxW) / 2
+          drawBox(titleBoxX, 52, titleBoxW, 14)
+          pdf.line(titleBoxX, 59, titleBoxX + titleBoxW, 59)
+          write("ETAT MENSUEL DE DECLARATION G50", pageWidth / 2, 57, "bold", 9.5, "center")
+
+          const tableNum = g50TableNumbers[tabKey] ?? ""
+          const tableTitleLine = `TABLEAU N° ${tableNum} : ${pdfTableTitle}`.trim()
+          const baseSize = 9.2
+          pdf.setFont("helvetica", "bold")
+          pdf.setFontSize(baseSize)
+          const titleWidth = pdf.getTextWidth(tableTitleLine)
+          const maxWidth = titleBoxW - 4
+          const fittedSize = titleWidth > maxWidth ? Math.max(6.5, (baseSize * maxWidth) / titleWidth) : baseSize
+          write(tableTitleLine, pageWidth / 2, 63.7, "bold", fittedSize, "center")
+        }
+
         const logo = await new Promise<HTMLImageElement | null>((resolve) => {
           const img = new Image()
           img.onload = () => resolve(img)
@@ -1790,18 +1918,24 @@ export default function FiscaDashboardPage() {
           img.src = "/logo_doc.png"
         })
 
-        // Logo en haut à gauche
-        if (logo) {
-          pdf.addImage(logo, "PNG", 10, 12 + layoutShiftY, 40, 15)
-        }
+        const isG50Tab = g50Tabs.has(tabKey)
 
-        pdf.setFont("times", "bold")
-        pdf.setFontSize(11)
-        drawUnderlinedText("ATM MOBILIS SPA", 10, 33 + layoutShiftY)
-        drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 38 + layoutShiftY)
-        drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 43 + layoutShiftY)
-        pdf.setFontSize(14)
-        drawUnderlinedText(headerTitle, 10, 64 + layoutShiftY)
+        if (isG50Tab) {
+          drawG50Header(logo)
+        } else {
+          // Logo en haut à gauche
+          if (logo) {
+            pdf.addImage(logo, "PNG", 10, 12 + layoutShiftY, 40, 15)
+          }
+
+          pdf.setFont("times", "bold")
+          pdf.setFontSize(11)
+          drawUnderlinedText("ATM MOBILIS SPA", 10, 33 + layoutShiftY)
+          drawUnderlinedText("DIRECTION DES FINANCES ET DE LA COMPTABILITE", 10, 38 + layoutShiftY)
+          drawUnderlinedText("SOUS DIRECTION FISCALITE", 10, 43 + layoutShiftY)
+          pdf.setFontSize(14)
+          drawUnderlinedText(headerTitle, 10, 64 + layoutShiftY)
+        }
 
         // Afficher le fournisseur au-dessus du tableau pour IBS et TVA autoliq
         if (tabKey === "ibs" || tabKey === "tva_autoliq") {
@@ -1876,32 +2010,35 @@ export default function FiscaDashboardPage() {
           return adjusted
         })
 
+        const tableStartY = isG50Tab ? 72 : 74 + layoutShiftY
+
         autoTable(pdf, {
           head: tableHead,
           body: tableBody,
-          startY: 74 + layoutShiftY,
+          startY: tableStartY,
           theme: "grid",
-          margin: { left: 10, right: 10, top: 74 + layoutShiftY, bottom: 10 },
+          margin: { left: 10, right: 10, top: tableStartY, bottom: 10 },
           styles: {
             font: "helvetica",
-            fontSize: 9,
-            cellPadding: 1.2,
-            minCellHeight: 8.5,
-            lineColor: [51, 51, 51],
-            lineWidth: 0.2,
+            fontSize: isG50Tab ? 9.4 : 9,
+            cellPadding: isG50Tab ? 1.0 : 1.2,
+            minCellHeight: isG50Tab ? 8.8 : 8.5,
+            lineColor: isG50Tab ? [0, 0, 0] : [51, 51, 51],
+            lineWidth: isG50Tab ? 0.3 : 0.2,
             textColor: [0, 0, 0],
             overflow: "linebreak",
             valign: "middle",
           },
           headStyles: {
             fillColor: [45, 179, 75],
+            textColor: [0, 0, 0],
             font: "helvetica",
             fontStyle: "bold",
-            fontSize: tabKey === "ibs" ? 8 : 9,
+            fontSize: tabKey === "ibs" ? 8 : isG50Tab ? 9.4 : 9,
             halign: "center",
             valign: "middle",
-            cellPadding: tabKey === "ibs" ? 1.8 : 1.2,
-            minCellHeight: tabKey === "ibs" ? 15 : 9,
+            cellPadding: tabKey === "ibs" ? 1.8 : isG50Tab ? 1.0 : 1.2,
+            minCellHeight: tabKey === "ibs" ? 15 : isG50Tab ? 10 : 9,
           },
           bodyStyles: {
             textColor: [0, 0, 0],
@@ -1963,6 +2100,13 @@ export default function FiscaDashboardPage() {
           horizontalPageBreak: true,
           horizontalPageBreakRepeat: [0],
         })
+        if (tabKey === "encaissement" && isG50Tab) {
+          const noteY = (pdf as any).lastAutoTable?.finalY + 6 || 120
+          pdf.setFont("helvetica", "bold")
+          pdf.setFontSize(9)
+          pdf.text("NB: ENCAISSEMENT SANS LES DROITS DE TIMBRE ET SANS LES CAUTIONS.", 10, noteY)
+        }
+
         if (tabKey === "ca_tap") {
           const noteY = (pdf as any).lastAutoTable?.finalY + 10 || 100
           pdf.setFont("times", "italic")
@@ -1977,7 +2121,6 @@ export default function FiscaDashboardPage() {
       }
     }, 200)
   }
-
   const handleEdit = (decl: SavedDeclaration, tabKey: string) => {
     if (isDeclarationLocked(decl)) {
       showPeriodLockedToast(decl, "modifier")

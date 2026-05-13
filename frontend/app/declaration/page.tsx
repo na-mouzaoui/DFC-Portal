@@ -129,7 +129,7 @@ function AmountInput({ value, onChange, allowNegative = false, ...props }: Amoun
 // TAB 1 - ENCAISSEMENT  (controlled)
 // Encaissement: HT, TVA, TTC
 // 
-type EncRow = { designation: string; ht: string }
+type EncRow = { designation: string; ht: string; ttc?: string }
 
 const FIXED_ENCAISSEMENT_DESIGNATIONS = [
   "POST/PRE PAID VI/VD 19%",
@@ -190,6 +190,11 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
     }, 0)
     return { ht, tva, ttc: ht + tva }
   }, [rows])
+
+  const handleSave = () => {
+    if (hasOldInvoice) return
+    onSave()
+  }
 
   return (
     <div className="space-y-3">
@@ -498,9 +503,11 @@ interface Tab23Props { rows: TvaRow[]; setRows: React.Dispatch<React.SetStateAct
   isSubmitting: boolean;
   fournisseurs: FiscalFournisseurOption[];
   withSelectableRate?: boolean;
+  mois: string;
+  annee: string;
 }
 
-function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSelectableRate = false }: Tab23Props) {
+function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSelectableRate = false, mois, annee }: Tab23Props) {
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const toSupplierValue = (value: string | undefined | null) => {
@@ -519,6 +526,29 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
         return next
       }),
     )
+
+  const isInvoiceDateTooOld = (value: string, periodMonth: string, periodYear: string) => {
+    const trimmedValue = value.trim()
+    if (!trimmedValue) return false
+
+    const [yearText, monthText] = trimmedValue.split("-")
+    const invoiceYear = Number(yearText)
+    const invoiceMonth = Number(monthText)
+    const periodYearNumber = Number(periodYear)
+    const periodMonthNumber = Number(periodMonth)
+
+    if (!Number.isFinite(invoiceYear) || !Number.isFinite(invoiceMonth)) return false
+    if (!Number.isFinite(periodYearNumber) || !Number.isFinite(periodMonthNumber)) return false
+    if (invoiceMonth < 1 || invoiceMonth > 12 || periodMonthNumber < 1 || periodMonthNumber > 12) return false
+
+    const invoiceTotalMonths = invoiceYear * 12 + invoiceMonth
+    const periodTotalMonths = periodYearNumber * 12 + periodMonthNumber
+    return periodTotalMonths - invoiceTotalMonths > 13
+  }
+
+  const handleDateChange = (i: number, value: string) => {
+    update(i, "dateFacture", value)
+  }
 
   const selectFournisseur = (i: number, fournisseurId: string) =>
     setRows((p) =>
@@ -560,8 +590,20 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
     "Montant HT", ...(withSelectableRate ? ["Taux TVA"] : []), "TVA", "Montant TTC",
   ]
 
+  const hasOldInvoice = rows.some((row) => isInvoiceDateTooOld(safeString(row.dateFacture), mois, annee))
+
+  const handleSave = () => {
+    if (hasOldInvoice) return
+    onSave()
+  }
+
   return (
     <div className="space-y-3">
+      {hasOldInvoice && (
+        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          La taxe dont la déduction a été omise peut être portée sur les déclarations ultérieures jusqu'au 20 décembre de l'année qui suit celle de l'omission. (Art. 30 du CTCA)
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
@@ -597,7 +639,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
                   <td className="px-1 py-1 border-b"><Input value={currentRow.numRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.authRC ?? ""} readOnly className="h-7 px-2 text-xs bg-gray-50" style={{ minWidth: 110 }} placeholder="Auto" /></td>
                   <td className="px-1 py-1 border-b"><Input value={currentRow.numFacture ?? ""} onChange={(e) => update(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="N° Facture" /></td>
-                  <td className="px-1 py-1 border-b"><Input type="date" value={currentRow.dateFacture ?? ""} onChange={(e) => update(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
+                  <td className="px-1 py-1 border-b"><Input type="date" value={currentRow.dateFacture ?? ""} onChange={(e) => handleDateChange(i, e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 130 }} /></td>
                   <td className="px-1 py-1 border-b"><AmountInput allowNegative step="0.01" value={currentRow.montantHT ?? ""} onChange={(e) => update(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" style={{ minWidth: 110 }} placeholder="0.00" /></td>
                   {withSelectableRate && (
                     <td className="px-1 py-1 border-b">
@@ -647,7 +689,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
           className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
           <Plus size={13} /> Ajouter une ligne
         </Button>
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+        <Button size="sm" onClick={handleSave} disabled={isSubmitting || hasOldInvoice}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
         </Button>
@@ -823,7 +865,13 @@ const MONTHS = [
   { value: "09", label: "Septembre" }, { value: "10", label: "Octobre" },
   { value: "11", label: "Novembre" },  { value: "12", label: "Decembre" },
 ]
-const ACOMPTE_ALLOWED_MONTHS = ["03", "05", "10"] as const
+const ACOMPTE_ALLOWED_MONTHS = ["02", "05", "10"] as const
+const FORMATION_ALLOWED_MONTHS = ["06", "12"] as const
+const ACOMPTE_MONTHS = [
+  { value: "02", label: "Fev" },
+  { value: "05", label: "Mai" },
+  { value: "10", label: "Oct" },
+] as const
 const CURRENT_YEAR = new Date().getFullYear()
 const INITIAL_FISCAL_PERIOD = getCurrentFiscalPeriod()
 const YEARS = Array.from({ length: 101 }, (_, i) => (2000 + i).toString())
@@ -1120,10 +1168,14 @@ function TabCaSiege({ rows, setRows, onSave, isSubmitting }: Tab7Props) {
 // 
 type IrgRow = { assietteImposable: string; montant: string }
 const IRG_LABELS = [
-  "IRG sur Salaire Bareme", "Autre IRG 10%", "Autre IRG 15 % (consultants, athlètes, …)",
-  "Jetons de presence 10%", "Tantieme 10%", "IRG Challenge",
+  "IRG sur Salaire Bareme",
+  "Autre IRG 10%",
+  "Autre IRG 15 % (consultants, athletes, ...)",
+  "Jetons de presence 10%",
+  "Tantieme 10%",
+  "IRG Challenge 10%",
 ]
-const IRG_AUTO_RATES: Array<number | null> = [null, 0.10, 0.15, 0.10, 0.10, null]
+const IRG_AUTO_RATES: Array<number | null> = [null, 0.10, 0.15, 0.10, 0.10, 0.10]
 interface Tab8Props { rows: IrgRow[]; setRows: React.Dispatch<React.SetStateAction<IrgRow[]>>; onSave: () => void; isSubmitting: boolean }
 function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
   const upd = (i: number, f: keyof IrgRow, v: string) =>
@@ -1185,154 +1237,16 @@ function TabIRG({ rows, setRows, onSave, isSubmitting }: Tab8Props) {
 }
 
 // 
-/// TAB 9 - SITUATION TAXE 2%
+// TAB 9 - SITUATION TAXE 2%
+// 
 type Taxe2Row = { base: string; montant: string }
 const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
-
-// 
-// TAB 17 - TNFDAL 1%
-// 
-type Tnfdal1Row = { designation: string; caHT: string; montant: string }
-const EMPTY_TNFDAL1: Tnfdal1Row = { designation: "Direction Générale", caHT: "", montant: "" }
-
-interface Tab17Props { rows: Tnfdal1Row[]; setRows: React.Dispatch<React.SetStateAction<Tnfdal1Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
-  const upd = (i: number, field: keyof Tnfdal1Row, v: string) => {
-    setRows((prev) => prev.map((r, idx) => {
-      if (idx !== i) return r
-      const updated = { ...r, [field]: v }
-      if (field === "caHT") {
-        updated.montant = v ? (num(v) * 0.01).toFixed(2) : ""
-      }
-      return updated
-    }))
-  }
-  const totalCA = rows.reduce((s, r) => s + num(r.caHT), 0)
-  const totalMontant = rows.reduce((s, r) => s + num(r.montant), 0)
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">Chiffres d'Affaires HT</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">Montant du TNFDAL 1%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-3 py-2 border-b text-xs text-gray-700 font-medium">{row.designation}</td>
-                <td className="px-1 py-1 border-b">
-                  <AmountInput min={0} step="0.01" value={row.caHT} onChange={(e) => upd(i, "caHT", e.target.value)} className="h-7 px-2 text-xs text-right" placeholder="0.00" />
-                </td>
-                <td className="px-3 py-2 border-b text-xs text-gray-700 font-semibold bg-gray-50/50 text-right">
-                  {row.caHT ? fmt(num(row.caHT) * 0.01) : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-green-100 font-semibold">
-              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalCA)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalMontant)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="flex justify-end">
-        <Button onClick={onSave} disabled={isSubmitting} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// 
-// TAB 18 - TACP 7%
-// 
-type Tacp7Row = { designation: string; montantHT: string; montant: string }
-const TACP7_LABELS = ["Masters", "Mobiposte", "Racimo", "Algerie Poste"]
-const EMPTY_TACP7: Tacp7Row = { designation: "", montantHT: "", montant: "" }
-
-interface Tab18Props { rows: Tacp7Row[]; setRows: React.Dispatch<React.SetStateAction<Tacp7Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabTacp7({ rows, setRows, onSave, isSubmitting }: Tab18Props) {
-  const upd = (i: number, field: keyof Tacp7Row, v: string) => {
-    setRows((prev) => prev.map((r, idx) => {
-      if (idx !== i) return r
-      const updated = { ...r, [field]: v }
-      if (field === "montantHT") {
-        updated.montant = v ? (num(v) * 0.07).toFixed(2) : ""
-      }
-      return updated
-    }))
-  }
-  const totalHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
-  const totalMontant = rows.reduce((s, r) => s + num(r.montant), 0)
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Désignation</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">Montant des Recharges HT</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">Montant du TACP 7%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-3 py-2 border-b text-xs text-gray-700 font-medium">{row.designation}</td>
-                <td className="px-1 py-1 border-b">
-                  <AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs text-right" placeholder="0.00" />
-                </td>
-                <td className="px-3 py-2 border-b text-xs text-gray-700 font-semibold bg-gray-50/50 text-right">
-                  {row.montantHT ? fmt(num(row.montantHT) * 0.07) : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-green-100 font-semibold">
-              <td className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalHT)}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(totalMontant)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="flex justify-end">
-        <Button onClick={onSave} disabled={isSubmitting} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 interface Tab9Props { rows: Taxe2Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe2Row[]>>; onSave: () => void; isSubmitting: boolean }
-
 function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
-  const upd = (i: number, v: string) =>
-    setRows((prev) =>
-      prev.map((r, idx) => {
-        if (idx !== i) return r;
-        const baseVal = parseFloat(v) || 0;
-        return {
-          ...r,
-          base: v,
-          montant: (baseVal * 0.02).toFixed(2), // ✅ Calcul automatique 2%
-        };
-      })
-    );
-
+  const upd = (i: number, f: keyof Taxe2Row, v: string) =>
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
   const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
   const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
-
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
@@ -1347,35 +1261,9 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
           <tbody>
             {TAXE2_LABELS.map((lbl, i) => (
               <tr key={i} className="bg-white">
-                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>
-                  {lbl}
-                </td>
-
-                {/* ✅ Base : éditable */}
-                <td className="px-1 py-1 border-b">
-                  <AmountInput
-                    min={0}
-                    step="0.01"
-                    className="h-7 px-2 text-xs"
-                    value={rows[i].base}
-                    onChange={(e) => upd(i, e.target.value)}
-                    placeholder="0.00"
-                    style={{ minWidth: 150 }}
-                  />
-                </td>
-
-                {/* ✅ Montant taxe : calculé automatiquement, lecture seule */}
-                <td className="px-1 py-1 border-b">
-                  <AmountInput
-                    min={0}
-                    step="0.01"
-                    className="h-7 px-2 text-xs bg-gray-50 text-gray-500"
-                    value={rows[i].montant}
-                    readOnly
-                    placeholder="0.00"
-                    style={{ minWidth: 150 }}
-                  />
-                </td>
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>{lbl}</td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
               </tr>
             ))}
           </tbody>
@@ -1389,14 +1277,9 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
         </table>
       </div>
       <div className="flex justify-end">
-        <Button
-          size="sm"
-          onClick={onSave}
-          disabled={isSubmitting}
-          className="gap-1.5"
-          style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}
-        >
-          <Save size={13} /> {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
         </Button>
       </div>
     </div>
@@ -1407,32 +1290,9 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
 // 
 type MasterRow = { date: string; nomMaster: string; numFacture: string; dateFacture: string; montantHT: string; taxe15: string; mois: string; observation: string }
 const EMPTY_MASTER: MasterRow = { date: "", nomMaster: "", numFacture: "", dateFacture: "", montantHT: "", taxe15: "", mois: "", observation: "" }
-
-const getMonthLastDay = (monthStr: string, yearStr: string): string => {
-  const monthMap: Record<string, number> = {
-    "Janvier": 0, "Fevrier": 1, "Mars": 2, "Avril": 3, "Mai": 4, "Juin": 5,
-    "Juillet": 6, "Aout": 7, "Septembre": 8, "Octobre": 9, "Novembre": 10, "Decembre": 11,
-    "01": 0, "02": 1, "03": 2, "04": 3, "05": 4, "06": 5,
-    "07": 6, "08": 7, "09": 8, "10": 9, "11": 10, "12": 11,
-  }
-  const monthIndex = monthMap[monthStr]
-  if (monthIndex === undefined) return ""
-  const year = parseInt(yearStr, 10)
-  if (isNaN(year)) return ""
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate()
-  const monthStrPad = String(monthIndex + 1).padStart(2, "0")
-  return `${year}-${monthStrPad}-${String(lastDay).padStart(2, "0")}`
-}
-
-const monthNumToName: Record<string, string> = {
-  "01": "Janvier", "02": "Fevrier", "03": "Mars", "04": "Avril",
-  "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Aout",
-  "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Decembre",
-}
-
-interface Tab10Props { rows: MasterRow[]; setRows: React.Dispatch<React.SetStateAction<MasterRow[]>>; onSave: () => void; isSubmitting: boolean; mois: string; annee: string }
-function TabMasters({ rows, setRows, onSave, isSubmitting, mois, annee }: Tab10Props) {
-  const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER, date: getMonthLastDay(mois, annee), mois: monthNumToName[mois] || mois }])
+interface Tab10Props { rows: MasterRow[]; setRows: React.Dispatch<React.SetStateAction<MasterRow[]>>; onSave: () => void; isSubmitting: boolean }
+function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const upd = (i: number, f: keyof MasterRow, v: string) => {
     setRows((prev) => prev.map((r, idx) => {
@@ -1470,13 +1330,20 @@ function TabMasters({ rows, setRows, onSave, isSubmitting, mois, annee }: Tab10P
             {rows.map((row, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b text-xs text-gray-700 font-medium bg-gray-50/50">{row.date ? new Date(row.date).toLocaleDateString("fr-FR") : "-"}</td>
+                <td className="px-1 py-1 border-b"><Input type="date" value={row.date} onChange={(e) => upd(i, "date", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.nomMaster} onChange={(e) => upd(i, "nomMaster", e.target.value)} className="h-7 px-2 text-xs" placeholder="Nom du Master" style={{ minWidth: 160 }} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "-"}</td>
-                <td className="px-1 py-1 border-b text-xs text-gray-700 font-medium bg-gray-50/50">{monthNumToName[mois] || mois}</td>
+                <td className="px-1 py-1 border-b">
+                  <select value={row.mois} onChange={(e) => upd(i, "mois", e.target.value)}
+                    className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none" style={{ minWidth: 110 }}>
+                    <option value="">- Mois -</option>
+                    {["Janvier","Fevrier","Mars","Avril","Mai","Juin","Juillet","Aout","Septembre","Octobre","Novembre","Decembre"]
+                      .map((m, idx) => <option key={idx} value={m}>{m}</option>)}
+                  </select>
+                </td>
                 <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 140 }} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
@@ -1546,7 +1413,11 @@ function TabTaxeVehicule({ montant, setMontant, onSave, isSubmitting }: Tab11Pro
 // TAB 12 - TAXE DE FORMATION
 // 
 type Taxe12Row = { montant: string }
+type Tnfdal1Row = { designation: string; caHt: string; taxe: string }
+type Tacp7Row = { designation: string; base: string; taxe: string }
 const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
+const TNFDAL1_DECLARATION_ROWS = ["Direction Generale"]
+const TACP7_DECLARATION_ROWS = ["Masters", "Mobiposte", "Racimo", "Algerie Poste"]
 interface Tab12Props { rows: Taxe12Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe12Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
   const upd = (i: number, v: string) =>
@@ -1591,7 +1462,7 @@ function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
 // 
 // TAB 13 - SITUATION DE L'ACOMPTE PROVISIONNEL (year only, 12 months)
 // 
-const MONTH_LABELS_SHORT = ["Janv","Fev","Mars","Avr","Mai","Juin","Juil","Aout","Sept","Oct","Nov","Dec"]
+  const MONTH_LABELS_SHORT = ["Janv","Fev","Mars","Avr","Mai","Juin","Juil","Aout","Sept","Oct","Nov","Dec"]
 interface Tab13Props { months: string[]; setMonths: React.Dispatch<React.SetStateAction<string[]>>; annee: string; onSave: () => void; isSubmitting: boolean }
 function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Props) {
   const upd = (i: number, v: string) =>
@@ -1605,8 +1476,8 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
           <thead>
             <tr className="bg-gray-50">
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 100 }}>Designation</th>
-              {MONTH_LABELS_SHORT.map((m) => (
-                <th key={m} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 90 }}>{m} {yy}</th>
+              {ACOMPTE_MONTHS.map((m) => (
+                <th key={m.value} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 90 }}>{m.label} {yy}</th>
               ))}
               <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 border-b" style={{ minWidth: 110 }}>TOTAL</th>
             </tr>
@@ -1889,8 +1760,8 @@ const TABS = [
   { key: "ibs",            label: "14 - IBS Fournisseurs Etrangers", color: "#2db34b", title: "IBS SUR FOURNISSEURS ETRANGERS" },
   { key: "taxe_domicil",  label: "15 - Taxe Domiciliation",        color: "#2db34b", title: "TAXE DOMICILIATION BANCAIRE SUR FOURNISSEURS ETRANGERS" },
   { key: "tva_autoliq",   label: "16 - TVA Auto Liquidation",      color: "#2db34b", title: "TVA AUTO LIQUIDATION SUR FOURNISSEURS ETRANGERS" },
-  { key: "tnfdal1",       label: "17 - TNFDAL 1%",                  color: "#2db34b", title: "TAXE SUR LE CHIFFRE D'AFFAIRES DES OPERATIONS DE TELEPHONIE" },
-  { key: "tacp7",        label: "18 - TACP 7%",                    color: "#2db34b", title: "TAXE SUR LES ACTIVITES DE COMMERCIALISATION DE PRODUITS PREPAYES" },
+  { key: "tnfdal1",        label: "17 - N17 TNFDAL 1%",             color: "#2db34b", title: "N17 - TNFDAL 1%" },
+  { key: "tacp7",          label: "18 - N18 TACP 7%",               color: "#2db34b", title: "N18 - TACP 7%" },
 ]
 
 type FiscalTabKey =
@@ -1996,7 +1867,7 @@ type ExistingDeclarationPreview = {
 
 type RecapMode = "declaration" | "etats_sortie"
 
-type RecapKey = "tva_collectee" | "tva_a_payer" | "tva_situation" | "droits_timbre" | "tacp7" | "tnfdal1" | "tap15" | "masters15" | "g50" | "g50_annuel" | "irg_recap"
+type RecapKey = "tva_collectee" | "tva_a_payer" | "tva_situation" | "droits_timbre" | "tacp7" | "tnfdal1" | "tap15" | "masters15" | "irg_recap" | "g50" | "g50_annuel"
 
 type RecapColumn = {
   key: string
@@ -2064,7 +1935,7 @@ const RECAP_TABS: RecapDefinition[] = [
   },
   {
     key: "tnfdal1",
-    title: "TNFDAL1%",
+    title: "N17 - TNFDAL 1%",
     columns: [
       { key: "designation", label: "Désignation" },
       { key: "caHt", label: "Chiffres d'Affaires HT", right: true },
@@ -2073,7 +1944,7 @@ const RECAP_TABS: RecapDefinition[] = [
   },
   {
     key: "tacp7",
-    title: "TACP 7%",
+    title: "N18 - TACP 7%",
     columns: [
       { key: "designation", label: "Désignation" },
       { key: "base", label: "Montant des Recharges HT", right: true },
@@ -2234,18 +2105,10 @@ const TNFDAL1_RECAP_ROWS = [
   "DR Oran",
   "DR Bechar",
   "DR Ouargla",
-  "Regul CA du Janvier 2025 a Juin 2025",
   "Total",
 ] as const
 
-const IRG_RECAP_ROWS = [
-  "IRG sur Salaire Bareme",
-  "Autre IRG 10%",
-  "Autre IRG 15% (consultants, athletes, ...)",
-  "Jetons de presence 10%",
-  "Tantieme 10%",
-  "IRG Challenge",
-] as const
+const IRG_RECAP_ROWS = [...IRG_LABELS, "Total"] as const
 
 const MASTERS15_RECAP_ROWS = [
   "Masters",
@@ -3124,80 +2987,44 @@ const buildTap15RecapRows = (
 }
 
 const buildTnfdal1RecapRows = (
-  sources: RecapSourcesResponse,
+  _sources: RecapSourcesResponse,
 ): Record<string, string>[] => {
-  const baseByRow = new Map<string, number>()
-
-  for (const source of sources.caTapByDirection) {
-    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
-    if (!rowLabel) continue
-
-    const base = parseRecapAmount(source.b13)
-    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + base)
-  }
-
-  let totalBase = 0
-  let totalTaxe = 0
-
-  return TNFDAL1_RECAP_ROWS.map((designation) => {
-    if (designation === "Total") {
-      return {
-        designation,
-        caHt: formatRecapAmount(totalBase),
-        taxe: formatRecapAmount(totalTaxe),
-      }
-    }
-
-    if (!isRegionalDrRecapRow(designation)) {
-      return {
-        designation,
-        caHt: "0,00",
-        taxe: "0,00",
-      }
-    }
-
-    const base = baseByRow.get(designation) ?? 0
-    const taxe = base * 0.01
-    totalBase += base
-    totalTaxe += taxe
-
-    return {
-      designation,
-      caHt: formatRecapAmount(base),
-      taxe: formatRecapAmount(taxe),
-    }
-  })
+  return TNFDAL1_RECAP_ROWS.map((designation) => ({
+    designation,
+    caHt: "0,00",
+    taxe: "0,00",
+  }))
 }
 
 const buildTacp7RecapRows = (
-  sources: RecapSourcesResponse,
+  _sources: RecapSourcesResponse,
 ): Record<string, string>[] => {
-  const baseByRow = new Map<string, number>()
+  return TACP7_RECAP_ROWS.map((designation) => ({
+    designation,
+    base: "0,00",
+    taxe: "0,00",
+  }))
+}
 
-  for (const source of sources.caTapByDirection) {
-    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
-    if (!rowLabel) continue
+const recalcTnfdal1RecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
+  const nextRows = rows.map((row) => ({ ...row }))
+  let totalBase = 0
+  let totalTaxe = 0
 
-    const base = parseRecapAmount(source.b12)
-    baseByRow.set(rowLabel, (baseByRow.get(rowLabel) ?? 0) + base)
+  for (const row of nextRows) {
+    const designation = String(row.designation ?? "")
+    if (designation === "Total") continue
+    totalBase += parseRecapAmount(row.caHt)
+    totalTaxe += parseRecapAmount(row.taxe)
   }
 
-  return TACP7_RECAP_ROWS.map((designation) => {
-    if (!isRegionalDrRecapRow(designation)) {
-      return {
-        designation,
-        base: "0,00",
-        taxe: "0,00",
-      }
-    }
+  const totalRow = nextRows.find((row) => String(row.designation ?? "") === "Total")
+  if (totalRow) {
+    totalRow.caHt = formatRecapAmount(totalBase)
+    totalRow.taxe = formatRecapAmount(totalTaxe)
+  }
 
-    const base = baseByRow.get(designation) ?? 0
-    return {
-      designation,
-      base: formatRecapAmount(base),
-      taxe: formatRecapAmount(base * 0.07),
-    }
-  })
+  return nextRows
 }
 
 const buildMasters15RecapRows = (): Record<string, string>[] => {
@@ -3209,32 +3036,52 @@ const buildMasters15RecapRows = (): Record<string, string>[] => {
 }
 
 const buildIrgRecapRows = (
-  fiscalDeclarations: FiscalDeclaration[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+  directionFilter: string,
 ): Record<string, string>[] => {
-  const totalAssiette = { value: 0 }
-  const totalMontant = { value: 0 }
+  const normalizedFilter = normalizeRecapDesignation(directionFilter)
+  const isAll = !normalizedFilter || ["all", "tout", "tous"].includes(normalizedFilter)
+  const baseRows = IRG_RECAP_ROWS.slice(0, -1)
+  const totals = baseRows.map(() => ({ assiette: 0, montant: 0 }))
 
-  const rows = IRG_RECAP_ROWS.map((designation, idx) => {
-    const decl = fiscalDeclarations.find((d) => d.type === "irg")
-    const irgRows = decl?.irgRows ?? []
-    const row = irgRows[idx]
-    const assiette = row ? parseRecapAmount(row.assietteImposable) : 0
-    const montant = row ? parseRecapAmount(row.montant) : 0
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "irg") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
 
-    totalAssiette.value += assiette
-    totalMontant.value += montant
-
-    return {
-      designation,
-      assiette: formatRecapAmount(assiette),
-      montant: formatRecapAmount(montant),
+    const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
+    if (!isAll) {
+      if (!normalizedDeclDirection) continue
+      const matches = normalizedDeclDirection === normalizedFilter
+        || normalizedDeclDirection.includes(normalizedFilter)
+        || normalizedFilter.includes(normalizedDeclDirection)
+      if (!matches) continue
     }
-  })
+
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const rows = Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : []
+
+    rows.forEach((row, index) => {
+      if (!totals[index]) return
+      totals[index].assiette += parseRecapAmount(row.assietteImposable)
+      totals[index].montant += parseRecapAmount(row.montant)
+    })
+  }
+
+  const rows = baseRows.map((designation, index) => ({
+    designation,
+    assiette: formatRecapAmount(totals[index]?.assiette ?? 0),
+    montant: formatRecapAmount(totals[index]?.montant ?? 0),
+  }))
+
+  const totalAssiette = totals.reduce((sum, item) => sum + item.assiette, 0)
+  const totalMontant = totals.reduce((sum, item) => sum + item.montant, 0)
 
   rows.push({
-    designation: "Total",
-    assiette: formatRecapAmount(totalAssiette.value),
-    montant: formatRecapAmount(totalMontant.value),
+    designation: IRG_RECAP_ROWS[IRG_RECAP_ROWS.length - 1],
+    assiette: formatRecapAmount(totalAssiette),
+    montant: formatRecapAmount(totalMontant),
   })
 
   return rows
@@ -3479,9 +3326,42 @@ const buildG50RecapRows = (
 
 const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
   if (columnKey === "designation") return false
-  if (designation === "Total") return false
 
-  return true
+  if (recapKey === "tva_collectee") {
+    if (isTvaCollecteeRecapTotalRow(designation)) return false
+    if (columnKey === "tva") return false
+    if (isTvaCollecteeRecapDrRow(designation) && (columnKey === "ttc" || columnKey === "ht")) return false
+    return true
+  }
+
+  if (recapKey === "tva_situation") {
+    if (designation === "Total") return false
+    if (columnKey === "totalDed") return false
+    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+      return columnKey === "immo" || columnKey === "biens"
+    }
+    return false
+  }
+
+  if (recapKey === "masters15") {
+    return designation !== "Total" && columnKey === "base"
+  }
+
+  if (recapKey === "tacp7") {
+    return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
+  }
+
+  if (recapKey === "tnfdal1") {
+    return designation === "Direction Generale" && (columnKey === "caHt" || columnKey === "taxe")
+  }
+
+  if (recapKey === "irg_recap") {
+    return false
+  }
+
+  if (recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel") return false
+
+  return false
 }
 
 const isRecapCellMandatory = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
@@ -3618,12 +3498,14 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
   }
 
   if (recapKey === "tnfdal1") {
-    if (designation === "Direction Generale") {
-      if (columnKey === "caHt") return "Saisie manuelle"
-      if (columnKey === "taxe") return "Saisie manuelle"
+    if (columnKey === "caHt") return "Saisie manuelle"
+    if (columnKey === "taxe") return "Saisie manuelle"
+  }
+
+  if (recapKey === "irg_recap") {
+    if (columnKey === "assiette" || columnKey === "montant") {
+      return "Extrait depuis la declaration N8 - Situation IRG"
     }
-    if (columnKey === "caHt") return "Base = SUM(CA_TAP.B13)"
-    if (columnKey === "taxe") return "Taxe = Base * (1 / 100)"
   }
 
   if (recapKey === "masters15" && columnKey === "taxe") {
@@ -3655,7 +3537,7 @@ const isFiscalTabKey = (value: string): value is FiscalTabKey => {
 }
 
 const isRecapKey = (value: string): value is RecapKey => {
-  return ["tva_collectee", "tva_a_payer", "tva_situation", "droits_timbre", "tacp7", "tnfdal1", "tap15", "masters15", "g50", "g50_annuel"].includes(value)
+  return ["tva_collectee", "tva_a_payer", "tva_situation", "droits_timbre", "tacp7", "tnfdal1", "tap15", "masters15", "irg_recap", "g50", "g50_annuel"].includes(value)
 }
 
 const normalizeMonthValue = (value: string) => {
@@ -3750,7 +3632,7 @@ const normalizeIrgRows = (rows?: IrgRow[]) => {
       : sourceMontant
     return { assietteImposable, montant }
   })
-  return fillRows(normalized, 5, () => ({ assietteImposable: "", montant: "" }))
+  return fillRows(normalized, IRG_LABELS.length, () => ({ assietteImposable: "", montant: "" }))
 }
 
 const normalizeTaxe2Rows = (rows?: Taxe2Row[]) => {
@@ -3787,8 +3669,44 @@ const normalizeTaxe12Rows = (rows?: Taxe12Row[]) => {
   return fillRows(normalized, 2, () => ({ montant: "" }))
 }
 
+const normalizeTnfdal1Rows = (rows?: Tnfdal1Row[]) => {
+  const sourceRows = rows ?? []
+  const normalized = TNFDAL1_DECLARATION_ROWS.map((designation, index) => {
+    const row = sourceRows[index] as Partial<Tnfdal1Row> | undefined
+    return {
+      designation,
+      caHt: safeString(row?.caHt),
+      taxe: safeString(row?.taxe),
+    }
+  })
+  return fillRows(normalized, TNFDAL1_DECLARATION_ROWS.length, () => ({ designation: "", caHt: "", taxe: "" }))
+}
+
+const normalizeTacp7Rows = (rows?: Tacp7Row[]) => {
+  const sourceRows = rows ?? []
+  const normalized = TACP7_DECLARATION_ROWS.map((designation, index) => {
+    const row = sourceRows[index] as Partial<Tacp7Row> | undefined
+    return {
+      designation,
+      base: safeString(row?.base),
+      taxe: safeString(row?.taxe),
+    }
+  })
+  return fillRows(normalized, TACP7_DECLARATION_ROWS.length, () => ({ designation: "", base: "", taxe: "" }))
+}
+
 const normalizeAcompteMonths = (months?: string[]) => {
-  return Array.from({ length: 12 }, (_, idx) => safeString(months?.[idx]))
+  // Support legacy 12-month arrays (Jan..Dec) by picking Feb, May, Oct (indices 1,4,9)
+  if (!months) return Array(3).fill("")
+  if (months.length === 12) {
+    return [safeString(months[1]), safeString(months[4]), safeString(months[9])]
+  }
+  // If already 3-length, return normalized copy
+  if (months.length === 3) return months.map((m) => safeString(m))
+  // Otherwise, fill/trim to length 3
+  const copy = months.slice(0, 3).map((m) => safeString(m))
+  while (copy.length < 3) copy.push("")
+  return copy
 }
 
 const normalizeIbsRows = (rows?: Ibs14Row[]) => {
@@ -3842,33 +3760,6 @@ const normalizeTva16Rows = (rows?: Tva16Row[]) => {
   return normalized.length > 0 ? normalized : [{ ...EMPTY_TVA16 }]
 }
 
-const normalizeTnfdal1Rows = (rows?: Tnfdal1Row[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<Tnfdal1Row>
-    return {
-      ...EMPTY_TNFDAL1,
-      designation: safeString(source.designation) || "Direction Générale",
-      caHT: safeString(source.caHT),
-      montant: safeString(source.montant),
-    }
-  })
-  return normalized.length > 0 ? normalized : [{ ...EMPTY_TNFDAL1 }]
-}
-
-const normalizeTacp7Rows = (rows?: Tacp7Row[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<Tacp7Row>
-    return {
-      ...EMPTY_TACP7,
-      designation: safeString(source.designation) || "",
-      montantHT: safeString(source.montantHT),
-      montant: safeString(source.montant),
-    }
-  })
-  if (normalized.length > 0) return normalized
-  return TACP7_LABELS.map((label) => ({ designation: label, montantHT: "", montant: "" }))
-}
-
 const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
   if ((decl.encRows?.length ?? 0) > 0) return "encaissement"
   if ((decl.tvaImmoRows?.length ?? 0) > 0) return "tva_immo"
@@ -3886,6 +3777,8 @@ const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
   if ((decl.ibs14Rows?.length ?? 0) > 0) return "ibs"
   if ((decl.taxe15Rows?.length ?? 0) > 0) return "taxe_domicil"
   if ((decl.tva16Rows?.length ?? 0) > 0) return "tva_autoliq"
+  if ((decl.tnfdal1Rows ?? []).some((row) => safeString(row.caHt).trim() || safeString(row.taxe).trim())) return "tnfdal1"
+  if ((decl.tacp7Rows ?? []).some((row) => safeString(row.base).trim() || safeString(row.taxe).trim())) return "tacp7"
   return "encaissement"
 }
 
@@ -4167,13 +4060,13 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
       )}
 
       {(activeTab === "tva_immo" || activeTab === "tva_biens") && (() => {
-        const rows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows
-        const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0)
-        const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0)
-        const tTTC = tHT + tTVA
+        const rows = activeTab === "tva_immo" ? tvaImmoRows : tvaBiensRows;
+        const tHT  = rows.reduce((s, r) => s + num(r.montantHT), 0);
+        const tTVA = rows.reduce((s, r) => s + getTvaAmount(r, true), 0);
+        const tTTC = tHT + tTVA;
         const totalLabel = activeTab === "tva_immo"
           ? "TOTAL TVA SUR IMMOBILISATION 445620"
-          : "TOTAL TVA SUR BIENS ET SERVICES"
+          : "TOTAL TVA SUR BIENS ET SERVICES";
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>
@@ -4440,7 +4333,7 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr>
               <th style={thStyle}>Designation</th>
-              {MONTH_LABELS_SHORT.map(m=><th key={m} style={thStyle}>{m} {yy}</th>)}
+              {ACOMPTE_MONTHS.map((m)=><th key={m.value} style={thStyle}>{m.label} {yy}</th>)}
             </tr></thead>
             <tbody>
               <tr>
@@ -4546,45 +4439,39 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
       )}
 
       {activeTab === "tnfdal1" && (
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>
-            {["Désignation", "Chiffres d'Affaires HT", "Montant du TNFDAL 1%"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            {"Designation|Chiffres d'Affaires HT|Montant du TNFDAL 1%".split("|").map((h) => (
+              <th key={h} style={thStyle}>{h}</th>
+            ))}
           </tr></thead>
           <tbody>
-            {tnfdal1Rows.map((r,i)=>(
-              <tr key={i}>
-                <td style={tdStyle}>{r.designation}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.caHT?fmt(num(r.caHT)):""}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montant?fmt(num(r.montant)):""}</td>
+            {TNFDAL1_DECLARATION_ROWS.map((label, i) => (
+              <tr key={label} style={{ background: "#fff", color: "#000" }}>
+                <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{label}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{tnfdal1Rows[i]?.caHt ? fmt(num(tnfdal1Rows[i].caHt)) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#fff", color: "#000" }}>{tnfdal1Rows[i]?.taxe ? fmt(num(tnfdal1Rows[i].taxe)) : ""}</td>
               </tr>
             ))}
-            <tr style={{fontWeight:700}}>
-              <td style={tdStyle}>TOTAL</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tnfdal1Rows.reduce((s,r)=>s+num(r.caHT),0))}</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tnfdal1Rows.reduce((s,r)=>s+num(r.montant),0))}</td>
-            </tr>
           </tbody>
         </table>
       )}
 
       {activeTab === "tacp7" && (
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>
-            {["Désignation", "Montant des Recharges HT", "Montant du TACP 7%"].map(h=><th key={h} style={thStyle}>{h}</th>)}
+            {"Designation|Montant des Recharges HT|Montant du TACP 7%".split("|").map((h) => (
+              <th key={h} style={thStyle}>{h}</th>
+            ))}
           </tr></thead>
           <tbody>
-            {tacp7Rows.map((r,i)=>(
-              <tr key={i}>
-                <td style={tdStyle}>{r.designation}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantHT?fmt(num(r.montantHT)):""}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montant?fmt(num(r.montant)):""}</td>
+            {TACP7_DECLARATION_ROWS.map((label, i) => (
+              <tr key={label} style={{ background: i % 2 === 0 ? "#fff" : "#eee", color: "#000" }}>
+                <td style={{ ...tdStyle, backgroundColor: "inherit", color: "#000" }}>{label}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "inherit", color: "#000" }}>{tacp7Rows[i]?.base ? fmt(num(tacp7Rows[i].base)) : ""}</td>
+                <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "inherit", color: "#000" }}>{tacp7Rows[i]?.taxe ? fmt(num(tacp7Rows[i].taxe)) : ""}</td>
               </tr>
             ))}
-            <tr style={{fontWeight:700}}>
-              <td style={tdStyle}>TOTAL</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tacp7Rows.reduce((s,r)=>s+num(r.montantHT),0))}</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tacp7Rows.reduce((s,r)=>s+num(r.montant),0))}</td>
-            </tr>
           </tbody>
         </table>
       )}
@@ -4945,8 +4832,58 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
     )
   }
 
+  if (tabKey === "tnfdal1") {
+    const rows = decl.tnfdal1Rows ?? []
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {"Désignation|Chiffres d'Affaires HT|Montant du TNFDAL 1%".split("|").map((h) => (
+              <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {TNFDAL1_DECLARATION_ROWS.map((label, i) => (
+            <TableRow key={label}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.caHt ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.taxe ?? "")}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (tabKey === "tacp7") {
+    const rows = decl.tacp7Rows ?? []
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {"Désignation|Montant des Recharges HT|Montant du TACP 7%".split("|").map((h) => (
+              <TableHead key={h} className={h !== "Désignation" ? "text-right" : undefined}>{h}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {TACP7_DECLARATION_ROWS.map((label, i) => (
+            <TableRow key={label}>
+              <TableCell className="text-xs">{label}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.base ?? "")}</TableCell>
+              <TableCell className="text-right text-xs font-semibold">{fmt(rows[i]?.taxe ?? "")}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
   if (tabKey === "acompte") {
-    const months = decl.acompteMonths ?? []
+    const months = normalizeAcompteMonths(decl.acompteMonths ?? [])
     const yy = String(decl.annee ?? "").slice(-2)
     const total = months.reduce((s, value) => s + num(value), 0)
 
@@ -4955,8 +4892,8 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
         <TableHeader>
           <TableRow>
             <TableHead>Désignation</TableHead>
-            {MONTH_LABELS_SHORT.map((month) => (
-              <TableHead key={month} className="text-right">{month} {yy}</TableHead>
+            {ACOMPTE_MONTHS.map((m) => (
+              <TableHead key={m.value} className="text-right">{m.label} {yy}</TableHead>
             ))}
             <TableHead className="text-right">TOTAL</TableHead>
           </TableRow>
@@ -5252,19 +5189,19 @@ export default function NouvelleDeclarationPage() {
   const [b13,           setB13]           = useState("")
   const [tapRows,       setTapRows]       = useState<TAPRow[]>([{ wilayaCode: "", commune: "", tap2: "" }])
   const [siegeEncRows,  setSiegeEncRows]  = useState<SiegeEncRow[]>(Array(12).fill(null).map(() => ({ ttc: "", ht: "" })))
-  const [irgRows,        setIrgRows]        = useState<IrgRow[]>(Array(6).fill(null).map(() => ({ assietteImposable: "", montant: "" })))
+  const [irgRows,        setIrgRows]        = useState<IrgRow[]>(Array(IRG_LABELS.length).fill(null).map(() => ({ assietteImposable: "", montant: "" })))
   const [taxe2Rows,      setTaxe2Rows]      = useState<Taxe2Row[]>([{ base: "", montant: "" }])
-  const [masterRows,     setMasterRows]     = useState<MasterRow[]>([{ ...EMPTY_MASTER, date: getMonthLastDay(INITIAL_FISCAL_PERIOD.mois, INITIAL_FISCAL_PERIOD.annee), mois: monthNumToName[INITIAL_FISCAL_PERIOD.mois] || INITIAL_FISCAL_PERIOD.mois }])
+  const [masterRows,     setMasterRows]     = useState<MasterRow[]>([{ ...EMPTY_MASTER }])
   const [taxe11Montant,  setTaxe11Montant]  = useState("")
   const [taxe12Rows,     setTaxe12Rows]     = useState<Taxe12Row[]>([{ montant: "" }, { montant: "" }])
-  const [acompteMonths,  setAcompteMonths]  = useState<string[]>(Array(12).fill(""))
+  const [acompteMonths,  setAcompteMonths]  = useState<string[]>(Array(3).fill(""))
   const [ibs14Rows,      setIbs14Rows]      = useState<Ibs14Row[]>([{ ...EMPTY_IBS14 }])
   const [ibsFournisseurId, setIbsFournisseurId] = useState("")
   const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
   const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
   const [tva16FournisseurId, setTva16FournisseurId] = useState("")
-  const [tnfdal1Rows,     setTnfdal1Rows]     = useState<Tnfdal1Row[]>([{ ...EMPTY_TNFDAL1 }])
-  const [tacp7Rows,       setTacp7Rows]       = useState<Tacp7Row[]>(TACP7_LABELS.map((label) => ({ designation: label, montantHT: "", montant: "" })))
+  const [tnfdal1Rows,    setTnfdal1Rows]    = useState<Tnfdal1Row[]>(() => normalizeTnfdal1Rows())
+  const [tacp7Rows,      setTacp7Rows]      = useState<Tacp7Row[]>(() => normalizeTacp7Rows())
   const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
   const [recapSources, setRecapSources] = useState<RecapSourcesResponse>({
     encaissementByDirection: [],
@@ -5296,6 +5233,7 @@ export default function NouvelleDeclarationPage() {
     droits_timbre: [],
     g50: [],
     g50_annuel: [],
+    irg_recap: [],
   })
 
   const userRole = user?.role ?? ""
@@ -5313,8 +5251,19 @@ export default function NouvelleDeclarationPage() {
     [availableTabs, fiscalPolicyRevision],
   )
   const selectableTabs = useMemo(
-    () => availableTabs.map((tab) => ({ ...tab, isDisabled: disabledTabKeys.has(tab.key) })),
-    [availableTabs, disabledTabKeys],
+    () => availableTabs
+      .filter((tab) => {
+        // Hide tabs that are not available for the selected month.
+        if (tab.key === "acompte") {
+          return ACOMPTE_ALLOWED_MONTHS.includes(mois as (typeof ACOMPTE_ALLOWED_MONTHS)[number])
+        }
+        if (tab.key === "taxe_formation") {
+          return FORMATION_ALLOWED_MONTHS.includes(mois as (typeof FORMATION_ALLOWED_MONTHS)[number])
+        }
+        return true
+      })
+      .map((tab) => ({ ...tab, isDisabled: disabledTabKeys.has(tab.key) })),
+    [availableTabs, disabledTabKeys, mois],
   )
   const selectableYears = useMemo(
     () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
@@ -5324,6 +5273,9 @@ export default function NouvelleDeclarationPage() {
     () => MONTHS.filter((month) => {
       if (isFiscalPeriodLocked(month.value, annee, userRole)) return false
       if (activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(month.value as (typeof ACOMPTE_ALLOWED_MONTHS)[number])) {
+        return false
+      }
+      if (activeTab === "taxe_formation" && !FORMATION_ALLOWED_MONTHS.includes(month.value as (typeof FORMATION_ALLOWED_MONTHS)[number])) {
         return false
       }
       return true
@@ -5784,7 +5736,7 @@ export default function NouvelleDeclarationPage() {
       "caHt",
     )
     const tnfdal1Rows = annotateTapLikeMissing(
-      buildTnfdal1RecapRows(recapSources),
+      recalcTnfdal1RecapRows(buildTnfdal1RecapRows(recapSources)),
       fiscalDeclarations,
       mois,
       annee,
@@ -5816,8 +5768,7 @@ export default function NouvelleDeclarationPage() {
       monthlyG50RecapRowsByKey,
     )
     const g50Annual = buildG50AnnualRecapRows(annee, g50AnnualRecaps)
-
-    const irgRecapRows = buildIrgRecapRows(fiscalDeclarations)
+    const irgRecapRows = buildIrgRecapRows(fiscalDeclarations, mois, annee, effectiveDirection)
 
     setRecapRowsByKey({
       tva_collectee: blankZeroManualRecapCells("tva_collectee", collecteeRows),
@@ -5825,7 +5776,7 @@ export default function NouvelleDeclarationPage() {
       tva_a_payer: recapRows,
       masters15: blankZeroManualRecapCells("masters15", masters15Rows),
       tap15: tap15Rows,
-      tnfdal1: tnfdal1Rows,
+      tnfdal1: blankZeroManualRecapCells("tnfdal1", tnfdal1Rows),
       tacp7: blankZeroManualRecapCells("tacp7", tacp7Rows),
       droits_timbre: droitsTimbreRows,
       g50: g50Rows,
@@ -5833,7 +5784,7 @@ export default function NouvelleDeclarationPage() {
       irg_recap: irgRecapRows,
     })
     setG50AnnualMissingPeriods(g50Annual.missingMonths)
-  }, [annee, annualRecapSourcesByMonth, fiscalDeclarations, g50AnnualRecaps, mois, monthlyG50RecapRowsByKey, recapSources])
+  }, [annee, annualRecapSourcesByMonth, effectiveDirection, fiscalDeclarations, g50AnnualRecaps, mois, monthlyG50RecapRowsByKey, recapSources])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {
@@ -5973,6 +5924,13 @@ export default function NouvelleDeclarationPage() {
         return {
           ...prev,
           tacp7: blankZeroManualRecapCells("tacp7", recalcTacp7RecapRows(updatedRows)),
+        }
+      }
+
+      if (activeRecapTab === "tnfdal1") {
+        return {
+          ...prev,
+          tnfdal1: blankZeroManualRecapCells("tnfdal1", recalcTnfdal1RecapRows(updatedRows)),
         }
       }
 
@@ -6243,6 +6201,18 @@ export default function NouvelleDeclarationPage() {
           validationError = true
         }
         break
+      case "tnfdal1":
+        if (tnfdal1Rows.some((row) => !safeString(row.caHt).trim() || !safeString(row.taxe).trim())) {
+          toast({ title: "Champs incomplets", description: "Tous les champs du tableau doivent etre remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
+      case "tacp7":
+        if (tacp7Rows.some((row) => !safeString(row.base).trim() || !safeString(row.taxe).trim())) {
+          toast({ title: "Champs incomplets", description: "Tous les champs du tableau doivent etre remplis.", variant: "destructive" })
+          validationError = true
+        }
+        break
     }
 
     if (validationError) return
@@ -6315,6 +6285,8 @@ export default function NouvelleDeclarationPage() {
       taxe15Rows: [] as Taxe15Row[],
       tva16Rows: [] as Tva16Row[],
       tva16FournisseurId: "",
+      tnfdal1Rows: [] as Tnfdal1Row[],
+      tacp7Rows: [] as Tacp7Row[],
     }
     
     // Remplir uniquement les donnees du tableau actif
@@ -6412,8 +6384,6 @@ export default function NouvelleDeclarationPage() {
         case "ibs":            tabData = { ibs14Rows, ibsFournisseurId }; break
         case "taxe_domicil":   tabData = { taxe15Rows }; break
         case "tva_autoliq":    tabData = { tva16Rows, tva16FournisseurId }; break
-        case "tnfdal1":       tabData = { tnfdal1Rows }; break
-        case "tacp7":        tabData = { tacp7Rows }; break
       }
       const requestPayload = {
         tabKey: activeTab,
@@ -6492,7 +6462,7 @@ export default function NouvelleDeclarationPage() {
             case "taxe_domicil":   restoreTabData = { taxe15Rows: originalDeclaration.taxe15Rows ?? [] }; break
             case "tva_autoliq":    restoreTabData = { tva16Rows: originalDeclaration.tva16Rows ?? [], tva16FournisseurId: originalDeclaration.tva16FournisseurId ?? "" }; break
             case "tnfdal1":       restoreTabData = { tnfdal1Rows: originalDeclaration.tnfdal1Rows ?? [] }; break
-            case "tacp7":        restoreTabData = { tacp7Rows: originalDeclaration.tacp7Rows ?? [] }; break
+            case "tacp7":         restoreTabData = { tacp7Rows: originalDeclaration.tacp7Rows ?? [] }; break
           }
 
           const restoreResponse = await fetch(`${apiBase}/api/fiscal`, {
@@ -6939,108 +6909,10 @@ export default function NouvelleDeclarationPage() {
           {entryMode === "etats_sortie" ? (
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                      Recap - {activeRecapDefinition.title}
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      let newRows: Record<string, string>[] = []
-                      switch (activeRecapTab) {
-                        case "tva_collectee":
-                          newRows = recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources))
-                          break
-                        case "tva_situation":
-                          newRows = recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources))
-                          break
-                        case "tva_a_payer":
-                          newRows = annotateTvaAPayerMissing(
-                            buildTvaAPayerRecapRows(
-                              recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
-                              recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
-                            ),
-                            recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
-                            recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
-                          )
-                          break
-                        case "tap15":
-                          newRows = annotateTapLikeMissing(
-                            buildTap15RecapRows(recapSources),
-                            fiscalDeclarations,
-                            mois,
-                            annee,
-                            "ca_tap",
-                            "caHt",
-                          )
-                          break
-                        case "tnfdal1":
-                          newRows = annotateTapLikeMissing(
-                            buildTnfdal1RecapRows(recapSources),
-                            fiscalDeclarations,
-                            mois,
-                            annee,
-                            "ca_tap",
-                            "caHt",
-                          )
-                          break
-                        case "tacp7":
-                          newRows = annotateTapLikeMissing(
-                            recalcTacp7RecapRows(buildTacp7RecapRows(recapSources)),
-                            fiscalDeclarations,
-                            mois,
-                            annee,
-                            "ca_tap",
-                            "base",
-                          )
-                          break
-                        case "masters15":
-                          newRows = recalcMasters15RecapRows(buildMasters15RecapRows())
-                          break
-                        case "droits_timbre":
-                          newRows = annotateDroitsTimbreMissing(
-                            buildDroitsTimbreRecapRows(recapSources),
-                            fiscalDeclarations,
-                            mois,
-                            annee,
-                          )
-                          break
-                        case "g50":
-                          newRows = annotateG50Missing(
-                            buildG50RecapRows(mois, annee, fiscalDeclarations, recapSources, monthlyG50RecapRowsByKey),
-                            fiscalDeclarations,
-                            mois,
-                            annee,
-                            recapRowsByKey,
-                            recapRowsByKey.tva_a_payer ?? [],
-                            recapRowsByKey.droits_timbre ?? [],
-                            monthlyG50RecapRowsByKey,
-                          )
-                          break
-                        case "g50_annuel":
-                          newRows = buildG50AnnualRecapRows(annee, g50AnnualRecaps).rows
-                          break
-                        case "irg_recap":
-                          newRows = buildIrgRecapRows(fiscalDeclarations)
-                          break
-                        default:
-                          return
-                      }
-                      setRecapRowsByKey((prev) => ({
-                        ...prev,
-                        [activeRecapTab]: newRows,
-                      }))
-                      toast({ title: "Recalcul réussi", description: "Les valeurs ont été recalculées automatiquement." })
-                    }}
-                    className="text-xs"
-                  >
-                    Recalculer
-                  </Button>
-                </div>
+                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
+                  Recap - {activeRecapDefinition.title}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -7145,7 +7017,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>Etat TVA / Immobilisations - Liste des factures</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate />
+                  <TabTVAEtat rows={tvaImmoRows} setRows={setTvaImmoRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate mois={mois} annee={annee} />
                 </CardContent>
               </Card>
             )}
@@ -7155,7 +7027,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>Etat TVA / Biens &amp; Services - Liste des factures</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate />
+                  <TabTVAEtat rows={tvaBiensRows} setRows={setTvaBiensRows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} withSelectableRate mois={mois} annee={annee} />
                 </CardContent>
               </Card>
             )}
@@ -7227,7 +7099,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N10 - Etat de la Taxe 1,5% des Masters</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabMasters rows={masterRows} setRows={setMasterRows} onSave={handleSave} isSubmitting={isSubmitting} mois={mois} annee={annee} />
+                  <TabMasters rows={masterRows} setRows={setMasterRows} onSave={handleSave} isSubmitting={isSubmitting} />
                 </CardContent>
               </Card>
             )}
@@ -7248,26 +7120,6 @@ export default function NouvelleDeclarationPage() {
                 </CardHeader>
                 <CardContent>
                   <TabTaxeFormation rows={taxe12Rows} setRows={setTaxe12Rows} onSave={handleSave} isSubmitting={isSubmitting} />
-                </CardContent>
-              </Card>
-            )}
-            {activeTab === "tnfdal1" && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N17 - TNFDAL 1%</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TabTnfdal1 rows={tnfdal1Rows} setRows={setTnfdal1Rows} onSave={handleSave} isSubmitting={isSubmitting} />
-                </CardContent>
-              </Card>
-            )}
-            {activeTab === "tacp7" && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N18 - TACP 7%</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TabTacp7 rows={tacp7Rows} setRows={setTacp7Rows} onSave={handleSave} isSubmitting={isSubmitting} />
                 </CardContent>
               </Card>
             )}
@@ -7326,6 +7178,26 @@ export default function NouvelleDeclarationPage() {
                 </CardHeader>
                 <CardContent>
                   <TabTvaAutoLiq rows={tva16Rows} setRows={setTva16Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "tnfdal1" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N17 - TNFDAL 1%</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTnfdal1 rows={tnfdal1Rows} setRows={setTnfdal1Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                </CardContent>
+              </Card>
+            )}
+            {activeTab === "tacp7" && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N18 - TACP 7%</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabTacp7 rows={tacp7Rows} setRows={setTacp7Rows} onSave={handleSave} isSubmitting={isSubmitting} />
                 </CardContent>
               </Card>
             )}
@@ -7390,6 +7262,7 @@ export default function NouvelleDeclarationPage() {
                       taxe15Rows: normalizeTaxe15Rows(Array.isArray(existingDeclarationPreview.data.taxe15Rows) ? (existingDeclarationPreview.data.taxe15Rows as Taxe15Row[]) : undefined),
                       tva16Rows: normalizeTva16Rows(Array.isArray(existingDeclarationPreview.data.tva16Rows) ? (existingDeclarationPreview.data.tva16Rows as Tva16Row[]) : undefined),
                       tnfdal1Rows: normalizeTnfdal1Rows(Array.isArray(existingDeclarationPreview.data.tnfdal1Rows) ? (existingDeclarationPreview.data.tnfdal1Rows as Tnfdal1Row[]) : undefined),
+                      tacp7Rows: normalizeTacp7Rows(Array.isArray(existingDeclarationPreview.data.tacp7Rows) ? (existingDeclarationPreview.data.tacp7Rows as Tacp7Row[]) : undefined),
                     }}
                   />
                 </div>
@@ -7413,5 +7286,125 @@ export default function NouvelleDeclarationPage() {
         </DialogContent>
       </Dialog>
     </LayoutWrapper>
+  )
+}
+
+//
+// TAB 17 - N17 TNFDAL 1%
+//
+interface Tab17Props { rows: Tnfdal1Row[]; setRows: React.Dispatch<React.SetStateAction<Tnfdal1Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
+  const upd = (i: number, f: "caHt" | "taxe", v: string) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Designation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Chiffres d'Affaires HT</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant du TNFDAL 1%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TNFDAL1_DECLARATION_ROWS.map((label, i) => (
+              <tr key={label} className="bg-white">
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 240 }}>{label}</td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    value={rows[i]?.caHt ?? ""}
+                    onChange={(e) => upd(i, "caHt", e.target.value)}
+                    className="h-7 px-2 text-xs"
+                    placeholder="0.00"
+                    style={{ minWidth: 170 }}
+                  />
+                </td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    value={rows[i]?.taxe ?? ""}
+                    onChange={(e) => upd(i, "taxe", e.target.value)}
+                    className="h-7 px-2 text-xs"
+                    placeholder="0.00"
+                    style={{ minWidth: 170 }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+//
+// TAB 18 - N18 TACP 7%
+//
+interface Tab18Props { rows: Tacp7Row[]; setRows: React.Dispatch<React.SetStateAction<Tacp7Row[]>>; onSave: () => void; isSubmitting: boolean }
+function TabTacp7({ rows, setRows, onSave, isSubmitting }: Tab18Props) {
+  const upd = (i: number, f: "base" | "taxe", v: string) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Designation</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant des Recharges HT</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant du TACP 7%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TACP7_DECLARATION_ROWS.map((label, i) => (
+              <tr key={label} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 240 }}>{label}</td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    value={rows[i]?.base ?? ""}
+                    onChange={(e) => upd(i, "base", e.target.value)}
+                    className="h-7 px-2 text-xs"
+                    placeholder="0.00"
+                    style={{ minWidth: 170 }}
+                  />
+                </td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    value={rows[i]?.taxe ?? ""}
+                    onChange={(e) => upd(i, "taxe", e.target.value)}
+                    className="h-7 px-2 text-xs"
+                    placeholder="0.00"
+                    style={{ minWidth: 170 }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
+        </Button>
+      </div>
+    </div>
   )
 }

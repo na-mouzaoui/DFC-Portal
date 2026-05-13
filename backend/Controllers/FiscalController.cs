@@ -211,7 +211,6 @@ public class FiscalController : ControllerBase
         "acompte",
         "ibs",
         "taxe_domicil",
-
         "taxe_formation",
         "acompte",
         "ibs",
@@ -224,6 +223,7 @@ public class FiscalController : ControllerBase
     private static readonly HashSet<string> RegionalManageableTabs = new(RegionalManageableTabOrder, StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> FinanceManageableTabs = new(FinanceManageableTabOrder, StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AcompteAllowedMonths = new(new[] { "03", "05", "10" }, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> FormationAllowedMonths = new(new[] { "06", "12" }, StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> SupplierScopedTabs = new(new[] { "ibs", "tva_autoliq" }, StringComparer.OrdinalIgnoreCase);
 
     private static string NormalizeTabKey(string? tabKey) => (tabKey ?? "").Trim().ToLowerInvariant();
@@ -270,6 +270,12 @@ public class FiscalController : ControllerBase
     {
         var normalizedMonth = (month ?? string.Empty).Trim();
         return AcompteAllowedMonths.Contains(normalizedMonth);
+    }
+
+    private static bool IsFormationAllowedForMonth(string? month)
+    {
+        var normalizedMonth = (month ?? string.Empty).Trim();
+        return FormationAllowedMonths.Contains(normalizedMonth);
     }
 
     private async Task<bool> IsTable6EnabledAsync()
@@ -759,6 +765,46 @@ ORDER BY [LigneId], [Id]", periodeDbId).ToListAsync();
                 });
             }
 
+            case "tnfdal1":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TnfdalDeclarationPayloadRow>(@"
+SELECT l.[designiation] AS [Designation], d.[CAHT], d.[TNFDAL]
+FROM [dbo].[TNFDAL1_declaration] d
+INNER JOIN [dbo].[TNFDAL1Dec_lignes] l ON l.[id] = d.[id_designiation_TNFDAL]
+WHERE d.[id_periode] = {0}
+ORDER BY l.[id], d.[id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    tnfdal1Rows = rows.Select(r => new
+                    {
+                        designation = r.Designation ?? string.Empty,
+                        caHt = ToInvariantString(r.CAHT),
+                        taxe = ToInvariantString(r.TNFDAL)
+                    }).ToArray()
+                });
+            }
+
+            case "tacp7":
+            {
+                var rows = await _context.Database.SqlQueryRaw<TacpDeclarationPayloadRow>(@"
+SELECT l.[designiation] AS [Designation], d.[MontantHT], d.[TACP]
+FROM [dbo].[TACP7_declaration] d
+INNER JOIN [dbo].[TACP7Dec_lignes] l ON l.[id] = d.[id_designiation_TACP]
+WHERE d.[id_periode] = {0}
+ORDER BY l.[id], d.[id]", periodeDbId).ToListAsync();
+
+                return JsonSerializer.Serialize(new
+                {
+                    tacp7Rows = rows.Select(r => new
+                    {
+                        designation = r.Designation ?? string.Empty,
+                        @base = ToInvariantString(r.MontantHT),
+                        taxe = ToInvariantString(r.TACP)
+                    }).ToArray()
+                });
+            }
+
             case "acompte":
             {
                 var months = Enumerable.Repeat(string.Empty, 12).ToArray();
@@ -1096,7 +1142,8 @@ FROM (VALUES
     (N'Autre IRG 10%'),
     (N'Autre IRG 15%'),
     (N'Jetons de presence 10%'),
-    (N'Tantieme 10%')
+    (N'Tantieme 10%'),
+    (N'IRG Challenge 10%')
 ) AS x([Designation])
 WHERE NOT EXISTS (SELECT 1 FROM [dbo].[IrgLigne] l WHERE l.[Designation] = x.[Designation]);
 
@@ -1189,6 +1236,60 @@ INSERT INTO [dbo].[Formation] ([LigneId], [PeriodeId], [Montant])
 SELECT l.[Id], {periodeId}, TRY_CAST(JSON_VALUE(j.[value], '$.montant') AS DECIMAL(18,2))
 FROM OPENJSON({payload}, '$.taxe12Rows') AS j
 INNER JOIN [dbo].[FormationLigne] l ON l.[Id] = (TRY_CAST(j.[key] AS INT) + 1);
+");
+                break;
+
+            case "tnfdal1":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[TNFDAL1Dec_lignes] ([designiation])
+SELECT DISTINCT j.[designation]
+FROM OPENJSON({payload}, '$.tnfdal1Rows')
+WITH ([designation] NVARCHAR(255) '$.designation') AS j
+LEFT JOIN [dbo].[TNFDAL1Dec_lignes] l ON l.[designiation] = j.[designation]
+WHERE NULLIF(LTRIM(RTRIM(j.[designation])), N'') IS NOT NULL AND l.[id] IS NULL;
+
+DELETE FROM [dbo].[TNFDAL1_declaration] WHERE [id_periode] = {periodeId};
+
+INSERT INTO [dbo].[TNFDAL1_declaration] ([id_designiation_TNFDAL], [id_periode], [CAHT], [TNFDAL])
+SELECT
+    l.[id],
+    {periodeId},
+    TRY_CAST(j.[caHt] AS DECIMAL(18,2)),
+    TRY_CAST(j.[taxe] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.tnfdal1Rows')
+WITH (
+    [designation] NVARCHAR(255) '$.designation',
+    [caHt] NVARCHAR(64) '$.caHt',
+    [taxe] NVARCHAR(64) '$.taxe'
+) AS j
+INNER JOIN [dbo].[TNFDAL1Dec_lignes] l ON l.[designiation] = j.[designation];
+");
+                break;
+
+            case "tacp7":
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[TACP7Dec_lignes] ([designiation])
+SELECT DISTINCT j.[designation]
+FROM OPENJSON({payload}, '$.tacp7Rows')
+WITH ([designation] NVARCHAR(255) '$.designation') AS j
+LEFT JOIN [dbo].[TACP7Dec_lignes] l ON l.[designiation] = j.[designation]
+WHERE NULLIF(LTRIM(RTRIM(j.[designation])), N'') IS NOT NULL AND l.[id] IS NULL;
+
+DELETE FROM [dbo].[TACP7_declaration] WHERE [id_periode] = {periodeId};
+
+INSERT INTO [dbo].[TACP7_declaration] ([id_designiation_TACP], [id_periode], [MontantHT], [TACP])
+SELECT
+    l.[id],
+    {periodeId},
+    TRY_CAST(j.[base] AS DECIMAL(18,2)),
+    TRY_CAST(j.[taxe] AS DECIMAL(18,2))
+FROM OPENJSON({payload}, '$.tacp7Rows')
+WITH (
+    [designation] NVARCHAR(255) '$.designation',
+    [base] NVARCHAR(64) '$.base',
+    [taxe] NVARCHAR(64) '$.taxe'
+) AS j
+INNER JOIN [dbo].[TACP7Dec_lignes] l ON l.[designiation] = j.[designation];
 ");
                 break;
 
@@ -1372,6 +1473,12 @@ END
                 await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[AutoLiquidation] WHERE [PeriodeId] = {periodeId} AND [FournisseurId] = {supplierId};");
                 break;
             }
+            case "tnfdal1":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[TNFDAL1_declaration] WHERE [id_periode] = {periodeId};");
+                break;
+            case "tacp7":
+                await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[TACP7_declaration] WHERE [id_periode] = {periodeId};");
+                break;
         }
     }
 
@@ -1563,7 +1670,6 @@ END
         {
             var result = new List<dynamic>();
             
-            // Fetch all wilayas with their communes
             var query = @"
                   SELECT w.[Code], w.[Nom] as Wilaya,
                     c.[Code] as CommuneCode, c.[Code] as CommuneName
@@ -1634,6 +1740,12 @@ END
             && !await IsTable6EnabledAsync())
         {
             return Conflict(new { message = "Le tableau 6 (ETAT TAP) est désactivé par l'administration." });
+        }
+
+        if (string.Equals(NormalizeTabKey(request.TabKey), "taxe_formation", StringComparison.OrdinalIgnoreCase)
+            && !IsFormationAllowedForMonth(normalizedMois))
+        {
+            return Conflict(new { message = "Le tableau Taxe Formation est accessible uniquement en Juin et Decembre." });
         }
 
         if (!CanManageTabForRole(currentUserRole, request.TabKey))
@@ -1716,6 +1828,12 @@ END
             && !await IsTable6EnabledAsync())
         {
             return Conflict(new { message = "Le tableau 6 (ETAT TAP) est désactivé par l'administration." });
+        }
+
+        if (string.Equals(NormalizeTabKey(request.TabKey), "taxe_formation", StringComparison.OrdinalIgnoreCase)
+            && !IsFormationAllowedForMonth(normalizedMois))
+        {
+            return Conflict(new { message = "Le tableau Taxe Formation est accessible uniquement en Juin et Decembre." });
         }
 
         if (IsPeriodLocked(declaration.Periode.Mois.ToString("00"), declaration.Periode.Annee.ToString(), currentUserRole, out var sourceDeadline))
@@ -2067,6 +2185,8 @@ GROUP BY [Direction]", periode.Id).ToListAsync();
             var assignedTabs = (isSiegeDirection ? FinanceManageableTabOrder : RegionalManageableTabOrder)
                 .Where(tab => isTable6Enabled || !string.Equals(tab, "etat_tap", StringComparison.OrdinalIgnoreCase))
                 .Where(tab => IsAcompteAllowedForMonth(currentMonth) || !string.Equals(tab, "acompte", StringComparison.OrdinalIgnoreCase))
+                .Where(tab => IsFormationAllowedForMonth(currentMonth) || !string.Equals(tab, "taxe_formation", StringComparison.OrdinalIgnoreCase))
+                .Where(tab => !string.Equals(tab, "taxe_vehicule", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
             var roleForDeadline = isSiegeDirection ? "finance" : "regionale";
 
@@ -2274,6 +2394,20 @@ internal sealed class AcomptePayloadRow
     public int? MonthIndex { get; set; }
     [Precision(18, 5)]
     public decimal? Montant { get; set; }
+}
+
+internal sealed class TnfdalDeclarationPayloadRow
+{
+    public string? Designation { get; set; }
+    public decimal? CAHT { get; set; }
+    public decimal? TNFDAL { get; set; }
+}
+
+internal sealed class TacpDeclarationPayloadRow
+{
+    public string? Designation { get; set; }
+    public decimal? MontantHT { get; set; }
+    public decimal? TACP { get; set; }
 }
 
 internal sealed class IbsPayloadRow

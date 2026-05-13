@@ -272,6 +272,26 @@ WHERE [designiation] = {designation}");
             return;
         }
 
+        if (normalizedKey == "irg_recap")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[IRGRecap] WHERE [PeriodeId] = {periodeId}");
+            foreach (var row in rows.EnumerateArray())
+            {
+                var designation = row.TryGetProperty("designation", out var d) ? d.ToString() : string.Empty;
+                if (string.IsNullOrWhiteSpace(designation)) continue;
+                var assiette = row.TryGetProperty("assiette", out var assietteElement) ? ParseDecimal(assietteElement) : 0m;
+                var montant = row.TryGetProperty("montant", out var montantElement) ? ParseDecimal(montantElement) : 0m;
+
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [dbo].[IRGRecap] ([LigneId], [PeriodeId], [AssietteImposable], [Montant])
+SELECT [Id], {periodeId}, {assiette}, {montant}
+FROM [dbo].[IrgLigne]
+WHERE [Designation] = {designation}");
+            }
+
+            return;
+        }
+
         if (normalizedKey == "g50")
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[G50] WHERE [id_periode] = {periodeId}");
@@ -372,6 +392,12 @@ WHERE [designiation] = {designation}");
         if (normalizedKey == "tacp7")
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[TACP7] WHERE [id_periode] = {periodeId}");
+            return;
+        }
+
+        if (normalizedKey == "irg_recap")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM [dbo].[IRGRecap] WHERE [PeriodeId] = {periodeId}");
             return;
         }
 
@@ -533,6 +559,22 @@ SELECT (
     FOR JSON PATH
 )", new SqlParameter("@periodeId", periodeId.Value));
         }
+
+    if (normalizedKey == "irg_recap")
+    {
+        return await ExecuteRowsJsonQueryAsync(@"
+SELECT (
+    SELECT l.[Designation] AS [designation],
+       ISNULL(r.[AssietteImposable], 0) AS [assiette],
+       ISNULL(r.[Montant], 0) AS [montant]
+    FROM [dbo].[IrgLigne] l
+    LEFT JOIN [dbo].[IRGRecap] r
+      ON r.[LigneId] = l.[Id]
+     AND r.[PeriodeId] = @periodeId
+    ORDER BY l.[Id]
+    FOR JSON PATH
+)", new SqlParameter("@periodeId", periodeId.Value));
+    }
 
         if (normalizedKey == "g50")
         {
