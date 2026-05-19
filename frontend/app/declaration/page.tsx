@@ -191,11 +191,6 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
     return { ht, tva, ttc: ht + tva }
   }, [rows])
 
-  const handleSave = () => {
-    if (hasOldInvoice) return
-    onSave()
-  }
-
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
@@ -2105,6 +2100,7 @@ const TNFDAL1_RECAP_ROWS = [
   "DR Oran",
   "DR Bechar",
   "DR Ouargla",
+  "Régulation CA",
   "Total",
 ] as const
 
@@ -3326,7 +3322,8 @@ const buildG50RecapRows = (
 
 const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
   if (columnKey === "designation") return false
-
+  if (designation === "Total") return false
+  /*
   if (recapKey === "tva_collectee") {
     if (isTvaCollecteeRecapTotalRow(designation)) return false
     if (columnKey === "tva") return false
@@ -3361,7 +3358,8 @@ const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey:
 
   if (recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel") return false
 
-  return false
+  return false*/
+  return true
 }
 
 const isRecapCellMandatory = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
@@ -6178,7 +6176,6 @@ export default function NouvelleDeclarationPage() {
           validationError = true
           break
         }
-
         const invalidIrgRow = irgRows.find((row) => {
           if (!row.assietteImposable && !row.montant) return false
           const assiette = num(row.assietteImposable, false)
@@ -6909,10 +6906,108 @@ export default function NouvelleDeclarationPage() {
           {entryMode === "etats_sortie" ? (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
-                  Recap - {activeRecapDefinition.title}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
+                 <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>
+                      Recap - {activeRecapDefinition.title}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">Survolez chaque case pour voir la regle de calcul ou 'Saisie manuelle'.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      let newRows: Record<string, string>[] = []
+                      switch (activeRecapTab) {
+                        case "tva_collectee":
+                          newRows = recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources))
+                          break
+                        case "tva_situation":
+                          newRows = recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources))
+                          break
+                        case "tva_a_payer":
+                          newRows = annotateTvaAPayerMissing(
+                            buildTvaAPayerRecapRows(
+                              recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
+                              recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
+                            ),
+                            recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
+                            recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
+                          )
+                          break
+                        case "tap15":
+                          newRows = annotateTapLikeMissing(
+                            buildTap15RecapRows(recapSources),
+                            fiscalDeclarations,
+                            mois,
+                            annee,
+                            "ca_tap",
+                            "caHt",
+                          )
+                          break
+                        case "tnfdal1":
+                          newRows = annotateTapLikeMissing(
+                            buildTnfdal1RecapRows(recapSources),
+                            fiscalDeclarations,
+                            mois,
+                            annee,
+                            "ca_tap",
+                            "caHt",
+                          )
+                          break
+                        case "tacp7":
+                          newRows = annotateTapLikeMissing(
+                            recalcTacp7RecapRows(buildTacp7RecapRows(recapSources)),
+                            fiscalDeclarations,
+                            mois,
+                            annee,
+                            "ca_tap",
+                            "base",
+                          )
+                          break
+                        case "masters15":
+                          newRows = recalcMasters15RecapRows(buildMasters15RecapRows())
+                          break
+                        case "droits_timbre":
+                          newRows = annotateDroitsTimbreMissing(
+                            buildDroitsTimbreRecapRows(recapSources),
+                            fiscalDeclarations,
+                            mois,
+                            annee,
+                          )
+                          break
+                        case "g50":
+                          newRows = annotateG50Missing(
+                            buildG50RecapRows(mois, annee, fiscalDeclarations, recapSources, monthlyG50RecapRowsByKey),
+                            fiscalDeclarations,
+                            mois,
+                            annee,
+                            recapRowsByKey.tva_a_payer ?? [],
+                            recapRowsByKey.tva_situation ?? [],
+                            recapRowsByKey.droits_timbre ?? [],
+                            monthlyG50RecapRowsByKey,
+                          )
+                          break
+                        case "g50_annuel":
+                          newRows = buildG50AnnualRecapRows(annee, g50AnnualRecaps).rows
+                          break
+                        case "irg_recap":
+                          newRows = buildIrgRecapRows(fiscalDeclarations, mois, annee, effectiveDirection)
+                          break
+                        default:
+                          return
+                      }
+                      setRecapRowsByKey((prev) => ({
+                        ...prev,
+                        [activeRecapTab]: newRows,
+                      }))
+                      toast({ title: "Recalcul réussi", description: "Les valeurs ont été recalculées automatiquement." })
+                    }}
+                    className="text-xs"
+                  >
+                    Recalculer
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">

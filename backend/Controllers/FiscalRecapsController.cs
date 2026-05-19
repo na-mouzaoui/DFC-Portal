@@ -117,6 +117,17 @@ public class EtatsDeSortieController : ControllerBase
         return 0m;
     }
 
+    private static bool HasNonEmptyValue(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+            return true;
+
+        if (element.ValueKind == JsonValueKind.String)
+            return !string.IsNullOrWhiteSpace(element.GetString());
+
+        return element.ValueKind != JsonValueKind.Null && element.ValueKind != JsonValueKind.Undefined;
+    }
+
     private static string NormalizeRecapKey(string key)
     {
         return (key ?? string.Empty).Trim().ToLowerInvariant();
@@ -239,8 +250,17 @@ WHERE [designiation] = {designation}");
             {
                 var designation = row.TryGetProperty("designation", out var d) ? d.ToString() : string.Empty;
                 if (string.IsNullOrWhiteSpace(designation)) continue;
-                var caHt = row.TryGetProperty("caHt", out var caHtElement) ? ParseDecimal(caHtElement) : 0m;
-                var taxe = row.TryGetProperty("taxe", out var taxeElement) ? ParseDecimal(taxeElement) : 0m;
+                var hasCaHt = row.TryGetProperty("caHt", out var caHtElement) && HasNonEmptyValue(caHtElement);
+                var hasTaxe = row.TryGetProperty("taxe", out var taxeElement) && HasNonEmptyValue(taxeElement);
+
+                if (string.Equals(designation.Trim(), "Régulation CA", StringComparison.OrdinalIgnoreCase)
+                    && !hasCaHt && !hasTaxe)
+                {
+                    continue;
+                }
+
+                var caHt = hasCaHt ? ParseDecimal(caHtElement) : 0m;
+                var taxe = hasTaxe ? ParseDecimal(taxeElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
 INSERT INTO [dbo].[TNFDAL] ([id_designiation_encaissement], [id_periode], [CAHT], [TNFDAL])
@@ -539,7 +559,11 @@ SELECT (
     LEFT JOIN [dbo].[TNFDAL] r
       ON r.[id_designiation_encaissement] = l.[id]
      AND r.[id_periode] = @periodeId
-    ORDER BY l.[id]
+    ORDER BY CASE
+        WHEN l.[designiation] = N'Total' THEN 9999
+        WHEN l.[designiation] = N'Régulation CA' THEN 9998
+        ELSE l.[id]
+    END
     FOR JSON PATH
 )", new SqlParameter("@periodeId", periodeId.Value));
         }

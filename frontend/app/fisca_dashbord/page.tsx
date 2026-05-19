@@ -1740,6 +1740,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
           write("QUARTIER DES AFFAIRES GROUPE 05 ILOT 27,28 ET 29 BAB EZZOUAR", 162, 32.4, "bold", 8, "center")
           write("316096228742", 155, 38.0, "bold", 9, "center")
           write("67547", 155, 43.6, "bold", 9, "center")
+          write("16217010002",155,49.2,"bold",9,"center")
 
           // Titre encadré
           drawBox(8, 72, 281, 20)
