@@ -1239,7 +1239,15 @@ const TAXE2_LABELS = ["Taxe sur l'importation des biens et services"]
 interface Tab9Props { rows: Taxe2Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe2Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
   const upd = (i: number, f: keyof Taxe2Row, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r
+      if (f === "base") {
+        const base = safeString(v)
+        const montant = base ? (num(base, false) * 0.02).toFixed(2) : ""
+        return { ...r, base, montant }
+      }
+      return { ...r, [f]: v }
+    }))
   const totalBase = rows.reduce((s, r) => s + num(r.base), 0)
   const totalMont = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
@@ -1258,7 +1266,17 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
               <tr key={i} className="bg-white">
                 <td className="px-3 py-1 text-xs border-b font-medium text-gray-800" style={{ minWidth: 320 }}>{lbl}</td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].base} onChange={(e) => upd(i, "base", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" className="h-7 px-2 text-xs" value={rows[i].montant} onChange={(e) => upd(i, "montant", e.target.value)} placeholder="0.00" style={{ minWidth: 150 }} /></td>
+                <td className="px-1 py-1 border-b">
+                  <AmountInput
+                    min={0}
+                    step="0.01"
+                    className="h-7 px-2 text-xs bg-gray-100"
+                    value={rows[i].montant}
+                    readOnly
+                    placeholder="0.00"
+                    style={{ minWidth: 150 }}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
