@@ -1303,9 +1303,36 @@ function TabTaxe2({ rows, setRows, onSave, isSubmitting }: Tab9Props) {
 // 
 type MasterRow = { date: string; nomMaster: string; numFacture: string; dateFacture: string; montantHT: string; taxe15: string; mois: string; observation: string }
 const EMPTY_MASTER: MasterRow = { date: "", nomMaster: "", numFacture: "", dateFacture: "", montantHT: "", taxe15: "", mois: "", observation: "" }
-interface Tab10Props { rows: MasterRow[]; setRows: React.Dispatch<React.SetStateAction<MasterRow[]>>; onSave: () => void; isSubmitting: boolean }
-function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
-  const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER }])
+interface Tab10Props {
+  rows: MasterRow[]
+  setRows: React.Dispatch<React.SetStateAction<MasterRow[]>>
+  mois: string
+  annee: string
+  onSave: () => void
+  isSubmitting: boolean
+}
+function TabMasters({ rows, setRows, mois, annee, onSave, isSubmitting }: Tab10Props) {
+  const monthLabel = useMemo(() => MONTHS.find((m) => m.value === mois)?.label ?? "", [mois])
+  const periodEndDate = useMemo(() => {
+    const monthValue = Number(mois)
+    const yearValue = Number(annee)
+    if (!Number.isFinite(monthValue) || !Number.isFinite(yearValue)) return ""
+    if (monthValue < 1 || monthValue > 12 || yearValue < 1) return ""
+    const lastDay = new Date(yearValue, monthValue, 0).getDate()
+    return `${yearValue}-${String(monthValue).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+  }, [annee, mois])
+
+  useEffect(() => {
+    if (!periodEndDate && !monthLabel) return
+    setRows((prev) => prev.map((row) => {
+      const nextDate = periodEndDate || row.date
+      const nextMois = monthLabel || row.mois
+      if (row.date === nextDate && row.mois === nextMois) return row
+      return { ...row, date: nextDate, mois: nextMois }
+    }))
+  }, [monthLabel, periodEndDate, setRows])
+
+  const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER, date: periodEndDate, mois: monthLabel }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const upd = (i: number, f: keyof MasterRow, v: string) => {
     setRows((prev) => prev.map((r, idx) => {
@@ -1343,19 +1370,27 @@ function TabMasters({ rows, setRows, onSave, isSubmitting }: Tab10Props) {
             {rows.map((row, i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input type="date" value={row.date} onChange={(e) => upd(i, "date", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
+                <td className="px-1 py-1 border-b">
+                  <Input
+                    type="date"
+                    value={periodEndDate || row.date}
+                    readOnly
+                    className="h-7 px-2 text-xs bg-gray-100"
+                    style={iw}
+                  />
+                </td>
                 <td className="px-1 py-1 border-b"><Input value={row.nomMaster} onChange={(e) => upd(i, "nomMaster", e.target.value)} className="h-7 px-2 text-xs" placeholder="Nom du Master" style={{ minWidth: 160 }} /></td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
                 <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "-"}</td>
                 <td className="px-1 py-1 border-b">
-                  <select value={row.mois} onChange={(e) => upd(i, "mois", e.target.value)}
-                    className="h-7 rounded border border-gray-200 px-2 text-xs focus:outline-none" style={{ minWidth: 110 }}>
-                    <option value="">- Mois -</option>
-                    {["Janvier","Fevrier","Mars","Avril","Mai","Juin","Juillet","Aout","Septembre","Octobre","Novembre","Decembre"]
-                      .map((m, idx) => <option key={idx} value={m}>{m}</option>)}
-                  </select>
+                  <Input
+                    value={monthLabel || row.mois}
+                    readOnly
+                    className="h-7 px-2 text-xs bg-gray-100"
+                    style={{ minWidth: 110 }}
+                  />
                 </td>
                 <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 140 }} /></td>
                 <td className="px-2 py-1 text-center border-b">
@@ -7212,7 +7247,14 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N10 - Etat de la Taxe 1,5% des Masters</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabMasters rows={masterRows} setRows={setMasterRows} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabMasters
+                    rows={masterRows}
+                    setRows={setMasterRows}
+                    mois={mois}
+                    annee={annee}
+                    onSave={handleSave}
+                    isSubmitting={isSubmitting}
+                  />
                 </CardContent>
               </Card>
             )}
