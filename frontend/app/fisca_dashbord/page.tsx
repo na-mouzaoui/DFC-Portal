@@ -406,8 +406,8 @@ const DASH_TABS = [
   { key: "ibs",           label: "14 a IBS Fournisseurs Etrangers", color: "#7c2d12", title: "IBS SUR FOURNISSEURS ETRANGERS" },
   { key: "taxe_domicil",  label: "15 a Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
   { key: "tva_autoliq",   label: "16 a TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
-  { key: "tnfdal1",       label: "17 a N17 TNFDAL 1%",       color: "#0ea5e9", title: "N17 - TNFDAL 1%" },
-  { key: "tacp7",         label: "18 a N18 TACP 7%",         color: "#22c55e", title: "N18 - TACP 7%" },
+  { key: "tnfdal1",       label: "17 a TNFDAL 1%",       color: "#0ea5e9", title: "TNFDAL 1%" },
+  { key: "tacp7",         label: "18 a TACP 7%",         color: "#22c55e", title: "TACP 7%" },
 ]
 
 const DECLARATION_TYPE_LABELS: Record<string, string> = {
@@ -427,8 +427,8 @@ const DECLARATION_TYPE_LABELS: Record<string, string> = {
   ibs: "IBS Fournisseurs Etrangers",
   taxe_domicil: "Taxe Domiciliation",
   tva_autoliq: "TVA Auto Liquidation",
-  tnfdal1: "N17 TNFDAL 1%",
-  tacp7: "N18 TACP 7%",
+  tnfdal1: "TNFDAL 1%",
+  tacp7: "TACP 7%",
 }
 
 // aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -1187,6 +1187,9 @@ export default function FiscaDashboardPage() {
   const [consolidationDirections, setConsolidationDirections] = useState<string[]>([])
   const [consolidationSupplierId, setConsolidationSupplierId] = useState("")
   const [showFilters, setShowFilters] = useState(false)
+  const [recentCollapsed, setRecentCollapsed] = useState(false)
+  const [fournisseurCollapsed, setFournisseurCollapsed] = useState(false)
+  const [recapCollapsed, setRecapCollapsed] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
   const [reminders, setReminders] = useState<ReminderData[]>([])
@@ -2022,8 +2025,8 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
           styles: {
             font: "helvetica",
             fontSize: isG50Tab ? 9.4 : 9,
-            cellPadding: isG50Tab ? 1.0 : 1.2,
-            minCellHeight: isG50Tab ? 8.8 : 8.5,
+            cellPadding: tabKey === "ca_siege" ? 0.6 : isG50Tab ? 1.0 : 1.2,
+            minCellHeight: tabKey === "ca_siege" ? 5 : isG50Tab ? 8.8 : 8.5,
             lineColor: isG50Tab ? [0, 0, 0] : [51, 51, 51],
             lineWidth: isG50Tab ? 0.3 : 0.2,
             textColor: [0, 0, 0],
@@ -2038,13 +2041,13 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
             fontSize: tabKey === "ibs" ? 8 : isG50Tab ? 9.4 : 9,
             halign: "center",
             valign: "middle",
-            cellPadding: tabKey === "ibs" ? 1.8 : isG50Tab ? 1.0 : 1.2,
-            minCellHeight: tabKey === "ibs" ? 15 : isG50Tab ? 10 : 9,
+            cellPadding: tabKey === "ibs" ? 1.8 : isG50Tab ? 1.0 : tabKey === "ca_siege" ? 0.6 : 1.2,
+            minCellHeight: tabKey === "ibs" ? 15 : isG50Tab ? 10 : tabKey === "ca_siege" ? 5 : 9,
           },
           bodyStyles: {
             textColor: [0, 0, 0],
             font: "helvetica",
-            fontSize: 9,
+            fontSize: tabKey === "ca_siege" ? 8 : 9,
           },
           columnStyles:
             tabKey === "ibs"
@@ -2452,6 +2455,11 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     return true
   })
 
+  const FOURNISSEUR_TAB_KEYS = new Set(["ibs", "taxe_domicil", "tva_autoliq"])
+  const fournisseurDeclarations = declarations
+    .filter((decl) => FOURNISSEUR_TAB_KEYS.has(getDeclarationType(decl).key))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
   const recentDeclarations = [...filteredDeclarations].sort((a, b) => {
     let cmp = 0
     if (sortCol === "date") {
@@ -2785,14 +2793,19 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-base">
-                Déclarations récentes
-                {declarations.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({filteredDeclarations.length}{hasActiveFilters ? ` / ${declarations.length}` : ""})
-                  </span>
-                )}
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setRecentCollapsed(!recentCollapsed)}>
+                  {recentCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </Button>
+                <CardTitle className="text-base">
+                  Déclarations récentes
+                  {declarations.length > 0 && (
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      ({filteredDeclarations.length}{hasActiveFilters ? ` / ${declarations.length}` : ""})
+                    </span>
+                  )}
+                </CardTitle>
+              </div>
               <div className="flex items-center gap-2">
                 {hasActiveFilters && (
                   <Button
@@ -2878,12 +2891,12 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
             )}
           </CardHeader>
           <CardContent>
-            {recentDeclarations.length === 0 ? (
+            {!recentCollapsed && (recentDeclarations.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 Aucune déclaration fiscale enregistrée pour le moment.
               </p>
             ) : (
-              <div className="max-h-[540px] overflow-auto">
+              <div className="max-h-[440px] overflow-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2998,22 +3011,160 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                   </TableBody>
                 </Table>
               </div>
-            )}
+            ))}
+          </CardContent>
+        </Card>
 
+        {/* Fournisseur declarations */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setFournisseurCollapsed(!fournisseurCollapsed)}>
+                {fournisseurCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              </Button>
+              <CardTitle className="text-base">
+                Déclarations Fournisseurs Etrangers
+                {fournisseurDeclarations.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({fournisseurDeclarations.length})
+                  </span>
+                )}
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!fournisseurCollapsed && (fournisseurDeclarations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aucune déclaration fournisseur étranger enregistrée.
+              </p>
+            ) : (
+              <div className="max-h-[440px] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type de déclaration</TableHead>
+                      <TableHead>Direction</TableHead>
+                      <TableHead>Période</TableHead>
+                      <TableHead>Date d&apos;enregistrement</TableHead>
+                      <TableHead className="w-20 text-center">Statut</TableHead>
+                      <TableHead className="text-center">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fournisseurDeclarations.map((decl) => {
+                      const declType = getDeclarationType(decl)
+                      const isLocked = isDeclarationLocked(decl)
+                      const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
+                      const isSiegeDeclaration = declarationDirection === "siège"
+                        || declarationDirection === "siege"
+                        || declarationDirection.includes("siège")
+                        || declarationDirection.includes("siege")
+                      const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
+                      const canApproveAsRegional = canApproveRegionalDeclarations
+                        && !decl.isApproved
+                        && (isOwnDeclaration || (!!normalizedRegion && declarationDirection === normalizedRegion))
+                      const canApproveAsFinance = canApproveFinanceDeclarations
+                        && !decl.isApproved
+                        && (isOwnDeclaration || isSiegeDeclaration)
+                      const canApproveAsAdmin = isAdminRole && !decl.isApproved
+                      const canApproveThisDeclaration = canApproveAsAdmin || canApproveAsRegional || canApproveAsFinance
+                      return (
+                        <TableRow
+                          key={decl.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleView(decl, declType.key)}
+                          title="Cliquer pour consulter"
+                        >
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {declType.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">a</span>}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {MONTHS[decl.mois] || decl.mois} {decl.annee}
+                            </Badge>
+                            {isLocked && (
+                              <Badge variant="secondary" className="ml-2 text-[10px] text-emerald-700">
+                                Clôturée
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
+                          </TableCell>
+                          <TableCell className="w-20 p-0 align-middle">
+                            <div className="flex items-center justify-center">
+                              {decl.isApproved ? (
+                                <span className="inline-flex" title="Approuvée" aria-label="Approuvée">
+                                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                </span>
+                              ) : (
+                                <span className="inline-flex" title="En attente" aria-label="En attente">
+                                  <Clock3 className="h-4 w-4 text-amber-600" />
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-2">
+                              {(isAdminRole || canApproveRegionalDeclarations || canApproveFinanceDeclarations) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 w-8 p-0 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                  disabled={!canApproveThisDeclaration}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleApprove(decl)
+                                  }}
+                                  title={decl.isApproved ? "Déclaration déjà approuvée" : !canApproveThisDeclaration ? "Action non autorisée pour cette déclaration" : "Approuver"}
+                                >
+                                  <CheckCircle size={16} />
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={isLocked}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDelete(decl)
+                                }}
+                                title={isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-base">
-                Recap
-                {recaps.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({filteredRecaps.length}{hasActiveRecapFilters ? ` / ${recaps.length}` : ""})
-                  </span>
-                )}
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setRecapCollapsed(!recapCollapsed)}>
+                  {recapCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </Button>
+                <CardTitle className="text-base">
+                  Recap
+                  {recaps.length > 0 && (
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      ({filteredRecaps.length}{hasActiveRecapFilters ? ` / ${recaps.length}` : ""})
+                    </span>
+                  )}
+                </CardTitle>
+              </div>
               <div className="flex items-center gap-2">
                 {hasActiveRecapFilters && (
                   <Button
@@ -3080,7 +3231,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
             )}
           </CardHeader>
           <CardContent>
-            {recaps.length === 0 ? (
+            {!recapCollapsed && (recaps.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 Aucun recap pour le moment.
               </p>
@@ -3089,7 +3240,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                 Aucun recap ne correspond aux filtres.
               </p>
             ) : (
-              <div className="max-h-[540px] overflow-auto">
+              <div className="max-h-[440px] overflow-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -3139,7 +3290,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                   </TableBody>
                 </Table>
               </div>
-            )}
+            ))}
           </CardContent>
         </Card>
       </div>

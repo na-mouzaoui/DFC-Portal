@@ -1553,240 +1553,7 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
   )
 }
 
-// 
-// TAB 14 - IBS SUR FOURNISSEURS ETRANGERS
-// 
-type Ibs14Row = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; montantNetDevise: string; montantIBS: string; montantNetDinars: string }
-const EMPTY_IBS14: Ibs14Row = { numFacture: "", montantBrutDevise: "", tauxChange: "", montantBrutDinars: "", montantNetDevise: "", montantIBS: "", montantNetDinars: "" }
-interface Tab14Props { rows: Ibs14Row[]; setRows: React.Dispatch<React.SetStateAction<Ibs14Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabIBS({ rows, setRows, onSave, isSubmitting }: Tab14Props) {
-  const addRow    = () => setRows((p) => [...p, { ...EMPTY_IBS14 }])
-  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
-  const upd = (i: number, f: keyof Ibs14Row, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
-  const s = (f: keyof Ibs14Row) => rows.reduce((acc, r) => acc + num(r[f] as string), 0)
-  const iw = { minWidth: 120 }
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">No de Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Devise</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date du Contrat</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Dinars</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net Transferable en Devise</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant de l'IBS (Taux...%)</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net Transferable en Dinars</th>
-              <th className="px-2 py-2 border-b w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantIBS} onChange={(e) => upd(i,"montantIBS",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDinars} onChange={(e) => upd(i,"montantNetDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-2 py-1 text-center border-b">
-                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-green-100 font-semibold">
-              <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantBrutDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("tauxChange"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantBrutDinars"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantNetDevise"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantIBS"))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(s("montantNetDinars"))}</td>
-              <td className="border-t" />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="flex justify-between items-center">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}
-          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-          <Plus size={13} /> Ajouter une ligne
-        </Button>
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
-          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-        </Button>
-      </div>
-    </div>
-  )
-}
 
-// 
-// TAB 15 - TAXE DOMICILIATION BANCAIRE SUR FOURNISSEURS ETRANGERS
-// 
-type Taxe15Row = { numFacture: string; dateFacture: string; raisonSociale: string; montantNetDevise: string; monnaie: string; tauxChange: string; montantDinars: string; tauxTaxe: string; montantAPayer: string }
-const EMPTY_TAXE15: Taxe15Row = { numFacture: "", dateFacture: "", raisonSociale: "", montantNetDevise: "", monnaie: "", tauxChange: "", montantDinars: "", tauxTaxe: "", montantAPayer: "" }
-interface Tab15Props { rows: Taxe15Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe15Row[]>>; onSave: () => void; isSubmitting: boolean; fournisseurs: FiscalFournisseurOption[] }
-function TabTaxeDomicil({ rows, setRows, onSave, isSubmitting, fournisseurs }: Tab15Props) {
-  const addRow    = () => setRows((p) => [...p, { ...EMPTY_TAXE15 }])
-  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
-  const upd = (i: number, f: keyof Taxe15Row, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
-  const iw = { minWidth: 110 }
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">No de Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Date de la Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Raison Sociale</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Net en Devise</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Monnaie / Devises</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date de la Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Facture en Dinars</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux Taxe...%</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant a Payer en Dinars</th>
-              <th className="px-2 py-2 border-b w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i,"dateFacture",e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
-                <td className="px-1 py-1 border-b">
-                  <SupplierSearchSelect
-                    value={String(fournisseurs.find((f) => safeString(f.raisonSociale).trim() === safeString(row.raisonSociale).trim())?.id ?? "")}
-                    onChange={(supplierId) => {
-                      const selected = fournisseurs.find((f) => String(f.id) === supplierId)
-                      upd(i, "raisonSociale", selected?.raisonSociale ?? "")
-                    }}
-                    fournisseurs={fournisseurs}
-                    placeholder={row.raisonSociale?.trim() || "Raison Sociale"}
-                    triggerClassName="h-7 min-w-[150px] px-2 text-xs"
-                  />
-                </td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantNetDevise} onChange={(e) => upd(i,"montantNetDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.monnaie} onChange={(e) => upd(i,"monnaie",e.target.value)} className="h-7 px-2 text-xs" placeholder="EUR / USD" style={{ minWidth: 80 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantDinars} onChange={(e) => upd(i,"montantDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><Input value={row.tauxTaxe} onChange={(e) => upd(i,"tauxTaxe",e.target.value)} className="h-7 px-2 text-xs" placeholder="Taux %" style={{ minWidth: 80 }} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantAPayer} onChange={(e) => upd(i,"montantAPayer",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-2 py-1 text-center border-b">
-                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-green-100 font-semibold">
-              <td colSpan={4} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
-              <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
-              <td className="border-t" />
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
-              <td className="border-t" />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="flex justify-between items-center">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}
-          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-          <Plus size={13} /> Ajouter une ligne
-        </Button>
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
-          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// 
-// TAB 16 - TVA AUTO LIQUIDATION SUR FOURNISSEURS ETRANGERS
-// 
-type Tva16Row = { numFacture: string; montantBrutDevise: string; tauxChange: string; montantBrutDinars: string; tva19: string }
-const EMPTY_TVA16: Tva16Row = { numFacture: "", montantBrutDevise: "", tauxChange: "", montantBrutDinars: "", tva19: "" }
-interface Tab16Props { rows: Tva16Row[]; setRows: React.Dispatch<React.SetStateAction<Tva16Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabTvaAutoLiq({ rows, setRows, onSave, isSubmitting }: Tab16Props) {
-  const addRow    = () => setRows((p) => [...p, { ...EMPTY_TVA16 }])
-  const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
-  const upd = (i: number, f: keyof Tva16Row, v: string) =>
-    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [f]: v } : r))
-  const iw = { minWidth: 130 }
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-400 border-b w-8">#</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">No de Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Devises</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Taux de Change Date de la Facture</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Montant Brut en Dinars</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">TVA 19%</th>
-              <th className="px-2 py-2 border-b w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-2 py-1 text-center text-xs text-gray-400 border-b">{i + 1}</td>
-                <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i,"numFacture",e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDevise} onChange={(e) => upd(i,"montantBrutDevise",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tauxChange} onChange={(e) => upd(i,"tauxChange",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantBrutDinars} onChange={(e) => upd(i,"montantBrutDinars",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.tva19} onChange={(e) => upd(i,"tva19",e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-2 py-1 text-center border-b">
-                  <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-green-100 font-semibold">
-              <td colSpan={2} className="px-3 py-2 text-xs text-right border-t">TOTAL</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tauxChange),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-              <td className="px-3 py-2 text-xs border-t text-right">{fmt(rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
-              <td className="border-t" />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="flex justify-between items-center">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}
-          className="gap-1.5 text-xs border-green-500 text-green-600 hover:bg-green-50">
-          <Plus size={13} /> Ajouter une ligne
-        </Button>
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
-          className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
-          <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
-        </Button>
-      </div>
-    </div>
-  )
-}
 
 // 
 // TAB CONFIG
@@ -1805,11 +1572,9 @@ const TABS = [
   { key: "taxe_vehicule",  label: "11 - Taxe Vehicule",            color: "#2db34b", title: "TAXE DE VEHICULE" },
   { key: "taxe_formation", label: "12 - Taxe Formation",           color: "#2db34b", title: "TAXE DE FORMATION" },
   { key: "acompte",        label: "13 - Acompte Provisionnel",     color: "#2db34b", title: "SITUATION DE L'ACOMPTE PROVISIONNEL DE L'ANNEE EN COURS" },
-  { key: "ibs",            label: "14 - IBS Fournisseurs Etrangers", color: "#2db34b", title: "IBS SUR FOURNISSEURS ETRANGERS" },
-  { key: "taxe_domicil",  label: "15 - Taxe Domiciliation",        color: "#2db34b", title: "TAXE DOMICILIATION BANCAIRE SUR FOURNISSEURS ETRANGERS" },
-  { key: "tva_autoliq",   label: "16 - TVA Auto Liquidation",      color: "#2db34b", title: "TVA AUTO LIQUIDATION SUR FOURNISSEURS ETRANGERS" },
-  { key: "tnfdal1",        label: "17 - N17 TNFDAL 1%",             color: "#2db34b", title: "N17 - TNFDAL 1%" },
-  { key: "tacp7",          label: "18 - N18 TACP 7%",               color: "#2db34b", title: "N18 - TACP 7%" },
+
+  { key: "tnfdal1",        label: "17 - TNFDAL 1%",             color: "#2db34b", title: "TNFDAL 1%" },
+  { key: "tacp7",          label: "18 - TACP 7%",               color: "#2db34b", title: "TACP 7%" },
 ]
 
 type FiscalTabKey =
@@ -1852,11 +1617,7 @@ interface SavedDeclaration {
   taxe11Montant?: string
   taxe12Rows?: Taxe12Row[]
   acompteMonths?: string[]
-  ibs14Rows?: Ibs14Row[]
-  ibsFournisseurId?: string
-  taxe15Rows?: Taxe15Row[]
-  tva16Rows?: Tva16Row[]
-  tva16FournisseurId?: string
+
   tnfdal1Rows?: Tnfdal1Row[]
   tacp7Rows?: Tacp7Row[]
 }
@@ -1983,7 +1744,7 @@ const RECAP_TABS: RecapDefinition[] = [
   },
   {
     key: "tnfdal1",
-    title: "N17 - TNFDAL 1%",
+    title: "TNFDAL 1%",
     columns: [
       { key: "designation", label: "Désignation" },
       { key: "caHt", label: "Chiffres d'Affaires HT", right: true },
@@ -1992,7 +1753,7 @@ const RECAP_TABS: RecapDefinition[] = [
   },
   {
     key: "tacp7",
-    title: "N18 - TACP 7%",
+    title: "TACP 7%",
     columns: [
       { key: "designation", label: "Désignation" },
       { key: "base", label: "Montant des Recharges HT", right: true },
@@ -3760,57 +3521,6 @@ const normalizeAcompteMonths = (months?: string[]) => {
   return copy
 }
 
-const normalizeIbsRows = (rows?: Ibs14Row[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<Ibs14Row>
-    return {
-      ...EMPTY_IBS14,
-      numFacture: safeString(source.numFacture),
-      montantBrutDevise: safeString(source.montantBrutDevise),
-      tauxChange: safeString(source.tauxChange),
-      montantBrutDinars: safeString(source.montantBrutDinars),
-      montantNetDevise: safeString(source.montantNetDevise),
-      montantIBS: safeString(source.montantIBS),
-      montantNetDinars: safeString(source.montantNetDinars),
-    }
-  })
-  return normalized.length > 0 ? normalized : [{ ...EMPTY_IBS14 }]
-}
-
-const normalizeTaxe15Rows = (rows?: Taxe15Row[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<Taxe15Row>
-    return {
-      ...EMPTY_TAXE15,
-      numFacture: safeString(source.numFacture),
-      dateFacture: safeString(source.dateFacture),
-      raisonSociale: safeString(source.raisonSociale),
-      montantNetDevise: safeString(source.montantNetDevise),
-      monnaie: safeString(source.monnaie),
-      tauxChange: safeString(source.tauxChange),
-      montantDinars: safeString(source.montantDinars),
-      tauxTaxe: safeString(source.tauxTaxe),
-      montantAPayer: safeString(source.montantAPayer),
-    }
-  })
-  return normalized.length > 0 ? normalized : [{ ...EMPTY_TAXE15 }]
-}
-
-const normalizeTva16Rows = (rows?: Tva16Row[]) => {
-  const normalized = (rows ?? []).map((row) => {
-    const source = row as Partial<Tva16Row>
-    return {
-      ...EMPTY_TVA16,
-      numFacture: safeString(source.numFacture),
-      montantBrutDevise: safeString(source.montantBrutDevise),
-      tauxChange: safeString(source.tauxChange),
-      montantBrutDinars: safeString(source.montantBrutDinars),
-      tva19: safeString(source.tva19),
-    }
-  })
-  return normalized.length > 0 ? normalized : [{ ...EMPTY_TVA16 }]
-}
-
 const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
   if ((decl.encRows?.length ?? 0) > 0) return "encaissement"
   if ((decl.tvaImmoRows?.length ?? 0) > 0) return "tva_immo"
@@ -3825,9 +3535,7 @@ const resolveDeclarationTabKey = (decl: SavedDeclaration): FiscalTabKey => {
   if (safeString(decl.taxe11Montant).trim()) return "taxe_vehicule"
   if ((decl.taxe12Rows?.length ?? 0) > 0) return "taxe_formation"
   if ((decl.acompteMonths?.length ?? 0) > 0) return "acompte"
-  if ((decl.ibs14Rows?.length ?? 0) > 0) return "ibs"
-  if ((decl.taxe15Rows?.length ?? 0) > 0) return "taxe_domicil"
-  if ((decl.tva16Rows?.length ?? 0) > 0) return "tva_autoliq"
+
   if ((decl.tnfdal1Rows ?? []).some((row) => safeString(row.caHt).trim() || safeString(row.taxe).trim())) return "tnfdal1"
   if ((decl.tacp7Rows ?? []).some((row) => safeString(row.base).trim() || safeString(row.taxe).trim())) return "tacp7"
   return "encaissement"
@@ -3942,14 +3650,12 @@ interface PrintZoneProps {
   taxe11Montant: string
   taxe12Rows: Taxe12Row[]
   acompteMonths: string[]
-  ibs14Rows: Ibs14Row[]
-  taxe15Rows: Taxe15Row[]
-  tva16Rows: Tva16Row[]
+
   tnfdal1Rows: Tnfdal1Row[]
   tacp7Rows: Tacp7Row[]
 }
 
-function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows, caSiegeRows, irgRows, taxe2Rows, masterRows, taxe11Montant, taxe12Rows, acompteMonths, ibs14Rows, taxe15Rows, tva16Rows, tnfdal1Rows, tacp7Rows }: PrintZoneProps) {
+function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImmoRows, tvaBiensRows, timbreRows, b12, b13, tapRows, caSiegeRows, irgRows, taxe2Rows, masterRows, taxe11Montant, taxe12Rows, acompteMonths, tnfdal1Rows, tacp7Rows }: PrintZoneProps) {
   const tab  = TABS.find((t) => t.key === activeTab)!
   const mon  = MONTHS.find((m) => m.value === mois)?.label ?? mois
   const c12  = num(b12) * 0.07
@@ -4396,98 +4102,7 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
         )
       })()}
 
-      {activeTab === "ibs" && (() => {
-        const numCols: (keyof Ibs14Row)[] = ["montantBrutDevise","montantBrutDinars","montantNetDevise","montantIBS","montantNetDinars"]
-        return (
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead><tr>
-              {["#","N° Facture","Montant Brut Devise","Taux Change/Date","Montant Brut Dinars","Montant Net Devise","Montant IBS","Montant Net Dinars"].map(h=><th key={h} style={thStyle}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {ibs14Rows.map((r,i)=>(
-                <tr key={i}>
-                  <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
-                  <td style={tdStyle}>{r.numFacture}</td>
-                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDevise?fmt(num(r.montantBrutDevise)):""}</td>
-                  <td style={tdStyle}>{r.tauxChange}</td>
-                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDinars?fmt(num(r.montantBrutDinars)):""}</td>
-                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDevise?fmt(num(r.montantNetDevise)):""}</td>
-                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantIBS?fmt(num(r.montantIBS)):""}</td>
-                  <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDinars?fmt(num(r.montantNetDinars)):""}</td>
-                </tr>
-              ))}
-              <tr style={{fontWeight:700}}>
-                <td style={tdStyle} colSpan={2}>TOTAL</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-                <td style={tdStyle}/>
-                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantIBS),0))}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{fmt(ibs14Rows.reduce((s,r)=>s+num(r.montantNetDinars),0))}</td>
-              </tr>
-            </tbody>
-          </table>
-        )
-      })()}
 
-      {activeTab === "taxe_domicil" && (
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead><tr>
-            {["#","N° Facture","Date Facture","Raison Sociale","Mont. Net Devise","Monnaie","Taux Change","Mont. Dinars","Taux Taxe","Mont. a Payer"].map(h=><th key={h} style={thStyle}>{h}</th>)}
-          </tr></thead>
-          <tbody>
-            {taxe15Rows.map((r,i)=>(
-              <tr key={i}>
-                <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
-                <td style={tdStyle}>{r.numFacture}</td>
-                <td style={tdStyle}>{r.dateFacture}</td>
-                <td style={tdStyle}>{r.raisonSociale}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantNetDevise?fmt(num(r.montantNetDevise)):""}</td>
-                <td style={tdStyle}>{r.monnaie}</td>
-                <td style={tdStyle}>{r.tauxChange}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantDinars?fmt(num(r.montantDinars)):""}</td>
-                <td style={tdStyle}>{r.tauxTaxe}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantAPayer?fmt(num(r.montantAPayer)):""}</td>
-              </tr>
-            ))}
-            <tr style={{fontWeight:700}}>
-              <td style={tdStyle} colSpan={4}>TOTAL</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantNetDevise),0))}</td>
-              <td style={tdStyle}/><td style={tdStyle}/>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantDinars),0))}</td>
-              <td style={tdStyle}/>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(taxe15Rows.reduce((s,r)=>s+num(r.montantAPayer),0))}</td>
-            </tr>
-          </tbody>
-        </table>
-      )}
-
-      {activeTab === "tva_autoliq" && (
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead><tr>
-            {["#","N° Facture","Montant Brut Devises","Taux Change/Date","Montant Brut Dinars","TVA 19%"].map(h=><th key={h} style={thStyle}>{h}</th>)}
-          </tr></thead>
-          <tbody>
-            {tva16Rows.map((r,i)=>(
-              <tr key={i}>
-                <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
-                <td style={tdStyle}>{r.numFacture}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDevise?fmt(num(r.montantBrutDevise)):""}</td>
-                <td style={tdStyle}>{r.tauxChange}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.montantBrutDinars?fmt(num(r.montantBrutDinars)):""}</td>
-                <td style={{...tdStyle,textAlign:"right"}}>{r.tva19?fmt(num(r.tva19)):""}</td>
-              </tr>
-            ))}
-            <tr style={{fontWeight:700}}>
-              <td style={tdStyle} colSpan={2}>TOTAL</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.montantBrutDevise),0))}</td>
-              <td style={tdStyle}/>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.montantBrutDinars),0))}</td>
-              <td style={{...tdStyle,textAlign:"right"}}>{fmt(tva16Rows.reduce((s,r)=>s+num(r.tva19),0))}</td>
-            </tr>
-          </tbody>
-        </table>
-      )}
 
       {activeTab === "tnfdal1" && (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -4628,9 +4243,7 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
     taxe2: decl.taxe2Rows ?? [],
     taxe_masters: decl.masterRows ?? [],
     taxe_formation: decl.taxe12Rows ?? [],
-    ibs: decl.ibs14Rows ?? [],
-    taxe_domicil: decl.taxe15Rows ?? [],
-    tva_autoliq: decl.tva16Rows ?? [],
+
   }
 
   const selectedRows = rowsByKey[tabKey] ?? []
@@ -4962,147 +4575,7 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
     )
   }
 
-  if (tabKey === "ibs") {
-    const rows = decl.ibs14Rows ?? []
 
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {[
-              "#",
-              "N° Facture",
-              "Montant brut devise",
-              "Taux change",
-              "Montant brut dinars",
-              "Montant net devise",
-              "Montant IBS",
-              "Montant net dinars",
-            ].map((header) => (
-              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant brut devise", "Montant brut dinars", "Montant net devise", "Montant IBS", "Montant net dinars"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <TableRow key={i}>
-              <TableCell className="text-center text-xs">{i + 1}</TableCell>
-              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDevise)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDinars)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDevise)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantIBS)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDinars)}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow className="font-bold bg-muted">
-            <TableCell colSpan={2}>TOTAL</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDevise), 0))}</TableCell>
-            <TableCell />
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDinars), 0))}</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDevise), 0))}</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantIBS), 0))}</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDinars), 0))}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    )
-  }
-
-  if (tabKey === "taxe_domicil") {
-    const rows = decl.taxe15Rows ?? []
-
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {[
-              "#",
-              "N° Facture",
-              "Date facture",
-              "Raison sociale",
-              "Montant net devise",
-              "Monnaie",
-              "Taux change",
-              "Montant dinars",
-              "Taux taxe",
-              "Montant à payer",
-            ].map((header) => (
-              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant net devise", "Montant dinars", "Montant à payer"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <TableRow key={i}>
-              <TableCell className="text-center text-xs">{i + 1}</TableCell>
-              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.dateFacture)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.raisonSociale)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantNetDevise)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.monnaie)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantDinars)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.tauxTaxe)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantAPayer)}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow className="font-bold bg-muted">
-            <TableCell colSpan={4}>TOTAL</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantNetDevise), 0))}</TableCell>
-            <TableCell />
-            <TableCell />
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantDinars), 0))}</TableCell>
-            <TableCell />
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantAPayer), 0))}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    )
-  }
-
-  if (tabKey === "tva_autoliq") {
-    const rows = decl.tva16Rows ?? []
-
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {[
-              "#",
-              "N° Facture",
-              "Montant brut devises",
-              "Taux change",
-              "Montant brut dinars",
-              "TVA 19%",
-            ].map((header) => (
-              <TableHead key={header} className={header === "#" ? "text-center" : ["Montant brut devises", "Montant brut dinars", "TVA 19%"].includes(header) ? "text-right" : undefined}>{header}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <TableRow key={i}>
-              <TableCell className="text-center text-xs">{i + 1}</TableCell>
-              <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDevise)}</TableCell>
-              <TableCell className="text-xs">{popupText(row.tauxChange)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.montantBrutDinars)}</TableCell>
-              <TableCell className="text-right text-xs font-semibold">{fmt(row.tva19)}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow className="font-bold bg-muted">
-            <TableCell colSpan={2}>TOTAL</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDevise), 0))}</TableCell>
-            <TableCell />
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.montantBrutDinars), 0))}</TableCell>
-            <TableCell className="text-right font-bold">{fmt(rows.reduce((s, r) => s + num(r.tva19), 0))}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    )
-  }
 
   if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
     return <p className="text-sm text-muted-foreground">Aucune donnée pour ce tableau.</p>
@@ -5246,11 +4719,7 @@ export default function NouvelleDeclarationPage() {
   const [taxe11Montant,  setTaxe11Montant]  = useState("")
   const [taxe12Rows,     setTaxe12Rows]     = useState<Taxe12Row[]>([{ montant: "" }, { montant: "" }])
   const [acompteMonths,  setAcompteMonths]  = useState<string[]>(Array(3).fill(""))
-  const [ibs14Rows,      setIbs14Rows]      = useState<Ibs14Row[]>([{ ...EMPTY_IBS14 }])
-  const [ibsFournisseurId, setIbsFournisseurId] = useState("")
-  const [taxe15Rows,     setTaxe15Rows]     = useState<Taxe15Row[]>([{ ...EMPTY_TAXE15 }])
-  const [tva16Rows,      setTva16Rows]      = useState<Tva16Row[]>([{ ...EMPTY_TVA16 }])
-  const [tva16FournisseurId, setTva16FournisseurId] = useState("")
+
   const [tnfdal1Rows,    setTnfdal1Rows]    = useState<Tnfdal1Row[]>(() => normalizeTnfdal1Rows())
   const [tacp7Rows,      setTacp7Rows]      = useState<Tacp7Row[]>(() => normalizeTacp7Rows())
   const [fiscalDeclarations, setFiscalDeclarations] = useState<ApiFiscalDeclaration[]>([])
@@ -5379,32 +4848,14 @@ export default function NouvelleDeclarationPage() {
     if (!activeTab || !mois || !annee || !effectiveDirection) return null
 
     const expectedDirection = normalizeDirectionKey(effectiveDirection)
-    const selectedIbsFournisseurId = safeString(ibsFournisseurId).trim()
-    const selectedTva16FournisseurId = safeString(tva16FournisseurId).trim()
-
-    const matchesSupplierScope = (declaration: ApiFiscalDeclaration): boolean => {
-      if (activeTab === "ibs") {
-        const payload = parseFiscalDataPayload(declaration.dataJson ?? "{}")
-        return safeString(payload.ibsFournisseurId).trim() === selectedIbsFournisseurId
-      }
-
-      if (activeTab === "tva_autoliq") {
-        const payload = parseFiscalDataPayload(declaration.dataJson ?? "{}")
-        return safeString(payload.tva16FournisseurId).trim() === selectedTva16FournisseurId
-      }
-
-      return true
-    }
-
     return fiscalDeclarations.find((declaration) => {
       if (editingDeclarationId && String(declaration.id) === safeString(editingDeclarationId)) return false
       return declaration.tabKey === activeTab
         && declaration.mois === mois
         && declaration.annee === annee
         && normalizeDirectionKey(declaration.direction) === expectedDirection
-        && matchesSupplierScope(declaration)
     }) ?? null
-  }, [activeTab, annee, editingDeclarationId, effectiveDirection, entryMode, fiscalDeclarations, ibsFournisseurId, mois, normalizeDirectionKey, tva16FournisseurId])
+  }, [activeTab, annee, editingDeclarationId, effectiveDirection, entryMode, fiscalDeclarations, mois, normalizeDirectionKey])
 
   const existingDeclarationPreview = useMemo<ExistingDeclarationPreview | null>(() => {
     if (!existingDeclarationMatch) return null
@@ -5903,11 +5354,7 @@ export default function NouvelleDeclarationPage() {
       setTaxe11Montant(safeString(declaration.taxe11Montant))
       setTaxe12Rows(normalizeTaxe12Rows(declaration.taxe12Rows))
       setAcompteMonths(normalizeAcompteMonths(declaration.acompteMonths))
-      setIbs14Rows(normalizeIbsRows(declaration.ibs14Rows))
-      setIbsFournisseurId(safeString(declaration.ibsFournisseurId))
-      setTaxe15Rows(normalizeTaxe15Rows(declaration.taxe15Rows))
-      setTva16Rows(normalizeTva16Rows(declaration.tva16Rows))
-      setTva16FournisseurId(safeString(declaration.tva16FournisseurId))
+
       setTnfdal1Rows(normalizeTnfdal1Rows(declaration.tnfdal1Rows))
       setTacp7Rows(normalizeTacp7Rows(declaration.tacp7Rows))
     } catch {
@@ -6330,11 +5777,7 @@ export default function NouvelleDeclarationPage() {
       taxe11Montant: "",
       taxe12Rows: [] as Taxe12Row[],
       acompteMonths: [] as string[],
-      ibs14Rows: [] as Ibs14Row[],
-      ibsFournisseurId: "",
-      taxe15Rows: [] as Taxe15Row[],
-      tva16Rows: [] as Tva16Row[],
-      tva16FournisseurId: "",
+
       tnfdal1Rows: [] as Tnfdal1Row[],
       tacp7Rows: [] as Tacp7Row[],
     }
@@ -6381,17 +5824,7 @@ export default function NouvelleDeclarationPage() {
       case "acompte":
         baseDecl.acompteMonths = acompteMonths
         break
-      case "ibs":
-        baseDecl.ibs14Rows = ibs14Rows
-        baseDecl.ibsFournisseurId = ibsFournisseurId
-        break
-      case "taxe_domicil":
-        baseDecl.taxe15Rows = taxe15Rows
-        break
-      case "tva_autoliq":
-        baseDecl.tva16Rows = tva16Rows
-        baseDecl.tva16FournisseurId = tva16FournisseurId
-        break
+
       case "tnfdal1":
         baseDecl.tnfdal1Rows = tnfdal1Rows
         break
@@ -6431,9 +5864,7 @@ export default function NouvelleDeclarationPage() {
         case "taxe_vehicule":  tabData = { taxe11Montant }; break
         case "taxe_formation": tabData = { taxe12Rows }; break
         case "acompte":        tabData = { acompteMonths }; break
-        case "ibs":            tabData = { ibs14Rows, ibsFournisseurId }; break
-        case "taxe_domicil":   tabData = { taxe15Rows }; break
-        case "tva_autoliq":    tabData = { tva16Rows, tva16FournisseurId }; break
+
       }
       const requestPayload = {
         tabKey: activeTab,
@@ -6508,9 +5939,7 @@ export default function NouvelleDeclarationPage() {
             case "taxe_vehicule":  restoreTabData = { taxe11Montant: originalDeclaration.taxe11Montant ?? "" }; break
             case "taxe_formation": restoreTabData = { taxe12Rows: originalDeclaration.taxe12Rows ?? [] }; break
             case "acompte":        restoreTabData = { acompteMonths: originalDeclaration.acompteMonths ?? [] }; break
-            case "ibs":            restoreTabData = { ibs14Rows: originalDeclaration.ibs14Rows ?? [], ibsFournisseurId: originalDeclaration.ibsFournisseurId ?? "" }; break
-            case "taxe_domicil":   restoreTabData = { taxe15Rows: originalDeclaration.taxe15Rows ?? [] }; break
-            case "tva_autoliq":    restoreTabData = { tva16Rows: originalDeclaration.tva16Rows ?? [], tva16FournisseurId: originalDeclaration.tva16FournisseurId ?? "" }; break
+
             case "tnfdal1":       restoreTabData = { tnfdal1Rows: originalDeclaration.tnfdal1Rows ?? [] }; break
             case "tacp7":         restoreTabData = { tacp7Rows: originalDeclaration.tacp7Rows ?? [] }; break
           }
@@ -6680,17 +6109,7 @@ export default function NouvelleDeclarationPage() {
       case "acompte":
         saved.acompteMonths = normalizeAcompteMonths(Array.isArray(payload.acompteMonths) ? (payload.acompteMonths as string[]) : undefined)
         break
-      case "ibs":
-        saved.ibs14Rows = normalizeIbsRows(Array.isArray(payload.ibs14Rows) ? (payload.ibs14Rows as Ibs14Row[]) : undefined)
-        saved.ibsFournisseurId = safeString(payload.ibsFournisseurId)
-        break
-      case "taxe_domicil":
-        saved.taxe15Rows = normalizeTaxe15Rows(Array.isArray(payload.taxe15Rows) ? (payload.taxe15Rows as Taxe15Row[]) : undefined)
-        break
-      case "tva_autoliq":
-        saved.tva16Rows = normalizeTva16Rows(Array.isArray(payload.tva16Rows) ? (payload.tva16Rows as Tva16Row[]) : undefined)
-        saved.tva16FournisseurId = safeString(payload.tva16FournisseurId)
-        break
+
       case "tnfdal1":
         saved.tnfdal1Rows = normalizeTnfdal1Rows(Array.isArray(payload.tnfdal1Rows) ? (payload.tnfdal1Rows as Tnfdal1Row[]) : undefined)
         break
@@ -6818,9 +6237,7 @@ export default function NouvelleDeclarationPage() {
         taxe11Montant={taxe11Montant}
         taxe12Rows={taxe12Rows}
         acompteMonths={acompteMonths}
-        ibs14Rows={ibs14Rows}
-        taxe15Rows={taxe15Rows}
-        tva16Rows={tva16Rows}
+
         tnfdal1Rows={tnfdal1Rows}
         tacp7Rows={tacp7Rows}
       />
@@ -7288,58 +6705,11 @@ export default function NouvelleDeclarationPage() {
                 </CardContent>
               </Card>
             )}
-            {activeTab === "ibs" && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N14 - IBS sur Fournisseurs Etrangers</CardTitle>
-                    <SupplierSearchSelect
-                      value={ibsFournisseurId}
-                      onChange={setIbsFournisseurId}
-                      fournisseurs={fiscalFournisseurs}
-                      placeholder="Selectionner un fournisseur"
-                      triggerClassName="h-8 min-w-[260px] px-2 text-xs"
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <TabIBS rows={ibs14Rows} setRows={setIbs14Rows} onSave={handleSave} isSubmitting={isSubmitting} />
-                </CardContent>
-              </Card>
-            )}
-            {activeTab === "taxe_domicil" && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N15 - Taxe Domiciliation Bancaire</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TabTaxeDomicil rows={taxe15Rows} setRows={setTaxe15Rows} onSave={handleSave} isSubmitting={isSubmitting} fournisseurs={fiscalFournisseurs} />
-                </CardContent>
-              </Card>
-            )}
-            {activeTab === "tva_autoliq" && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N16 - TVA Auto Liquidation</CardTitle>
-                    <SupplierSearchSelect
-                      value={tva16FournisseurId}
-                      onChange={setTva16FournisseurId}
-                      fournisseurs={fiscalFournisseurs}
-                      placeholder="Selectionner un fournisseur"
-                      triggerClassName="h-8 min-w-[260px] px-2 text-xs"
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <TabTvaAutoLiq rows={tva16Rows} setRows={setTva16Rows} onSave={handleSave} isSubmitting={isSubmitting} />
-                </CardContent>
-              </Card>
-            )}
+
             {activeTab === "tnfdal1" && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N17 - TNFDAL 1%</CardTitle>
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>TNFDAL 1%</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TabTnfdal1 rows={tnfdal1Rows} setRows={setTnfdal1Rows} onSave={handleSave} isSubmitting={isSubmitting} />
@@ -7349,7 +6719,7 @@ export default function NouvelleDeclarationPage() {
             {activeTab === "tacp7" && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N18 - TACP 7%</CardTitle>
+                  <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>TACP 7%</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TabTacp7 rows={tacp7Rows} setRows={setTacp7Rows} onSave={handleSave} isSubmitting={isSubmitting} />
@@ -7413,9 +6783,7 @@ export default function NouvelleDeclarationPage() {
                       taxe11Montant: safeString(existingDeclarationPreview.data.taxe11Montant),
                       taxe12Rows: normalizeTaxe12Rows(Array.isArray(existingDeclarationPreview.data.taxe12Rows) ? (existingDeclarationPreview.data.taxe12Rows as Taxe12Row[]) : undefined),
                       acompteMonths: normalizeAcompteMonths(Array.isArray(existingDeclarationPreview.data.acompteMonths) ? (existingDeclarationPreview.data.acompteMonths as string[]) : undefined),
-                      ibs14Rows: normalizeIbsRows(Array.isArray(existingDeclarationPreview.data.ibs14Rows) ? (existingDeclarationPreview.data.ibs14Rows as Ibs14Row[]) : undefined),
-                      taxe15Rows: normalizeTaxe15Rows(Array.isArray(existingDeclarationPreview.data.taxe15Rows) ? (existingDeclarationPreview.data.taxe15Rows as Taxe15Row[]) : undefined),
-                      tva16Rows: normalizeTva16Rows(Array.isArray(existingDeclarationPreview.data.tva16Rows) ? (existingDeclarationPreview.data.tva16Rows as Tva16Row[]) : undefined),
+
                       tnfdal1Rows: normalizeTnfdal1Rows(Array.isArray(existingDeclarationPreview.data.tnfdal1Rows) ? (existingDeclarationPreview.data.tnfdal1Rows as Tnfdal1Row[]) : undefined),
                       tacp7Rows: normalizeTacp7Rows(Array.isArray(existingDeclarationPreview.data.tacp7Rows) ? (existingDeclarationPreview.data.tacp7Rows as Tacp7Row[]) : undefined),
                     }}
@@ -7445,7 +6813,7 @@ export default function NouvelleDeclarationPage() {
 }
 
 //
-// TAB 17 - N17 TNFDAL 1%
+// TAB 17 - TNFDAL 1%
 //
 interface Tab17Props { rows: Tnfdal1Row[]; setRows: React.Dispatch<React.SetStateAction<Tnfdal1Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
@@ -7505,7 +6873,7 @@ function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
 }
 
 //
-// TAB 18 - N18 TACP 7%
+// TAB 18 - TACP 7%
 //
 interface Tab18Props { rows: Tacp7Row[]; setRows: React.Dispatch<React.SetStateAction<Tacp7Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTacp7({ rows, setRows, onSave, isSubmitting }: Tab18Props) {

@@ -11,8 +11,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      const role = (user as { role?: string }).role
-      router.replace(role === "admin" ? "/admin" : "/cheque_dashbord")
+      const role = user.role
+      const accessModules = user.accessModules ?? ""
+      if (role === "admin") {
+        router.replace("/admin")
+      } else if (accessModules.includes("fisca") && !accessModules.includes("cheque")) {
+        router.replace("/fisca_dashbord")
+      } else {
+        router.replace("/cheque_dashbord")
+      }
     }
   }, [user, isLoading, router])
 

@@ -75,8 +75,8 @@ export const formatTabKey = (tabKey: string): string => {
     ibs: "IBS",
     taxe_domicil: "Taxe Domiciliation",
     tva_autoliq: "TVA Auto-Liquidation",
-    tnfdal1: "N17 TNFDAL 1%",
-    tacp7: "N18 TACP 7%",
+    tnfdal1: "TNFDAL 1%",
+    tacp7: "TACP 7%",
   }
 
   return labels[tabKey] ?? tabKey

@@ -34,7 +34,14 @@ export function LoginForm() {
         const token = localStorage.getItem("jwt")
         if (token) {
           const payload = JSON.parse(atob(token.split(".")[1]))
-          if (payload.role === "admin") destination = "/admin"
+          if (payload.role === "admin") {
+            destination = "/admin"
+          } else {
+            const accessModules: string = (result as { user?: { accessModules?: string } }).user?.accessModules ?? ""
+            if (accessModules.includes("fisca") && !accessModules.includes("cheque")) {
+              destination = "/fisca_dashbord"
+            }
+          }
         }
       } catch { /* use default */ }
       setLoading(false)

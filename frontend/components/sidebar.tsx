@@ -31,6 +31,7 @@ const imprimeChecqueLinks = [
 const fiscaLinks = [
   { name: "Dashboard", href: "/fisca_dashbord", icon: LayoutDashboard },
   { name: "Nouvelle Déclaration", href: "/declaration", icon: FilePlus },
+  { name: "Déclaration Fournisseurs", href: "/declaration_fournisseur", icon: Users },
 ]
 
 interface SidebarProps {
@@ -41,13 +42,12 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isFiscaPath = pathname === "/fisca_dashbord" || pathname.startsWith("/declaration")
+  const isFiscaPath = pathname === "/fisca_dashbord" || pathname.startsWith("/declaration") || pathname.startsWith("/declaration_fournisseur")
   const modules = (user.accessModules || "cheque,fisca").split(",").map((m: string) => m.trim())
   const hasChecque = modules.includes("cheque")
   const hasFisca = modules.includes("fisca")
-  const [openImprimeChecque, setOpenImprimeChecque] = useState(!isFiscaPath)
-  const [openFisca, setOpenFisca] = useState(isFiscaPath)
-
+  const [openImprimeChecque, setOpenImprimeChecque] = useState(true)
+  const [openFisca, setOpenFisca] = useState(true)
   const handleLogout = async () => {
     await logout()
     router.push("/login")
@@ -149,20 +149,8 @@ export function Sidebar({ user }: SidebarProps) {
         </div>
       </div>
       <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
-        {hasChecque && renderGroup(
-          "Imprime Chèque",
-          Printer,
-          imprimeChecqueLinks,
-          openImprimeChecque,
-          () => setOpenImprimeChecque((v) => !v),
-        )}
-        {hasFisca && renderGroup(
-          "Fisca",
-          Calculator,
-          fiscaLinks,
-          openFisca,
-          () => setOpenFisca((v) => !v),
-        )}
+        {hasChecque && renderGroup("Imprime Chèque", Printer, imprimeChecqueLinks, openImprimeChecque, () => setOpenImprimeChecque((v) => !v))}
+        {hasFisca && renderGroup("Fisca", Calculator, fiscaLinks, openFisca, () => setOpenFisca((v) => !v))}
       </nav>
       <div className="border-t p-4 space-y-2">
         <div className="text-xs text-gray-600 truncate" title={user.email}>
