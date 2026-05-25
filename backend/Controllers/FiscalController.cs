@@ -798,7 +798,7 @@ ORDER BY [LigneId], [Id]", periodeDbId).ToListAsync();
                 var rows = await _context.Database.SqlQueryRaw<TnfdalDeclarationPayloadRow>(@"
 SELECT l.[designiation] AS [Designation], d.[CAHT], d.[TNFDAL]
 FROM [dbo].[TNFDAL1_declaration] d
-INNER JOIN [dbo].[TNFDAL1Dec_lignes] l ON l.[id] = d.[id_designiation_TNFDAL]
+INNER JOIN [dbo].[TNFDAL1Dec_lignes] l ON l.[id] = d.[ligneId]
 WHERE d.[id_periode] = {0}
 ORDER BY l.[id], d.[id]", periodeDbId).ToListAsync();
 
@@ -818,7 +818,7 @@ ORDER BY l.[id], d.[id]", periodeDbId).ToListAsync();
                 var rows = await _context.Database.SqlQueryRaw<TacpDeclarationPayloadRow>(@"
 SELECT l.[designiation] AS [Designation], d.[MontantHT], d.[TACP]
 FROM [dbo].[TACP7_declaration] d
-INNER JOIN [dbo].[TACP7Dec_lignes] l ON l.[id] = d.[id_designiation_TACP]
+INNER JOIN [dbo].[TACP7Dec_lignes] l ON l.[id] = d.[ligneId]
 WHERE d.[id_periode] = {0}
 ORDER BY l.[id], d.[id]", periodeDbId).ToListAsync();
 
@@ -1318,7 +1318,7 @@ WHERE NULLIF(LTRIM(RTRIM(j.[designation])), N'') IS NOT NULL AND l.[id] IS NULL;
 
 DELETE FROM [dbo].[TNFDAL1_declaration] WHERE [id_periode] = {periodeId};
 
-INSERT INTO [dbo].[TNFDAL1_declaration] ([id_designiation_TNFDAL], [id_periode], [CAHT], [TNFDAL])
+INSERT INTO [dbo].[TNFDAL1_declaration] ([ligneId], [id_periode], [CAHT], [TNFDAL])
 SELECT
     l.[id],
     {periodeId},
@@ -1345,7 +1345,7 @@ WHERE NULLIF(LTRIM(RTRIM(j.[designation])), N'') IS NOT NULL AND l.[id] IS NULL;
 
 DELETE FROM [dbo].[TACP7_declaration] WHERE [id_periode] = {periodeId};
 
-INSERT INTO [dbo].[TACP7_declaration] ([id_designiation_TACP], [id_periode], [MontantHT], [TACP])
+INSERT INTO [dbo].[TACP7_declaration] ([ligneId], [id_periode], [MontantHT], [TACP])
 SELECT
     l.[id],
     {periodeId},

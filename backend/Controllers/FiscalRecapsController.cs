@@ -150,7 +150,7 @@ public class EtatsDeSortieController : ControllerBase
                 var tva = row.TryGetProperty("tva", out var tvaElement) ? ParseDecimal(tvaElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TVACollecte] ([id_designiation_encaissement], [id_periode], [EncaissementTTC], [Exonere], [EncaissementHT], [TVA])
+INSERT INTO [dbo].[TVACollecte] ([ligneId], [id_periode], [EncaissementTTC], [Exonere], [EncaissementHT], [TVA])
 SELECT [id], {periodeId}, {ttc}, {exonere}, {ht}, {tva}
 FROM [dbo].[TVACollecte_lignes]
 WHERE [designiation] = {designation}");
@@ -171,7 +171,7 @@ WHERE [designiation] = {designation}");
                 var total = row.TryGetProperty("totalDed", out var totalElement) ? ParseDecimal(totalElement) : (immo + biens);
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TVADeductible] ([id_designiation_encaissement], [id_periode], [Immo], [BienService], [TVA])
+INSERT INTO [dbo].[TVADeductible] ([ligneId], [id_periode], [Immo], [BienService], [TVA])
 SELECT [id], {periodeId}, {immo}, {biens}, {total}
 FROM [dbo].[TVADeductible_lignes]
 WHERE [designiation] = {designation}");
@@ -194,7 +194,7 @@ WHERE [designiation] = {designation}");
                 var payer = row.TryGetProperty("payer", out var payerElement) ? ParseDecimal(payerElement) : (collectee - totalDed);
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TVAPayer] ([id_designiation_encaissement], [id_periode], [TVACollecte], [TVAImmo], [TVABienService], [TVADeductible], [TVA])
+INSERT INTO [dbo].[TVAPayer] ([ligneId], [id_periode], [TVACollecte], [TVAImmo], [TVABienService], [TVADeductible], [TVA])
 SELECT [id], {periodeId}, {collectee}, {immo}, {biens}, {totalDed}, {payer}
 FROM [dbo].[TVAPayer_lignes]
 WHERE [designiation] = {designation}");
@@ -214,7 +214,7 @@ WHERE [designiation] = {designation}");
                 var montant = row.TryGetProperty("montant", out var montantElement) ? ParseDecimal(montantElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TimbreRecap] ([id_designiation_encaissement], [id_periode], [CAHT], [DroitTimbre])
+INSERT INTO [dbo].[TimbreRecap] ([ligneId], [id_periode], [CAHT], [DroitTimbre])
 SELECT [id], {periodeId}, {caHt}, {montant}
 FROM [dbo].[TimbreRecap_lignes]
 WHERE [designiation] = {designation}");
@@ -234,7 +234,7 @@ WHERE [designiation] = {designation}");
                 var taxe = row.TryGetProperty("taxe", out var taxeElement) ? ParseDecimal(taxeElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TAPRecap] ([id_designiation_encaissement], [id_periode], [MontantHT], [MontantExonere], [TAP])
+INSERT INTO [dbo].[TAPRecap] ([ligneId], [id_periode], [MontantHT], [MontantExonere], [TAP])
 SELECT [id], {periodeId}, {caHt}, {0m}, {taxe}
 FROM [dbo].[TAPRecap_lignes]
 WHERE [designiation] = {designation}");
@@ -263,7 +263,7 @@ WHERE [designiation] = {designation}");
                 var taxe = hasTaxe ? ParseDecimal(taxeElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TNFDAL] ([id_designiation_encaissement], [id_periode], [CAHT], [TNFDAL])
+INSERT INTO [dbo].[TNFDAL] ([ligneId], [id_periode], [CAHT], [TNFDAL])
 SELECT [id], {periodeId}, {caHt}, {taxe}
 FROM [dbo].[TNFDAL1_lignes]
 WHERE [designiation] = {designation}");
@@ -283,7 +283,7 @@ WHERE [designiation] = {designation}");
                 var taxe = row.TryGetProperty("taxe", out var taxeElement) ? ParseDecimal(taxeElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[TACP7] ([id_designiation_encaissement], [id_periode], [MontantHT], [TACP])
+INSERT INTO [dbo].[TACP7] ([ligneId], [id_periode], [MontantHT], [TACP])
 SELECT [id], {periodeId}, {baseValue}, {taxe}
 FROM [dbo].[TACP7_lignes]
 WHERE [designiation] = {designation}");
@@ -322,7 +322,7 @@ WHERE [Designation] = {designation}");
                 var montant = row.TryGetProperty("montant", out var montantElement) ? ParseDecimal(montantElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[G50] ([id_designiation_encaissement], [id_periode], [Montant])
+INSERT INTO [dbo].[G50] ([ligneId], [id_periode], [Montant])
 SELECT [id], {periodeId}, {montant}
 FROM [dbo].[G50_lignes]
 WHERE [designiation] = {designation}");
@@ -341,7 +341,7 @@ WHERE [designiation] = {designation}");
                 var montant = row.TryGetProperty("montant", out var montantElement) ? ParseDecimal(montantElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[G50Annuel] ([id_designiation_encaissement], [id_periode], [Montant])
+INSERT INTO [dbo].[G50Annuel] ([ligneId], [id_periode], [Montant])
 SELECT [id], {periodeId}, {montant}
 FROM [dbo].[G50_lignes]
 WHERE [designiation] = {designation}");
@@ -361,7 +361,7 @@ WHERE [designiation] = {designation}");
                 var taxe = row.TryGetProperty("taxe", out var taxeElement) ? ParseDecimal(taxeElement) : 0m;
 
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT INTO [dbo].[MasterRecap] ([id_designiation_encaissement], [id_periode], [Montant], [Taxe15])
+INSERT INTO [dbo].[MasterRecap] ([ligneId], [id_periode], [Montant], [Taxe15])
 SELECT [id], {periodeId}, {montant}, {taxe}
 FROM [dbo].[MasterRecap_lignes]
 WHERE [designiation] = {designation}");
@@ -473,7 +473,7 @@ SELECT (
            ISNULL(r.[TVA], 0) AS [tva]
     FROM [dbo].[TVACollecte_lignes] l
     LEFT JOIN [dbo].[TVACollecte] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -490,7 +490,7 @@ SELECT (
            ISNULL(r.[TVA], 0) AS [totalDed]
     FROM [dbo].[TVADeductible_lignes] l
     LEFT JOIN [dbo].[TVADeductible] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -509,7 +509,7 @@ SELECT (
            ISNULL(r.[TVA], 0) AS [payer]
     FROM [dbo].[TVAPayer_lignes] l
     LEFT JOIN [dbo].[TVAPayer] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -525,7 +525,7 @@ SELECT (
            ISNULL(r.[DroitTimbre], 0) AS [montant]
     FROM [dbo].[TimbreRecap_lignes] l
     LEFT JOIN [dbo].[TimbreRecap] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -541,7 +541,7 @@ SELECT (
            ISNULL(r.[TAP], 0) AS [taxe]
     FROM [dbo].[TAPRecap_lignes] l
     LEFT JOIN [dbo].[TAPRecap] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -557,7 +557,7 @@ SELECT (
            ISNULL(r.[TNFDAL], 0) AS [taxe]
     FROM [dbo].[TNFDAL1_lignes] l
     LEFT JOIN [dbo].[TNFDAL] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY CASE
         WHEN l.[designiation] = N'Total' THEN 9999
@@ -577,7 +577,7 @@ SELECT (
            ISNULL(r.[TACP], 0) AS [taxe]
     FROM [dbo].[TACP7_lignes] l
     LEFT JOIN [dbo].[TACP7] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -608,7 +608,7 @@ SELECT (
            ISNULL(r.[Montant], 0) AS [montant]
     FROM [dbo].[G50_lignes] l
     LEFT JOIN [dbo].[G50] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -623,7 +623,7 @@ SELECT (
            ISNULL(r.[Montant], 0) AS [montant]
     FROM [dbo].[G50_lignes] l
     LEFT JOIN [dbo].[G50Annuel] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
@@ -639,7 +639,7 @@ SELECT (
            ISNULL(r.[Taxe15], 0) AS [taxe]
     FROM [dbo].[MasterRecap_lignes] l
     LEFT JOIN [dbo].[MasterRecap] r
-      ON r.[id_designiation_encaissement] = l.[id]
+    ON r.[ligneId] = l.[id]
      AND r.[id_periode] = @periodeId
     ORDER BY l.[id]
     FOR JSON PATH
