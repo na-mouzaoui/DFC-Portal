@@ -637,7 +637,14 @@ function CATable({ b12, b13 }: { b12: string; b13: string }) {
 
 function TAPTable({ rows, wilayas }: { rows: TAPRow[]; wilayas: { code: string; wilaya: string; communes: { id: string; nom: string }[] }[] }) {
   const getWilayaName = (code: string) =>
-    wilayas.find((entry) => entry.code === code)?.wilaya ?? "-"
+    wilayas.find((entry) => entry.code === code || entry.wilaya === code)?.wilaya ?? "-"
+
+  const getCommuneLabel = (wilayaCode: string, communeId: string) => {
+    const commune = wilayas
+      .find((entry) => entry.code === wilayaCode || entry.wilaya === wilayaCode)
+      ?.communes.find((c) => c.id === communeId)
+    return commune?.nom || communeId || "-"
+  }
 
   const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
   const totalTap = totalImposable * 0.015
@@ -655,7 +662,7 @@ function TAPTable({ rows, wilayas }: { rows: TAPRow[]; wilayas: { code: string; 
           <TableRow key={i}>
             <TableCell>{r.wilayaCode || "-"}</TableCell>
             <TableCell>{getWilayaName(r.wilayaCode)}</TableCell>
-            <TableCell>{r.commune || "-"}</TableCell>
+            <TableCell>{getCommuneLabel(r.wilayaCode, r.commune)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(r.tap2)}</TableCell>
             <TableCell className="text-right font-semibold">{fmt(num(r.tap2) * 0.015)}</TableCell>
           </TableRow>

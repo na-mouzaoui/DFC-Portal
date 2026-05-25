@@ -887,7 +887,7 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
 
   const totalImposable = rows.reduce((s, r) => s + num(r.tap2), 0)
   const totalTAP = totalImposable * 0.015
-  const getWilaya = (code: string) => wilayas.find((w) => w.code === code)
+  const getWilaya = (code: string) => wilayas.find((w) => w.code === code || w.wilaya === code)
 
   return (
     <div className="space-y-5">
@@ -927,7 +927,9 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       style={{ minWidth: 190 }}>
                       <option value="">- Wilaya -</option>
                       {wilayas.map((w) => (
-                        <option key={w.code} value={w.code}>{w.code} - {w.wilaya}</option>
+                        <option key={w.code || w.wilaya} value={w.code || w.wilaya}>
+                          {w.code && w.code !== w.wilaya ? `${w.code} - ${w.wilaya}` : w.wilaya}
+                        </option>
                       ))}
                     </select>
                   </td>
@@ -940,7 +942,9 @@ function TabTAP({ rows, setRows, mois, setMois, annee, setAnnee, onSave, isSubmi
                       style={{ minWidth: 165 }}>
                       <option value="">- Commune -</option>
                       {(getWilaya(row.wilayaCode)?.communes ?? []).map((c) => (
-                        <option key={c.id} value={String(c.id)}>{c.id}</option>
+                        <option key={c.id} value={String(c.id)}>
+                          {c.nom && c.nom !== c.id ? `${c.id} - ${c.nom}` : c.id}
+                        </option>
                       ))}
                     </select>
                   </td>

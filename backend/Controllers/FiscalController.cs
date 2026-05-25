@@ -642,12 +642,40 @@ ORDER BY l.[Id]", periodeDbId, direction).ToListAsync();
             case "etat_tap":
             {
                 var rows = await _context.Database.SqlQueryRaw<TapPayloadRow>(@"
-SELECT w.[Code] AS [WilayaCode], c.[Code] AS [Commune], t.[MontantImposable]
-FROM [dbo].[Tap] t
-INNER JOIN [dbo].[Commune] c ON c.[Id] = t.[CommuneId]
-INNER JOIN [dbo].[Wilaya] w ON w.[Id] = c.[WilayaId]
-WHERE t.[PeriodeId] = {0} AND t.[Direction] = {1}
-ORDER BY t.[Id]", periodeDbId, direction).ToListAsync();
+DECLARE @periodeId INT = {0};
+DECLARE @direction NVARCHAR(4000) = {1};
+DECLARE @sql NVARCHAR(MAX);
+
+IF COL_LENGTH('dbo.Commune', 'CodeCommune') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'NomWilaya') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'Name') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    SELECT c.[CodeCommune] AS [WilayaCode], c.[Name] AS [Commune], t.[MontantImposable]
+    FROM [dbo].[Tap] t
+    INNER JOIN [dbo].[Commune] c ON c.[Id] = t.[CommuneId]
+    WHERE t.[PeriodeId] = @periodeId AND t.[Direction] = @direction
+    ORDER BY t.[Id]';
+END
+ELSE IF COL_LENGTH('dbo.Commune', 'WilayaId') IS NOT NULL
+    AND COL_LENGTH('dbo.Commune', 'Code') IS NOT NULL
+    AND COL_LENGTH('dbo.Wilaya', 'Code') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    SELECT w.[Code] AS [WilayaCode], c.[Code] AS [Commune], t.[MontantImposable]
+    FROM [dbo].[Tap] t
+    INNER JOIN [dbo].[Commune] c ON c.[Id] = t.[CommuneId]
+    INNER JOIN [dbo].[Wilaya] w ON w.[Id] = c.[WilayaId]
+    WHERE t.[PeriodeId] = @periodeId AND t.[Direction] = @direction
+    ORDER BY t.[Id]';
+END
+ELSE
+BEGIN
+    SET @sql = N'SELECT CAST(NULL AS NVARCHAR(100)) AS [WilayaCode], CAST(NULL AS NVARCHAR(100)) AS [Commune], CAST(NULL AS DECIMAL(18,2)) AS [MontantImposable] WHERE 1 = 0';
+END
+
+EXEC sp_executesql @sql, N'@periodeId INT, @direction NVARCHAR(4000)', @periodeId = @periodeId, @direction = @direction;
+", periodeDbId, direction).ToListAsync();
 
                 return JsonSerializer.Serialize(new
                 {
@@ -1058,21 +1086,61 @@ FROM [dbo].[Ca71Ligne] WHERE [Designation] = N'B13';
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
 DELETE FROM [dbo].[Tap] WHERE [PeriodeId] = {periodeId} AND [Direction] = {normalizedDirection};
 
-INSERT INTO [dbo].[Tap] ([PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
-SELECT
-    {periodeId},
-    {normalizedDirection},
-    c.[Id],
-    TRY_CAST(j.[tap2] AS DECIMAL(18,2)),
-    TRY_CAST(j.[tap2] AS DECIMAL(18,2))
-FROM OPENJSON({payload}, '$.tapRows')
-WITH (
-    [wilayaCode] NVARCHAR(100) '$.wilayaCode',
-    [commune] NVARCHAR(100) '$.commune',
-    [tap2] NVARCHAR(64) '$.tap2'
-) AS j
-INNER JOIN [dbo].[Wilaya] w ON w.[Code] = j.[wilayaCode]
-INNER JOIN [dbo].[Commune] c ON c.[Code] = j.[commune] AND c.[WilayaId] = w.[Id];
+DECLARE @periodeId INT = {periodeId};
+DECLARE @direction NVARCHAR(4000) = {normalizedDirection};
+DECLARE @payload NVARCHAR(MAX) = {payload};
+DECLARE @sql NVARCHAR(MAX);
+
+IF COL_LENGTH('dbo.Commune', 'CodeCommune') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'NomWilaya') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'Name') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    INSERT INTO [dbo].[Tap] ([PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
+    SELECT
+        @periodeId,
+        @direction,
+        c.[Id],
+        TRY_CAST(j.[tap2] AS DECIMAL(18,2)),
+        TRY_CAST(j.[tap2] AS DECIMAL(18,2))
+    FROM OPENJSON(@payload, ''$.tapRows'')
+    WITH (
+        [wilayaCode] NVARCHAR(100) ''$.wilayaCode'',
+        [commune] NVARCHAR(100) ''$.commune'',
+        [tap2] NVARCHAR(64) ''$.tap2''
+    ) AS j
+    INNER JOIN [dbo].[Commune] c
+        ON c.[Name] = j.[commune]
+       AND c.[CodeCommune] = j.[wilayaCode];';
+END
+ELSE IF COL_LENGTH('dbo.Commune', 'Code') IS NOT NULL
+    AND COL_LENGTH('dbo.Commune', 'WilayaId') IS NOT NULL
+    AND COL_LENGTH('dbo.Wilaya', 'Code') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    INSERT INTO [dbo].[Tap] ([PeriodeId], [Direction], [CommuneId], [MontantImposable], [MontantTAP])
+    SELECT
+        @periodeId,
+        @direction,
+        c.[Id],
+        TRY_CAST(j.[tap2] AS DECIMAL(18,2)),
+        TRY_CAST(j.[tap2] AS DECIMAL(18,2))
+    FROM OPENJSON(@payload, ''$.tapRows'')
+    WITH (
+        [wilayaCode] NVARCHAR(100) ''$.wilayaCode'',
+        [commune] NVARCHAR(100) ''$.commune'',
+        [tap2] NVARCHAR(64) ''$.tap2''
+    ) AS j
+    INNER JOIN [dbo].[Wilaya] w ON w.[Code] = j.[wilayaCode]
+    INNER JOIN [dbo].[Commune] c ON c.[Code] = j.[commune] AND c.[WilayaId] = w.[Id];';
+END
+ELSE
+BEGIN
+    SET @sql = N'SELECT 1 WHERE 1 = 0;';
+END
+
+EXEC sp_executesql @sql, N'@periodeId INT, @direction NVARCHAR(4000), @payload NVARCHAR(MAX)',
+    @periodeId = @periodeId, @direction = @direction, @payload = @payload;
 ");
                 break;
 
@@ -1671,11 +1739,44 @@ END
             var result = new List<dynamic>();
             
             var query = @"
-                  SELECT w.[Code], w.[Nom] as Wilaya,
-                    c.[Code] as CommuneCode, c.[Code] as CommuneName
-                FROM [dbo].[Wilaya] w
-                LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id]
-                  ORDER BY w.[Code], c.[Code]
+DECLARE @sql NVARCHAR(MAX);
+
+IF COL_LENGTH('dbo.Commune', 'CodeCommune') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'NomWilaya') IS NOT NULL
+   AND COL_LENGTH('dbo.Commune', 'Name') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    SELECT
+        LTRIM(RTRIM(c.[CodeCommune])) AS [WilayaCode],
+        LTRIM(RTRIM(c.[NomWilaya])) AS [Wilaya],
+        LTRIM(RTRIM(c.[Name])) AS [CommuneCode],
+        LTRIM(RTRIM(c.[Name])) AS [CommuneName]
+    FROM [dbo].[Commune] c
+    ORDER BY c.[CodeCommune], c.[Name]';
+END
+ELSE IF COL_LENGTH('dbo.Commune', 'WilayaId') IS NOT NULL
+    AND COL_LENGTH('dbo.Commune', 'Code') IS NOT NULL
+    AND COL_LENGTH('dbo.Wilaya', 'Code') IS NOT NULL
+    AND COL_LENGTH('dbo.Wilaya', 'Nom') IS NOT NULL
+BEGIN
+    SET @sql = N'
+    SELECT w.[Code] AS [WilayaCode], w.[Nom] AS [Wilaya],
+           c.[Code] AS [CommuneCode], c.[Code] AS [CommuneName]
+    FROM [dbo].[Wilaya] w
+    LEFT JOIN [dbo].[Commune] c ON c.[WilayaId] = w.[Id]
+    ORDER BY w.[Code], c.[Code]';
+END
+ELSE
+BEGIN
+    SET @sql = N'
+    SELECT CAST(NULL AS NVARCHAR(100)) AS [WilayaCode],
+           CAST(NULL AS NVARCHAR(100)) AS [Wilaya],
+           CAST(NULL AS NVARCHAR(100)) AS [CommuneCode],
+           CAST(NULL AS NVARCHAR(100)) AS [CommuneName]
+    WHERE 1 = 0';
+END
+
+EXEC sp_executesql @sql;
             ";
             
             var conn = _context.Database.GetDbConnection();
@@ -1692,7 +1793,7 @@ END
                         var wilayaId = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? string.Empty;
                         var wilayaNom = Convert.ToString(reader.GetValue(1), CultureInfo.InvariantCulture) ?? string.Empty;
                         var communeId = reader.IsDBNull(2) ? null : Convert.ToString(reader.GetValue(2), CultureInfo.InvariantCulture);
-                        var communeName = reader.IsDBNull(3) ? null : reader.GetString(3);
+                        var communeName = reader.IsDBNull(3) ? null : Convert.ToString(reader.GetValue(3), CultureInfo.InvariantCulture);
                         
                         if (!wilayasDict.ContainsKey(wilayaId))
                         {
