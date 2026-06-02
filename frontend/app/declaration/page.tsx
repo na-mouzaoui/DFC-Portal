@@ -2822,6 +2822,7 @@ const buildTap15RecapRows = (
 
 const buildTnfdal1RecapRows = (
   declarations: ApiFiscalDeclaration[],
+  recapSources: RecapSourcesResponse,
   mois: string,
   annee: string,
   directionFilter: string,
@@ -2832,11 +2833,13 @@ const buildTnfdal1RecapRows = (
   const totals = new Map<string, { caHt: number; taxe: number }>()
   dirRows.forEach((d) => totals.set(d, { caHt: 0, taxe: 0 }))
 
+  // Direction Generale row comes from TNFDAL 1% declarations (Siege / Direction Generale)
   for (const declaration of declarations) {
     if (declaration.tabKey !== "tnfdal1") continue
     if (declaration.mois !== mois || declaration.annee !== annee) continue
-    const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
+    if (!isDirectionMatchingRecapDesignation(declaration.direction, "Direction Generale")) continue
     if (!isAll) {
+      const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
       if (!normalizedDeclDirection) continue
       const matches = normalizedDeclDirection === normalizedFilter
         || normalizedDeclDirection.includes(normalizedFilter)
@@ -2845,16 +2848,19 @@ const buildTnfdal1RecapRows = (
     }
     const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
     const rows = Array.isArray(payload.tnfdal1Rows) ? (payload.tnfdal1Rows as Tnfdal1Row[]) : []
+    const t = totals.get("Direction Generale")!
     for (const row of rows) {
-      for (const [dirLabel] of totals) {
-        const nd = normalizeRecapDesignation(dirLabel)
-        if (nd && normalizedDeclDirection.includes(nd)) {
-          const t = totals.get(dirLabel)!
-          t.caHt += parseRecapAmount(row.caHt)
-          t.taxe += parseRecapAmount(row.taxe)
-        }
-      }
+      t.caHt += parseRecapAmount(row.caHt)
+      t.taxe += parseRecapAmount(row.taxe)
     }
+  }
+
+  // DR rows come from CA TAP declaration b13 (CA GLOBAL SOUMIS A 1%)
+  const dirB13 = new Map<string, number>()
+  for (const source of recapSources.caTapByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
+    if (!rowLabel || !(dirRows as string[]).includes(rowLabel)) continue
+    dirB13.set(rowLabel, (dirB13.get(rowLabel) ?? 0) + source.b13)
   }
 
   let totalCaHt = 0
@@ -2866,17 +2872,30 @@ const buildTnfdal1RecapRows = (
       rows.push({ designation, caHt: "0,00", taxe: "0,00" })
       continue
     }
-    const t = totals.get(designation) ?? { caHt: 0, taxe: 0 }
-    totalCaHt += t.caHt
-    totalTaxe += t.taxe
-    rows.push({ designation, caHt: formatRecapAmount(t.caHt), taxe: formatRecapAmount(t.taxe) })
+    if (designation === "Direction Generale") {
+      const t = totals.get(designation) ?? { caHt: 0, taxe: 0 }
+      totalCaHt += t.caHt
+      totalTaxe += t.taxe
+      rows.push({ designation, caHt: formatRecapAmount(t.caHt), taxe: formatRecapAmount(t.taxe) })
+    } else {
+      const b13 = dirB13.get(designation) ?? 0
+      const taxe = b13 * 0.01
+      totalCaHt += b13
+      totalTaxe += taxe
+      rows.push({ designation, caHt: formatRecapAmount(b13), taxe: formatRecapAmount(taxe) })
+    }
   }
-  rows.push({ designation: "Total", caHt: formatRecapAmount(totalCaHt), taxe: formatRecapAmount(totalTaxe) })
+  const totalRow = totals.get("Direction Generale")
+  const dgCaHt = totalRow?.caHt ?? 0
+  const dgTaxe = totalRow?.taxe ?? 0
+  const totalB13 = [...dirB13.values()].reduce((s, v) => s + v, 0)
+  rows.push({ designation: "Total", caHt: formatRecapAmount(dgCaHt + totalB13), taxe: formatRecapAmount(dgTaxe + totalB13 * 0.01) })
   return rows
 }
 
 const buildTacp7RecapRows = (
   declarations: ApiFiscalDeclaration[],
+  recapSources: RecapSourcesResponse,
   mois: string,
   annee: string,
   directionFilter: string,
@@ -2886,9 +2905,7 @@ const buildTacp7RecapRows = (
   const typeRows = ["Masters", "Mobiposte", "Racimo", "Algerie Poste"]
   const dirRows = TACP7_RECAP_ROWS.filter((d) => !typeRows.includes(d) && d !== "Total")
   const typeTotals = new Map<string, { base: number; taxe: number }>()
-  const dirTotals = new Map<string, { base: number; taxe: number }>()
   typeRows.forEach((d) => typeTotals.set(d, { base: 0, taxe: 0 }))
-  dirRows.forEach((d) => dirTotals.set(d, { base: 0, taxe: 0 }))
 
   for (const declaration of declarations) {
     if (declaration.tabKey !== "tacp7") continue
@@ -2903,7 +2920,6 @@ const buildTacp7RecapRows = (
     }
     const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
     const rows = Array.isArray(payload.tacp7Rows) ? (payload.tacp7Rows as Tacp7Row[]) : []
-
     rows.forEach((row, idx) => {
       const typeLabel = typeRows[idx]
       if (typeLabel && typeTotals.has(typeLabel)) {
@@ -2912,17 +2928,14 @@ const buildTacp7RecapRows = (
         t.taxe += parseRecapAmount(row.taxe)
       }
     })
+  }
 
-    const declBase = rows.reduce((s, r) => s + parseRecapAmount(r.base), 0)
-    const declTaxe = rows.reduce((s, r) => s + parseRecapAmount(r.taxe), 0)
-    for (const [dirLabel] of dirTotals) {
-      const nd = normalizeRecapDesignation(dirLabel)
-      if (nd && normalizedDeclDirection.includes(nd)) {
-        const t = dirTotals.get(dirLabel)!
-        t.base += declBase
-        t.taxe += declTaxe
-      }
-    }
+  // DR rows come from CA TAP declaration b12 (CHIFFRE D'AFFAIRES RECHARGEMENT SOUMIS A 7%)
+  const dirB12 = new Map<string, number>()
+  for (const source of recapSources.caTapByDirection) {
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(source.direction))
+    if (!rowLabel || !(dirRows as string[]).includes(rowLabel)) continue
+    dirB12.set(rowLabel, (dirB12.get(rowLabel) ?? 0) + source.b12)
   }
 
   const rows: Record<string, string>[] = []
@@ -2931,14 +2944,17 @@ const buildTacp7RecapRows = (
     if (typeTotals.has(designation)) {
       const t = typeTotals.get(designation)!
       rows.push({ designation, base: formatRecapAmount(t.base), taxe: formatRecapAmount(t.taxe) })
-    } else if (dirTotals.has(designation)) {
-      const t = dirTotals.get(designation)!
-      rows.push({ designation, base: formatRecapAmount(t.base), taxe: formatRecapAmount(t.taxe) })
+    } else {
+      const b12 = dirB12.get(designation) ?? 0
+      const taxe = b12 * 0.07
+      rows.push({ designation, base: formatRecapAmount(b12), taxe: formatRecapAmount(taxe) })
     }
   }
 
   const totalBase = typeRows.reduce((s, t) => s + (typeTotals.get(t)?.base ?? 0), 0)
+    + [...dirB12.values()].reduce((s, v) => s + v, 0)
   const totalTaxe = typeRows.reduce((s, t) => s + (typeTotals.get(t)?.taxe ?? 0), 0)
+    + [...dirB12.values()].reduce((s, v) => s + v * 0.07, 0)
   rows.push({ designation: "Total", base: formatRecapAmount(totalBase), taxe: formatRecapAmount(totalTaxe) })
   return rows
 }
@@ -3188,8 +3204,8 @@ const buildG50RecapRows = (
 
     if (declaration.tabKey === "irg") {
       const rows = Array.isArray(payload.irgRows) ? (payload.irgRows as IrgRow[]) : []
-      values.irgSalaire += parseRecapAmount(rows[0]?.montant)
-      values.autreIrg += rows.slice(1).reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
+      values.irgSalaire += parseRecapAmount(rows[0]?.montant) + parseRecapAmount(rows[1]?.montant)
+      values.autreIrg += rows.slice(2).reduce((sum, row) => sum + parseRecapAmount(row.montant), 0)
       continue
     }
 
@@ -3264,42 +3280,13 @@ const buildG50RecapRows = (
 const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey: string): boolean => {
   if (columnKey === "designation") return false
   if (designation === "Total") return false
-  /*
-  if (recapKey === "tva_collectee") {
-    if (isTvaCollecteeRecapTotalRow(designation)) return false
-    if (columnKey === "tva") return false
-    if (isTvaCollecteeRecapDrRow(designation) && (columnKey === "ttc" || columnKey === "ht")) return false
-    return true
-  }
-
-  if (recapKey === "tva_situation") {
-    if (designation === "Total") return false
-    if (columnKey === "totalDed") return false
-    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
-      return columnKey === "immo" || columnKey === "biens"
-    }
-    return false
-  }
-
-  if (recapKey === "masters15") {
-    return designation !== "Total" && columnKey === "base"
-  }
-
-  if (recapKey === "tacp7") {
-    return designation !== "Total" && (columnKey === "base" || columnKey === "taxe")
-  }
 
   if (recapKey === "tnfdal1") {
-    return designation === "Direction Generale" && (columnKey === "caHt" || columnKey === "taxe")
+    return designation === "Régulation CA" && (columnKey === "caHt" || columnKey === "taxe")
   }
 
-  if (recapKey === "irg_recap") {
-    return false
-  }
+  if (recapKey === "tacp7" || recapKey === "irg_recap" || recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel") return false
 
-  if (recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel") return false
-
-  return false*/
   return true
 }
 
@@ -3357,8 +3344,8 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
     if (row === "droit de timbre") return "Droit de timbre = Droits_timbre.Total"
     if (row === "tacp 7%") return "TACP 7% = SUM(CA_TAP.B12) * (7 / 100)"
     if (row === "tnfpdal 1%") return "TNFPDAL 1% = SUM(CA_TAP.B13) * (1 / 100)"
-    if (row === "irg salaire") return "IRG salaire = SUM(IRG.ligne1)"
-    if (row === "autre irg") return "Autre IRG = SUM(IRG.lignes2..n)"
+    if (row === "irg salaire") return "IRG salaire = IRG sur Salaire Bareme + Autre IRG 10%"
+    if (row === "autre irg") return "Autre IRG = SUM(IRG.lignes3..n)"
     if (row === "taxe de formation") return "Taxe formation = (Taxe formation pro) + (Taxe d'apprentissage)"
     if (row === "taxe vehicule") return "Taxe vehicule = SUM(Tableau taxe vehicule)"
     if (row === "la tap") return "LA TAP = TAP_1.5%.Total"
@@ -3436,9 +3423,26 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
     if (columnKey === "taxe") return "Taxe = Base * (1.5 / 100)"
   }
 
+  if (recapKey === "tacp7" && designation !== "Total") {
+    if (TACP7_DECLARATION_ROWS.includes(designation)) {
+      if (columnKey === "base") return "Extrait depuis la declaration TACP 7%"
+      if (columnKey === "taxe") return "Base * (7 / 100) depuis la declaration TACP 7%"
+    }
+    if (columnKey === "base") return "CA HT extraction 7% depuis CA TAP direction"
+    if (columnKey === "taxe") return "Base * (7 / 100) depuis CA TAP direction"
+  }
+
   if (recapKey === "tnfdal1") {
-    if (columnKey === "caHt") return "Saisie manuelle"
-    if (columnKey === "taxe") return "Saisie manuelle"
+    if (designation === "Régulation CA") {
+      if (columnKey === "caHt") return "Saisie manuelle"
+      if (columnKey === "taxe") return "CA HT * (1 / 100)"
+    }
+    if (designation === "Direction Generale") {
+      if (columnKey === "caHt") return "Extrait depuis la declaration TNFDAL 1%"
+      if (columnKey === "taxe") return "CA HT * (1 / 100) depuis la declaration TNFDAL 1%"
+    }
+    if (columnKey === "caHt") return "CA Global 1% depuis CA TAP direction"
+    if (columnKey === "taxe") return "CA * (1 / 100) depuis CA TAP direction"
   }
 
   if (recapKey === "irg_recap") {
@@ -5382,7 +5386,7 @@ export default function NouvelleDeclarationPage() {
       "caHt",
     )
     const tnfdal1Rows = annotateTapLikeMissing(
-      recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
+      recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, recapSources, mois, annee, effectiveDirection)),
       fiscalDeclarations,
       mois,
       annee,
@@ -5390,7 +5394,7 @@ export default function NouvelleDeclarationPage() {
       "caHt",
     )
     const tacp7Rows = annotateTapLikeMissing(
-      recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
+      recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, recapSources, mois, annee, effectiveDirection)),
       fiscalDeclarations,
       mois,
       annee,
@@ -6563,7 +6567,7 @@ export default function NouvelleDeclarationPage() {
                           break
                         case "tnfdal1":
                           newRows = annotateTapLikeMissing(
-                            recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
+                            recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, recapSources, mois, annee, effectiveDirection)),
                             fiscalDeclarations,
                             mois,
                             annee,
@@ -6573,7 +6577,7 @@ export default function NouvelleDeclarationPage() {
                           break
                         case "tacp7":
                           newRows = annotateTapLikeMissing(
-                            recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
+                            recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, recapSources, mois, annee, effectiveDirection)),
                             fiscalDeclarations,
                             mois,
                             annee,
