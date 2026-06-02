@@ -35,8 +35,10 @@ const getPeriodEndDate = (mois: string, annee: string) => {
   const m = Number(mois)
   const y = Number(annee)
   if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12 || y < 1) return ""
-  const lastDay = new Date(y, m, 0).getDate()
-  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+  const prevMonth = m === 1 ? 12 : m - 1
+  const prevYear = m === 1 ? y - 1 : y
+  const lastDay = new Date(prevYear, prevMonth, 0).getDate()
+  return `${prevYear}-${String(prevMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 }
 
 const fmt = (v: number | string) => {
@@ -1325,14 +1327,23 @@ interface Tab10Props {
   isSubmitting: boolean
 }
 function TabMasters({ rows, setRows, mois, annee, onSave, isSubmitting }: Tab10Props) {
-  const monthLabel = useMemo(() => MONTHS.find((m) => m.value === mois)?.label ?? "", [mois])
+  const monthLabel = useMemo(() => {
+    const m = Number(mois)
+    const y = Number(annee)
+    if (!Number.isFinite(m) || m < 1 || m > 12) return ""
+    const prevMonth = m === 1 ? 12 : m - 1
+    const prevMonthStr = String(prevMonth).padStart(2, "0")
+    return MONTHS.find((month) => month.value === prevMonthStr)?.label ?? ""
+  }, [mois])
   const periodEndDate = useMemo(() => {
     const monthValue = Number(mois)
     const yearValue = Number(annee)
     if (!Number.isFinite(monthValue) || !Number.isFinite(yearValue)) return ""
     if (monthValue < 1 || monthValue > 12 || yearValue < 1) return ""
-    const lastDay = new Date(yearValue, monthValue, 0).getDate()
-    return `${yearValue}-${String(monthValue).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+    const prevMonth = monthValue === 1 ? 12 : monthValue - 1
+    const prevYear = monthValue === 1 ? yearValue - 1 : yearValue
+    const lastDay = new Date(prevYear, prevMonth, 0).getDate()
+    return `${prevYear}-${String(prevMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
   }, [annee, mois])
 
   useEffect(() => {

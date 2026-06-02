@@ -450,8 +450,10 @@ const getPeriodEndDate = (mois: string, annee: string) => {
   const m = Number(mois)
   const y = Number(annee)
   if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12 || y < 1) return ""
-  const lastDay = new Date(y, m, 0).getDate()
-  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+  const prevMonth = m === 1 ? 12 : m - 1
+  const prevYear = m === 1 ? y - 1 : y
+  const lastDay = new Date(prevYear, prevMonth, 0).getDate()
+  return `${prevYear}-${String(prevMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 }
 const fmt = (v: number | string) => {
   if (v === "" || isNaN(Number(v))) return ""
