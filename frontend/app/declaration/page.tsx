@@ -547,7 +547,7 @@ function TabTVAEtat({ rows, setRows, onSave, isSubmitting, fournisseurs, withSel
 
     const invoiceTotalMonths = invoiceYear * 12 + invoiceMonth
     const periodTotalMonths = periodYearNumber * 12 + periodMonthNumber
-    return periodTotalMonths - invoiceTotalMonths > 13
+    return periodTotalMonths - invoiceTotalMonths > 12
   }
 
   const handleDateChange = (i: number, value: string) => {
