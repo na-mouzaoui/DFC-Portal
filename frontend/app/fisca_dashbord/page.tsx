@@ -19,6 +19,7 @@ import { syncFiscalPolicy } from "@/lib/fiscal-policy"
 import { getFiscalReminders, type ReminderData } from "@/lib/fiscal-reminders"
 import { RemindersCard } from "@/components/fiscal-reminders-card"
 import { API_BASE } from "@/lib/config"
+import { exportDeclarationToExcel, exportRecapToExcel } from "@/lib/fiscal-export-utils"
 
 type EncRow = { designation: string; ht?: string; ttc?: string }
 type TvaRate = "19" | "9"
@@ -132,6 +133,19 @@ interface SavedRecap {
   annee: string
   createdAt: string
   rows: Record<string, string>[]
+}
+
+const ENCAISSEMENT_DESIGNATIONS = [
+  "POST/PRE PAID VI/VD 19%",
+  "CHIFFRE D'AFFAIRES EXONERE",
+]
+
+const normalizeEncRows = (rows: EncRow[]): EncRow[] => {
+  const src = rows ?? []
+  return ENCAISSEMENT_DESIGNATIONS.map((designation) => {
+    const row = src.find((r) => r.designation === designation)
+    return { designation, ht: row?.ht ?? "", ttc: row?.ttc }
+  })
 }
 
 const toArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
@@ -320,7 +334,7 @@ const mapApiDeclarationToSaved = (item: ApiFiscalDeclaration): SavedDeclaration 
 
   switch ((item.tabKey ?? "").trim().toLowerCase()) {
     case "encaissement":
-      declaration.encRows = toArray<EncRow>(parsedData.encRows)
+      declaration.encRows = normalizeEncRows(toArray<EncRow>(parsedData.encRows))
       break
     case "tva_immo":
       declaration.tvaImmoRows = toArray<TvaRow>(parsedData.tvaImmoRows)
@@ -432,6 +446,13 @@ const DECLARATION_TYPE_LABELS: Record<string, string> = {
 }
 
 // aaa Shared styles & helpers aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+const getPeriodEndDate = (mois: string, annee: string) => {
+  const m = Number(mois)
+  const y = Number(annee)
+  if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12 || y < 1) return ""
+  const lastDay = new Date(y, m, 0).getDate()
+  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+}
 const fmt = (v: number | string) => {
   if (v === "" || isNaN(Number(v))) return ""
   const num = Number(v)
@@ -451,18 +472,17 @@ const num = (v: string | number | null | undefined) => {
 
   return Number.isFinite(parsed) ? parsed : 0
 }
-const resolveEncaissementAmounts = (row: EncRow) => {
-  const htRaw = (row.ht ?? "").trim()
-  if (htRaw !== "") {
-    const ht = num(htRaw)
-    const tva = ht * 0.19
-    return { ht, tva, ttc: ht + tva }
+const resolveEncaissementAmounts = (row: EncRow, index: number) => {
+  const ht = num(row.ht ?? "")
+  if (index === 1) {
+    return { ht, tva: 0, ttc: ht }
   }
-
-  // Backward compatibility for declarations saved with TTC as input.
-  const ttc = num(row.ttc ?? "")
-  const ht = ttc / 1.19
-  return { ht, tva: ttc - ht, ttc }
+  if (row.ttc) {
+    const ttc = num(row.ttc)
+    return { ht, tva: ttc - ht, ttc }
+  }
+  const tva = ht * 0.19
+  return { ht, tva, ttc: ht + tva }
 }
 const normalizeTvaRate = (value?: string): TvaRate | "" => {
   if (value === "19" || value === "9") return value
@@ -487,9 +507,9 @@ const TH: React.CSSProperties = { border: "1px solid #d1d5db", padding: "1px 4px
 const TD: React.CSSProperties = { border: "1px solid #e5e7eb", padding: "1px 4px", lineHeight: "1.1" }
 
 function EncTable({ rows }: { rows: EncRow[] }) {
-  const computedRows = rows.map((row) => ({
+  const computedRows = rows.map((row, idx) => ({
     designation: row.designation,
-    ...resolveEncaissementAmounts(row),
+    ...resolveEncaissementAmounts(row, idx),
   }))
   const totals = computedRows.reduce(
     (acc, row) => ({ ht: acc.ht + row.ht, tva: acc.tva + row.tva, ttc: acc.ttc + row.ttc }),
@@ -772,10 +792,11 @@ function Taxe2Table({ rows }: { rows: Taxe2Row[] }) {
   )
 }
 
-function MastersTable({ rows }: { rows: MasterRow[] }) {
+function MastersTable({ rows, mois, annee }: { rows: MasterRow[]; mois: string; annee: string }) {
   if (!rows || rows.length === 0) return <div className="text-xs text-muted-foreground">Aucune donnée</div>
   const totalHT   = rows.reduce((s,r)=>s+num(r.montantHT),0)
   const totalTaxe = rows.reduce((s,r)=>s+num(r.montantHT)*0.015,0)
+  const periodEnd = getPeriodEndDate(mois, annee)
   return (
     <Table>
       <TableHeader>
@@ -787,7 +808,7 @@ function MastersTable({ rows }: { rows: MasterRow[] }) {
         {rows.map((r,i)=>(
           <TableRow key={i}>
             <TableCell className="text-center">{i+1}</TableCell>
-            <TableCell>{r.date}</TableCell>
+            <TableCell>{periodEnd}</TableCell>
             <TableCell className="text-xs">{r.nomMaster}</TableCell>
             <TableCell>{r.numFacture}</TableCell>
             <TableCell>{r.dateFacture}</TableCell>
@@ -1046,7 +1067,7 @@ function TabDataView({ tabKey, decl, color, wilayas }: { tabKey: string; decl: S
     case "ca_siege":      return <CaSiegeTable rows={decl.caSiegeRows ?? []} />
     case "irg":           return <IrgTable rows={decl.irgRows ?? []} />
     case "taxe2":         return <Taxe2Table rows={decl.taxe2Rows ?? []} />
-    case "taxe_masters":  return <MastersTable rows={decl.masterRows ?? []} />
+    case "taxe_masters":  return <MastersTable rows={decl.masterRows ?? []} mois={decl.mois} annee={decl.annee} />
     case "taxe_vehicule": return <Taxe11Table montant={decl.taxe11Montant ?? ""} />
     case "taxe_formation":return <Taxe12Table rows={decl.taxe12Rows ?? []} />
     case "acompte":       return <AcompteTable months={decl.acompteMonths ?? []} annee={decl.annee} />
@@ -2229,6 +2250,8 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     if ((decl.ibs14Rows?.length ?? 0) > 0) return { key: "ibs", label: "IBS Fournisseurs Etrangers", color: "#7c2d12" }
     if ((decl.taxe15Rows?.length ?? 0) > 0) return { key: "taxe_domicil", label: "Taxe Domiciliation", color: "#134e4a" }
     if ((decl.tva16Rows?.length ?? 0) > 0) return { key: "tva_autoliq", label: "TVA Auto Liquidation", color: "#312e81" }
+    if ((decl.tnfdal1Rows?.length ?? 0) > 0) return { key: "tnfdal1", label: "TNFDAL 1%", color: "#0ea5e9" }
+    if ((decl.tacp7Rows?.length ?? 0) > 0) return { key: "tacp7", label: "TACP 7%", color: "#22c55e" }
     return { key: "encaissement", label: "Non défini", color: "#6b7280" }
   }
 
@@ -2634,6 +2657,36 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     })()
   }
 
+  const handleExportExcel = async (decl: SavedDeclaration, tabKey: string) => {
+    const tab = DASH_TABS.find((t) => t.key === tabKey)
+    const title = tab?.title ?? tabKey
+    await exportDeclarationToExcel(
+      tabKey,
+      decl,
+      title,
+      decl.direction ?? "",
+      wilayas,
+      fiscalFournisseurs,
+      decl.ibsFournisseurId,
+      decl.tva16FournisseurId,
+    )
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
+      await fetch(`${API_BASE}/api/fiscal/${decl.id}/print`, {
+        method: "POST",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }).catch(() => null)
+    } catch {
+      // Log export silently
+    }
+  }
+
+  const handleExportRecapExcel = async (recap: SavedRecap) => {
+    const recapColumns = getRecapColumns(recap)
+    await exportRecapToExcel(recap, recapColumns)
+  }
+
   const handleDeleteRecap = async (recap: SavedRecap) => {
     try {
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
@@ -2856,6 +2909,8 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                     <option value="ibs">IBS Etrangers</option>
                     <option value="taxe_domicil">Taxe Domiciliation</option>
                     <option value="tva_autoliq">TVA Auto Liquidation</option>
+                    <option value="tnfdal1">TNFDAL 1%</option>
+                    <option value="tacp7">TACP 7%</option>
                   </select>
                 </div>
                 <div>
@@ -3361,6 +3416,14 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                 >
                   <Printer size={13} /> Imprimer
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  onClick={() => { setShowDialog(false); if (viewDecl) handleExportExcel(viewDecl, viewTabKey) }}
+                >
+                  <FileText size={13} /> Exporter Excel
+                </Button>
               </div>
             </div>
           )}
@@ -3457,6 +3520,17 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                   }}
                 >
                   <Printer size={13} /> Imprimer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  onClick={() => {
+                    setShowRecapDialog(false)
+                    handleExportRecapExcel(viewRecap)
+                  }}
+                >
+                  <FileText size={13} /> Exporter Excel
                 </Button>
                 <Button
                   size="sm"

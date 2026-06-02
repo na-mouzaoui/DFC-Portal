@@ -31,6 +31,14 @@ const PRIMARY_COLOR = "#2db34b"
 // 
 // HELPERS
 // 
+const getPeriodEndDate = (mois: string, annee: string) => {
+  const m = Number(mois)
+  const y = Number(annee)
+  if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12 || y < 1) return ""
+  const lastDay = new Date(y, m, 0).getDate()
+  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+}
+
 const fmt = (v: number | string) => {
   if (v === "" || isNaN(Number(v))) return ""
   const num = Number(v)
@@ -186,7 +194,8 @@ function TabEncaissement({ rows, setRows, onSave, isSubmitting }: Tab1Props) {
     const ht = rows.reduce((s, r) => s + num(r.ht), 0)
     const tva = rows.reduce((s, r, idx) => {
       if (idx === 1) return s + 0
-      return s + (num(r.ht) * 0.19)
+      if (r.ttc) return s + (num(r.ttc) - num(r.ht))
+      return s + num(r.ht) * 0.19
     }, 0)
     return { ht, tva, ttc: ht + tva }
   }, [rows])
@@ -3376,9 +3385,8 @@ const fillRows = <T,>(rows: T[], size: number, makeDefault: () => T) => {
 
 const normalizeEncRows = (rows?: EncRow[]) => {
   const sourceRows = rows ?? []
-  return FIXED_ENCAISSEMENT_DESIGNATIONS.map((designation, index) => {
-    const row = sourceRows[index] as (Partial<EncRow> & { ttc?: string }) | undefined
-    const source = row ?? {}
+  return FIXED_ENCAISSEMENT_DESIGNATIONS.map((designation) => {
+    const source = sourceRows.find((r) => r.designation === designation) ?? {}
     const existingHt = safeString(source.ht)
     const legacyTtc = safeString(source.ttc)
     const migratedHt = legacyTtc.trim() ? (num(legacyTtc, true) / 1.19).toFixed(2) : ""
@@ -3386,6 +3394,7 @@ const normalizeEncRows = (rows?: EncRow[]) => {
     return {
       designation,
       ht: existingHt || migratedHt,
+      ttc: legacyTtc || undefined,
     }
   })
 }
@@ -3799,9 +3808,15 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
           </tr></thead>
           <tbody>
             {encRows.map((r, i) => {
-              const ht = num(r.ht)
-              const tva = ht * 0.19
-              const ttc = ht + tva
+              const ht = num(r.ht ?? "")
+              let tva: number, ttc: number
+              if (i === 1) {
+                tva = 0; ttc = ht
+              } else if (r.ttc) {
+                ttc = num(r.ttc); tva = ttc - ht
+              } else {
+                tva = ht * 0.19; ttc = ht + tva
+              }
               return <tr key={i} style={{ background: "#fff", color: "#000" }}>
                 <td style={{ ...tdStyle, textAlign: "center", backgroundColor: "#fff", color: "#000" }}>{i + 1}</td>
                 <td style={{ ...tdStyle, backgroundColor: "#fff", color: "#000" }}>{r.designation}</td>
@@ -3814,8 +3829,16 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
           <tfoot><tr style={{ background: "#ddd", fontWeight: 700, color: "#000" }}>
             <td colSpan={2} style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>TOTAL</td>
             <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht), 0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht) * 0.19, 0))}</td>
-            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r) => s + num(r.ht) * 1.19, 0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r, idx) => {
+              if (idx === 1) return s + 0
+              if (r.ttc) return s + (num(r.ttc) - num(r.ht))
+              return s + num(r.ht) * 0.19
+            }, 0))}</td>
+            <td style={{ ...tdStyle, textAlign: "right", backgroundColor: "#ddd", color: "#000" }}>{fmt(encRows.reduce((s, r, idx) => {
+              if (idx === 1) return s + num(r.ht)
+              if (r.ttc) return s + num(r.ttc)
+              return s + num(r.ht) * 1.19
+            }, 0))}</td>
           </tr></tfoot>
         </table>
       )}
@@ -4034,6 +4057,7 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
       {activeTab === "taxe_masters" && (() => {
         const totalHT   = masterRows.reduce((s,r)=>s+num(r.montantHT),0)
         const totalTaxe = masterRows.reduce((s,r)=>s+num(r.montantHT)*0.015,0)
+        const periodEnd = getPeriodEndDate(mois, annee)
         return (
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr>
@@ -4043,7 +4067,7 @@ function PrintZone({ activeTab, direction, mois, annee, wilayas, encRows, tvaImm
               {masterRows.map((r,i)=>(
                 <tr key={i}>
                   <td style={{...tdStyle,textAlign:"center"}}>{i+1}</td>
-                  <td style={tdStyle}>{r.date}</td>
+                  <td style={tdStyle}>{periodEnd}</td>
                   <td style={tdStyle}>{r.nomMaster}</td>
                   <td style={tdStyle}>{r.numFacture}</td>
                   <td style={tdStyle}>{r.dateFacture}</td>
@@ -4203,8 +4227,15 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
 
   if (tabKey === "encaissement") {
     const rows = decl.encRows ?? []
-    const computed = rows.map((row) => {
-      const ht = num(row.ht)
+    const computed = rows.map((row, idx) => {
+      const ht = num(row.ht ?? "")
+      if (idx === 1) {
+        return { designation: row.designation, ht, tva: 0, ttc: ht }
+      }
+      if (row.ttc) {
+        const ttc = num(row.ttc)
+        return { designation: row.designation, ht, tva: ttc - ht, ttc }
+      }
       const tva = ht * 0.19
       return { designation: row.designation, ht, tva, ttc: ht + tva }
     })
@@ -4408,6 +4439,7 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
     const rows = decl.masterRows ?? []
     const totalHT = rows.reduce((s, r) => s + num(r.montantHT), 0)
     const totalTaxe = rows.reduce((s, r) => s + (num(r.montantHT) * 0.015), 0)
+    const periodEnd = getPeriodEndDate(decl.mois, decl.annee)
 
     return (
       <Table>
@@ -4432,7 +4464,7 @@ function ExistingDeclarationTableView({ tabKey, decl }: { tabKey: string; decl: 
           {rows.map((row, i) => (
             <TableRow key={i}>
               <TableCell className="text-center text-xs">{i + 1}</TableCell>
-              <TableCell className="text-xs">{popupText(row.date)}</TableCell>
+              <TableCell className="text-xs">{periodEnd}</TableCell>
               <TableCell className="text-xs">{popupText(row.nomMaster)}</TableCell>
               <TableCell className="text-xs">{popupText(row.numFacture)}</TableCell>
               <TableCell className="text-xs">{popupText(row.dateFacture)}</TableCell>
@@ -4630,6 +4662,7 @@ export default function NouvelleDeclarationPage() {
   const [regions, setRegions] = useState<{ id: number; name: string }[]>([])
   const [fiscalFournisseurs, setFiscalFournisseurs] = useState<FiscalFournisseurOption[]>([])
   useEffect(() => {
+    if (status !== "authenticated") return
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
     fetch(`${API_BASE}/api/regions`, {
       credentials: "include",
@@ -4638,31 +4671,24 @@ export default function NouvelleDeclarationPage() {
       .then((r) => r.json())
       .then((data: { id: number; name: string }[]) => setRegions(data))
       .catch(() => {})
-  }, [])
+  }, [status])
 
   useEffect(() => {
+    if (status !== "authenticated") return
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
     fetch(`${API_BASE}/api/fiscal-fournisseurs`, {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-      .then(async (r) => {
-        if (!r.ok) {
-          throw new Error(`HTTP ${r.status}`)
-        }
-        return r.json()
-      })
+      .then((r) => r.json())
       .then((data: unknown) => {
         const normalized = asArrayPayload(data)
           .map((item) => normalizeFiscalFournisseurOption(item))
           .filter((item): item is FiscalFournisseurOption => item !== null)
         setFiscalFournisseurs(normalized)
       })
-      .catch((err) => {
-        console.error("Erreur chargement fournisseurs fiscaux:", err)
-        setFiscalFournisseurs([])
-      })
-  }, [])
+      .catch(() => {})
+  }, [status])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -5868,6 +5894,8 @@ export default function NouvelleDeclarationPage() {
         case "taxe_vehicule":  tabData = { taxe11Montant }; break
         case "taxe_formation": tabData = { taxe12Rows }; break
         case "acompte":        tabData = { acompteMonths }; break
+        case "tnfdal1":        tabData = { tnfdal1Rows }; break
+        case "tacp7":          tabData = { tacp7Rows }; break
 
       }
       const requestPayload = {
