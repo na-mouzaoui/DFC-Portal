@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build && node copy-worker.js",
-    "dev": "next dev --webpack",
+    "dev": "next dev",
     "lint": "eslint .",
     "start": "next start"
   },
@@ -53,7 +53,6 @@
     "next": "16.0.10",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.4.530",
     "react": "19.2.0",
     "react-day-picker": "9.8.0",
     "react-dom": "19.2.0",

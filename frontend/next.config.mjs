@@ -19,6 +19,12 @@ const nextConfig = {
     // Prevent root auto-detection issues when multiple lockfiles exist.
     root: __dirname,
   },
+  webpack: (config) => {
+    // pdfjs-dist imports Node.js modules not available in browser
+    config.resolve.alias.canvas = false
+    config.resolve.alias.encoding = false
+    return config
+  },
 }
 
 export default nextConfig
