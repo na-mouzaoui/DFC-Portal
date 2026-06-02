@@ -5710,7 +5710,7 @@ export default function NouvelleDeclarationPage() {
           if (!row.assietteImposable && !row.montant) return false
           const assiette = num(row.assietteImposable, false)
           const montant = num(row.montant, false)
-          return assiette <= montant
+          return assiette < montant
         })
 
         if (invalidIrgRow) {
