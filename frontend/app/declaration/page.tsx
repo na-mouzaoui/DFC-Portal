@@ -1407,19 +1407,19 @@ function TabMasters({ rows, setRows, mois, annee, onSave, isSubmitting }: Tab10P
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
-                <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50">{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "-"}</td>
+                <td className="px-3 py-1 border-b text-xs text-gray-700 font-semibold bg-gray-50/50" style={{ minWidth: 130 }}>{row.montantHT ? fmt(num(row.montantHT) * 0.015) : "-"}</td>
                 <td className="px-1 py-1 border-b">
                   <Input
                     value={monthLabel || row.mois}
                     readOnly
                     className="h-7 px-2 text-xs bg-gray-100"
-                    style={{ minWidth: 110 }}
+                    style={{ minWidth: 80 }}
                   />
                 </td>
-                <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 140 }} /></td>
+                <td className="px-1 py-1 border-b"><Input value={row.observation} onChange={(e) => upd(i, "observation", e.target.value)} className="h-7 px-2 text-xs" placeholder="Observation" style={{ minWidth: 120 }} /></td>
                 <td className="px-2 py-1 text-center border-b">
                   <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="text-emerald-400 hover:text-emerald-600 disabled:opacity-30"><Trash2 size={13} /></button>
+                    className="text-red-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
