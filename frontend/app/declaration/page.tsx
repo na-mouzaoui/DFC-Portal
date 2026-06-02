@@ -2821,23 +2821,126 @@ const buildTap15RecapRows = (
 }
 
 const buildTnfdal1RecapRows = (
-  _sources: RecapSourcesResponse,
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+  directionFilter: string,
 ): Record<string, string>[] => {
-  return TNFDAL1_RECAP_ROWS.map((designation) => ({
-    designation,
-    caHt: "0,00",
-    taxe: "0,00",
-  }))
+  const normalizedFilter = normalizeRecapDesignation(directionFilter)
+  const isAll = !normalizedFilter || ["all", "tout", "tous"].includes(normalizedFilter)
+  const dirRows = TNFDAL1_RECAP_ROWS.filter((d) => d !== "Régulation CA" && d !== "Total")
+  const totals = new Map<string, { caHt: number; taxe: number }>()
+  dirRows.forEach((d) => totals.set(d, { caHt: 0, taxe: 0 }))
+
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "tnfdal1") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
+    if (!isAll) {
+      if (!normalizedDeclDirection) continue
+      const matches = normalizedDeclDirection === normalizedFilter
+        || normalizedDeclDirection.includes(normalizedFilter)
+        || normalizedFilter.includes(normalizedDeclDirection)
+      if (!matches) continue
+    }
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const rows = Array.isArray(payload.tnfdal1Rows) ? (payload.tnfdal1Rows as Tnfdal1Row[]) : []
+    for (const row of rows) {
+      for (const [dirLabel] of totals) {
+        const nd = normalizeRecapDesignation(dirLabel)
+        if (nd && normalizedDeclDirection.includes(nd)) {
+          const t = totals.get(dirLabel)!
+          t.caHt += parseRecapAmount(row.caHt)
+          t.taxe += parseRecapAmount(row.taxe)
+        }
+      }
+    }
+  }
+
+  let totalCaHt = 0
+  let totalTaxe = 0
+  const rows: Record<string, string>[] = []
+  for (const designation of TNFDAL1_RECAP_ROWS) {
+    if (designation === "Total") break
+    if (designation === "Régulation CA") {
+      rows.push({ designation, caHt: "0,00", taxe: "0,00" })
+      continue
+    }
+    const t = totals.get(designation) ?? { caHt: 0, taxe: 0 }
+    totalCaHt += t.caHt
+    totalTaxe += t.taxe
+    rows.push({ designation, caHt: formatRecapAmount(t.caHt), taxe: formatRecapAmount(t.taxe) })
+  }
+  rows.push({ designation: "Total", caHt: formatRecapAmount(totalCaHt), taxe: formatRecapAmount(totalTaxe) })
+  return rows
 }
 
 const buildTacp7RecapRows = (
-  _sources: RecapSourcesResponse,
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+  directionFilter: string,
 ): Record<string, string>[] => {
-  return TACP7_RECAP_ROWS.map((designation) => ({
-    designation,
-    base: "0,00",
-    taxe: "0,00",
-  }))
+  const normalizedFilter = normalizeRecapDesignation(directionFilter)
+  const isAll = !normalizedFilter || ["all", "tout", "tous"].includes(normalizedFilter)
+  const typeRows = ["Masters", "Mobiposte", "Racimo", "Algerie Poste"]
+  const dirRows = TACP7_RECAP_ROWS.filter((d) => !typeRows.includes(d) && d !== "Total")
+  const typeTotals = new Map<string, { base: number; taxe: number }>()
+  const dirTotals = new Map<string, { base: number; taxe: number }>()
+  typeRows.forEach((d) => typeTotals.set(d, { base: 0, taxe: 0 }))
+  dirRows.forEach((d) => dirTotals.set(d, { base: 0, taxe: 0 }))
+
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "tacp7") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
+    if (!isAll) {
+      if (!normalizedDeclDirection) continue
+      const matches = normalizedDeclDirection === normalizedFilter
+        || normalizedDeclDirection.includes(normalizedFilter)
+        || normalizedFilter.includes(normalizedDeclDirection)
+      if (!matches) continue
+    }
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const rows = Array.isArray(payload.tacp7Rows) ? (payload.tacp7Rows as Tacp7Row[]) : []
+
+    rows.forEach((row, idx) => {
+      const typeLabel = typeRows[idx]
+      if (typeLabel && typeTotals.has(typeLabel)) {
+        const t = typeTotals.get(typeLabel)!
+        t.base += parseRecapAmount(row.base)
+        t.taxe += parseRecapAmount(row.taxe)
+      }
+    })
+
+    const declBase = rows.reduce((s, r) => s + parseRecapAmount(r.base), 0)
+    const declTaxe = rows.reduce((s, r) => s + parseRecapAmount(r.taxe), 0)
+    for (const [dirLabel] of dirTotals) {
+      const nd = normalizeRecapDesignation(dirLabel)
+      if (nd && normalizedDeclDirection.includes(nd)) {
+        const t = dirTotals.get(dirLabel)!
+        t.base += declBase
+        t.taxe += declTaxe
+      }
+    }
+  }
+
+  const rows: Record<string, string>[] = []
+  for (const designation of TACP7_RECAP_ROWS) {
+    if (designation === "Total") break
+    if (typeTotals.has(designation)) {
+      const t = typeTotals.get(designation)!
+      rows.push({ designation, base: formatRecapAmount(t.base), taxe: formatRecapAmount(t.taxe) })
+    } else if (dirTotals.has(designation)) {
+      const t = dirTotals.get(designation)!
+      rows.push({ designation, base: formatRecapAmount(t.base), taxe: formatRecapAmount(t.taxe) })
+    }
+  }
+
+  const totalBase = typeRows.reduce((s, t) => s + (typeTotals.get(t)?.base ?? 0), 0)
+  const totalTaxe = typeRows.reduce((s, t) => s + (typeTotals.get(t)?.taxe ?? 0), 0)
+  rows.push({ designation: "Total", base: formatRecapAmount(totalBase), taxe: formatRecapAmount(totalTaxe) })
+  return rows
 }
 
 const recalcTnfdal1RecapRows = (rows: Record<string, string>[]): Record<string, string>[] => {
@@ -5279,19 +5382,19 @@ export default function NouvelleDeclarationPage() {
       "caHt",
     )
     const tnfdal1Rows = annotateTapLikeMissing(
-      recalcTnfdal1RecapRows(buildTnfdal1RecapRows(recapSources)),
+      recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
       fiscalDeclarations,
       mois,
       annee,
-      "ca_tap",
+      "tnfdal1",
       "caHt",
     )
     const tacp7Rows = annotateTapLikeMissing(
-      recalcTacp7RecapRows(buildTacp7RecapRows(recapSources)),
+      recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
       fiscalDeclarations,
       mois,
       annee,
-      "ca_tap",
+      "tacp7",
       "base",
     )
     const droitsTimbreRows = annotateDroitsTimbreMissing(
@@ -6460,21 +6563,21 @@ export default function NouvelleDeclarationPage() {
                           break
                         case "tnfdal1":
                           newRows = annotateTapLikeMissing(
-                            buildTnfdal1RecapRows(recapSources),
+                            recalcTnfdal1RecapRows(buildTnfdal1RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
                             fiscalDeclarations,
                             mois,
                             annee,
-                            "ca_tap",
+                            "tnfdal1",
                             "caHt",
                           )
                           break
                         case "tacp7":
                           newRows = annotateTapLikeMissing(
-                            recalcTacp7RecapRows(buildTacp7RecapRows(recapSources)),
+                            recalcTacp7RecapRows(buildTacp7RecapRows(fiscalDeclarations, mois, annee, effectiveDirection)),
                             fiscalDeclarations,
                             mois,
                             annee,
-                            "ca_tap",
+                            "tacp7",
                             "base",
                           )
                           break
@@ -6861,7 +6964,15 @@ export default function NouvelleDeclarationPage() {
 interface Tab17Props { rows: Tnfdal1Row[]; setRows: React.Dispatch<React.SetStateAction<Tnfdal1Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
   const upd = (i: number, f: "caHt" | "taxe", v: string) =>
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r
+      const updated = { ...r, [f]: v }
+      if (f === "caHt") {
+        const ht = num(v)
+        updated.taxe = ht > 0 ? (ht * 0.01).toFixed(2) : ""
+      }
+      return updated
+    }))
 
   return (
     <div className="space-y-3">
@@ -6890,12 +7001,10 @@ function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
                   />
                 </td>
                 <td className="px-1 py-1 border-b">
-                  <AmountInput
-                    min={0}
-                    step="0.01"
-                    value={rows[i]?.taxe ?? ""}
-                    onChange={(e) => upd(i, "taxe", e.target.value)}
-                    className="h-7 px-2 text-xs"
+                  <Input
+                    value={rows[i]?.taxe ? fmt(num(rows[i].taxe)) : ""}
+                    readOnly
+                    className="h-7 px-2 text-xs bg-gray-100"
                     placeholder="0.00"
                     style={{ minWidth: 170 }}
                   />
@@ -6921,7 +7030,15 @@ function TabTnfdal1({ rows, setRows, onSave, isSubmitting }: Tab17Props) {
 interface Tab18Props { rows: Tacp7Row[]; setRows: React.Dispatch<React.SetStateAction<Tacp7Row[]>>; onSave: () => void; isSubmitting: boolean }
 function TabTacp7({ rows, setRows, onSave, isSubmitting }: Tab18Props) {
   const upd = (i: number, f: "base" | "taxe", v: string) =>
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)))
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r
+      const updated = { ...r, [f]: v }
+      if (f === "base") {
+        const base = num(v)
+        updated.taxe = base > 0 ? (base * 0.07).toFixed(2) : ""
+      }
+      return updated
+    }))
 
   return (
     <div className="space-y-3">
@@ -6950,12 +7067,10 @@ function TabTacp7({ rows, setRows, onSave, isSubmitting }: Tab18Props) {
                   />
                 </td>
                 <td className="px-1 py-1 border-b">
-                  <AmountInput
-                    min={0}
-                    step="0.01"
-                    value={rows[i]?.taxe ?? ""}
-                    onChange={(e) => upd(i, "taxe", e.target.value)}
-                    className="h-7 px-2 text-xs"
+                  <Input
+                    value={rows[i]?.taxe ? fmt(num(rows[i].taxe)) : ""}
+                    readOnly
+                    className="h-7 px-2 text-xs bg-gray-100"
                     placeholder="0.00"
                     style={{ minWidth: 170 }}
                   />
