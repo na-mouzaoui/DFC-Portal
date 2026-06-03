@@ -2806,9 +2806,26 @@ const buildTvaSituationRecapRows = (sources: RecapSourcesResponse): Record<strin
   })
 }
 
+const computeSiegeTotalHt = (declarations: ApiFiscalDeclaration[], mois: string, annee: string): number => {
+  let totalHt = 0
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "ca_siege") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const siegeRows = Array.isArray(payload.caSiegeRows) ? (payload.caSiegeRows as SiegeEncRow[]) : []
+    for (const row of siegeRows) {
+      totalHt += parseRecapAmount(row.ht)
+    }
+  }
+  return totalHt
+}
+
 const buildTvaAPayerRecapRows = (
   tvaCollecteeRows: Record<string, string>[],
   tvaSituationRows: Record<string, string>[],
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
 ): Record<string, string>[] => {
   const collecteeByDesignation = new Map<string, number>()
   for (const row of tvaCollecteeRows) {
@@ -2823,12 +2840,14 @@ const buildTvaAPayerRecapRows = (
     deductibleBiensByDesignation.set(key, parseRecapAmount(row.biens))
   }
 
+  const siegeTotalHt = computeSiegeTotalHt(declarations, mois, annee)
+
   const rows = TVA_A_PAYER_RECAP_ROWS.map((designation) => {
     const normalized = normalizeRecapDesignation(designation)
 
     let collectee = 0
     if (normalized === "direction generale") {
-      collectee = collecteeByDesignation.get(normalizeRecapDesignation("Total (1)")) ?? 0
+      collectee = siegeTotalHt
     } else if (normalized.startsWith("dr ")) {
       collectee = collecteeByDesignation.get(normalized) ?? 0
     }
@@ -3352,6 +3371,9 @@ const buildG50RecapRows = (
   const tvaAPayerRows = buildTvaAPayerRecapRows(
     buildTvaCollecteeRecapRows(declarations, sources, mois, annee),
     buildTvaSituationRecapRows(sources),
+    declarations,
+    mois,
+    annee,
   )
   const tvaSituationRows = buildTvaSituationRecapRows(sources)
   const droitsTimbreRows = buildDroitsTimbreRecapRows(sources)
@@ -5558,7 +5580,7 @@ export default function NouvelleDeclarationPage() {
       mois,
       annee,
     )
-    const recapRows = annotateTvaAPayerMissing(buildTvaAPayerRecapRows(collecteeRows, situationRows), collecteeRows, situationRows)
+    const recapRows = annotateTvaAPayerMissing(buildTvaAPayerRecapRows(collecteeRows, situationRows, fiscalDeclarations, mois, annee), collecteeRows, situationRows)
     const hasActiveMasterData = masterRows.length > 0 && masterRows.some((r) => r.nomMaster && r.nomMaster.trim() !== "")
     const masters15Rows = hasActiveMasterData
       ? blankZeroManualRecapCells("masters15", buildMasters15RecapRowsFromMasterRows(masterRows))
@@ -5748,7 +5770,7 @@ export default function NouvelleDeclarationPage() {
           ...prev,
           tva_collectee: nextCollectee,
           tva_situation: nextSituation,
-          tva_a_payer: annotateTvaAPayerMissing(buildTvaAPayerRecapRows(nextCollectee, nextSituation), nextCollectee, nextSituation),
+          tva_a_payer: annotateTvaAPayerMissing(buildTvaAPayerRecapRows(nextCollectee, nextSituation, fiscalDeclarations, mois, annee), nextCollectee, nextSituation),
         }
       }
 
@@ -5779,7 +5801,7 @@ export default function NouvelleDeclarationPage() {
         [activeRecapTab]: updatedRows,
       }
     })
-  }, [activeRecapTab])
+  }, [activeRecapTab, fiscalDeclarations, mois, annee])
 
   const handleSaveEtatsSortie = useCallback(async () => {
     const currentRows = recapRowsByKey[activeRecapTab] ?? []
@@ -6727,6 +6749,9 @@ export default function NouvelleDeclarationPage() {
                             buildTvaAPayerRecapRows(
                               recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee)),
                               recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
+                              fiscalDeclarations,
+                              mois,
+                              annee,
                             ),
                             recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee)),
                             recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
