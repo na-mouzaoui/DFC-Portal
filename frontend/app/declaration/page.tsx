@@ -1490,13 +1490,18 @@ type Tacp7Row = { designation: string; base: string; taxe: string }
 const TAXE12_LABELS = ["Taxe de Formation Professionnelle 1%", "Taxe d'Apprentissage 1%"]
 const TNFDAL1_DECLARATION_ROWS = ["Direction Generale"]
 const TACP7_DECLARATION_ROWS = ["Masters", "Mobiposte", "Racimo", "Algerie Poste"]
-interface Tab12Props { rows: Taxe12Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe12Row[]>>; onSave: () => void; isSubmitting: boolean }
-function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
+interface Tab12Props { rows: Taxe12Row[]; setRows: React.Dispatch<React.SetStateAction<Taxe12Row[]>>; onSave: () => void; isSubmitting: boolean; isFormationForbidden?: boolean }
+function TabTaxeFormation({ rows, setRows, onSave, isSubmitting, isFormationForbidden }: Tab12Props) {
   const upd = (i: number, v: string) =>
     setRows((prev) => prev.map((r, idx) => idx === i ? { montant: v } : r))
   const total = rows.reduce((s, r) => s + num(r.montant), 0)
   return (
     <div className="space-y-3">
+      {isFormationForbidden && (
+        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          La Taxe Formation ne se remplit qu&apos;en Juin et Decembre. Veuillez selectionner la bonne periode.
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
@@ -1522,7 +1527,7 @@ function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
         </table>
       </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+        <Button size="sm" onClick={onSave} disabled={isSubmitting || isFormationForbidden}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
         </Button>
@@ -1535,14 +1540,19 @@ function TabTaxeFormation({ rows, setRows, onSave, isSubmitting }: Tab12Props) {
 // TAB 13 - SITUATION DE L'ACOMPTE PROVISIONNEL (year only, 12 months)
 // 
   const MONTH_LABELS_SHORT = ["Janv","Fev","Mars","Avr","Mai","Juin","Juil","Aout","Sept","Oct","Nov","Dec"]
-interface Tab13Props { months: string[]; setMonths: React.Dispatch<React.SetStateAction<string[]>>; annee: string; onSave: () => void; isSubmitting: boolean }
-function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Props) {
+interface Tab13Props { months: string[]; setMonths: React.Dispatch<React.SetStateAction<string[]>>; annee: string; onSave: () => void; isSubmitting: boolean; isAcompteForbidden?: boolean }
+function TabAcompte({ months, setMonths, annee, onSave, isSubmitting, isAcompteForbidden }: Tab13Props) {
   const upd = (i: number, v: string) =>
     setMonths((prev) => prev.map((m, idx) => idx === i ? v : m))
   const yy = annee.slice(-2)
   const total = months.reduce((s, v) => s + num(v), 0)
   return (
     <div className="space-y-3">
+      {isAcompteForbidden && (
+        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          L&apos;Acompte Provisionnel ne se remplit qu&apos;en Fevrier, Mai et Octobre. Veuillez selectionner la bonne periode.
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full text-sm">
           <thead>
@@ -1568,7 +1578,7 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
         </table>
       </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={onSave} disabled={isSubmitting}
+        <Button size="sm" onClick={onSave} disabled={isSubmitting || isAcompteForbidden}
           className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
           <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
         </Button>
@@ -1576,6 +1586,7 @@ function TabAcompte({ months, setMonths, annee, onSave, isSubmitting }: Tab13Pro
     </div>
   )
 }
+
 
 
 
@@ -2600,7 +2611,12 @@ const recalcTvaAPayerRecapRows = (rows: Record<string, string>[]): Record<string
   return nextRows
 }
 
-const buildTvaCollecteeRecapRows = (sources: RecapSourcesResponse): Record<string, string>[] => {
+const buildTvaCollecteeRecapRows = (
+  declarations: ApiFiscalDeclaration[],
+  sources: RecapSourcesResponse,
+  mois: string,
+  annee: string,
+): Record<string, string>[] => {
   const drTtcByRow = new Map<string, number>()
   const drHtByRow = new Map<string, number>()
 
@@ -2612,13 +2628,81 @@ const buildTvaCollecteeRecapRows = (sources: RecapSourcesResponse): Record<strin
     drHtByRow.set(rowLabel, (drHtByRow.get(rowLabel) ?? 0) + parseRecapAmount(source.totalHt))
   }
 
+  const siegeTtcByRow = new Map<string, number>()
+  let siegeExonereHt = 0
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "ca_siege") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const siegeRows = Array.isArray(payload.caSiegeRows) ? (payload.caSiegeRows as SiegeEncRow[]) : []
+    siegeRows.forEach((row, idx) => {
+      const ttc = parseRecapAmount(row.ttc)
+      if (!ttc) return
+      const label = idx < 2 ? `g1_${idx}` : SIEGE_G2_LABELS[idx - 2]
+      siegeTtcByRow.set(label, (siegeTtcByRow.get(label) ?? 0) + ttc)
+    })
+    siegeExonereHt += parseRecapAmount(siegeRows[1]?.ht)
+  }
+
+  const resolveSiegeRowKey = (designation: string): string | null => {
+    const n = normalizeRecapDesignation(designation)
+    if (!n) return null
+    if (n.includes("bna exploitation")) return "g1_0"
+    if (n.includes("post paid")) return "Encaissement POST PAID"
+    if (n.includes("mobiposte")) return "Encaissement MOBIPOST"
+    if (n.includes("racimo")) return "Encaissement RACIMO"
+    if (n === "sofia ccp" || n.includes("sofia")) return "Encaissement SOFIA"
+    if (n.includes("dme")) return "Encaissement DME"
+    if (n.includes("algerie poste")) return "Encaissement MASTER ALGERIE POSTE"
+    if (n.includes("vente terminaux")) return null
+    if (n.includes("recouvrement a")) return "Encaissement CCP RECOUVREMENT A"
+    if (n.includes("recouvrement b")) return "Encaissement CCP RECOUVREMENT B"
+    if (n.includes("tpe ccp") || n.includes("ccp tpe")) return "Encaissement CCP TPE"
+    if (n.includes("tpe bna") || n.includes("bna tpe")) return "Encaissement BNA TPE"
+    return null
+  }
+
+  const computeSiegeHt = (ttc: number, exonere: number): number => {
+    const taxableTtc = ttc - exonere
+    if (taxableTtc <= 0) return exonere
+    return taxableTtc / 1.19 + exonere
+  }
+
+  const drExonereByRow = new Map<string, number>()
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "encaissement") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const encRows = Array.isArray(payload.encRows) ? (payload.encRows as EncRow[]) : []
+    const exonereRow = encRows.find((r) => r.designation === "CHIFFRE D'AFFAIRES EXONERE")
+    const exonere = parseRecapAmount(exonereRow?.ht)
+    if (!exonere) continue
+    const rowLabel = resolveRegionalRecapRowByDirection(safeString(declaration.direction))
+    if (!rowLabel) continue
+    drExonereByRow.set(rowLabel, (drExonereByRow.get(rowLabel) ?? 0) + exonere)
+  }
+
   const rows = TVA_COLLECTEE_RECAP_ROWS.map((designation) => {
     if (isTvaCollecteeRecapDrRow(designation)) {
       return {
         designation,
         ttc: formatRecapAmount(drTtcByRow.get(designation) ?? 0),
-        exonere: "0,00",
+        exonere: formatRecapAmount(drExonereByRow.get(designation) ?? 0),
         ht: formatRecapAmount(drHtByRow.get(designation) ?? 0),
+        tva: "0,00",
+      }
+    }
+
+    if (isTvaCollecteeRecapManualRow(designation)) {
+      const siegeKey = resolveSiegeRowKey(designation)
+      const ttc = siegeKey ? (siegeTtcByRow.get(siegeKey) ?? 0) : 0
+      const exonere = siegeKey === "g1_0" ? siegeExonereHt : 0
+      const ht = computeSiegeHt(ttc, exonere)
+      return {
+        designation,
+        ttc: formatRecapAmount(ttc),
+        exonere: formatRecapAmount(exonere),
+        ht: formatRecapAmount(ht),
         tva: "0,00",
       }
     }
@@ -2655,12 +2739,26 @@ const buildTvaSituationRecapRows = (sources: RecapSourcesResponse): Record<strin
   let totalBiens = 0
 
   return TVA_SITUATION_RECAP_ROWS.map((designation) => {
-    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+    if (designation === "Direction AutoLiquidation") {
       return {
         designation,
         immo: "0,00",
         biens: "0,00",
         totalDed: "0,00",
+      }
+    }
+
+    if (designation === "Direction Generale") {
+      const immo = immoByRow.get(designation) ?? 0
+      const biens = biensByRow.get(designation) ?? 0
+      const totalDed = immo + biens
+      totalImmo += immo
+      totalBiens += biens
+      return {
+        designation,
+        immo: formatRecapAmount(immo),
+        biens: formatRecapAmount(biens),
+        totalDed: formatRecapAmount(totalDed),
       }
     }
 
@@ -3161,7 +3259,7 @@ const buildG50RecapRows = (
   monthlyRecapRowsByKey: MonthlyG50RecapRowsByKey,
 ): Record<string, string>[] => {
   const tvaAPayerRows = buildTvaAPayerRecapRows(
-    buildTvaCollecteeRecapRows(sources),
+    buildTvaCollecteeRecapRows(declarations, sources, mois, annee),
     buildTvaSituationRecapRows(sources),
   )
   const tvaSituationRows = buildTvaSituationRecapRows(sources)
@@ -3379,7 +3477,7 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
       if (columnKey === "biens") return "Somme colonne TVA Deductible sur Biens et Services"
     }
 
-    if (designation === "Direction Generale" || designation === "Direction AutoLiquidation") {
+    if (designation === "Direction AutoLiquidation") {
       if (columnKey === "immo") return "Saisie manuelle"
       if (columnKey === "biens") return "Saisie manuelle"
     } else {
@@ -3401,14 +3499,20 @@ const getRecapCellFormula = (recapKey: RecapKey, designation: string, columnKey:
     if (isTvaCollecteeRecapDrRow(designation)) {
       if (columnKey === "ttc") return "Extrait depuis le tableau 1 (Encaissement TTC)"
       if (columnKey === "ht") return "Extrait depuis le tableau 1 (Encaissement HT)"
-      if (columnKey === "exonere") return "Saisie manuelle"
+      if (columnKey === "exonere") return "Extrait depuis CHIFFRE D'AFFAIRES EXONERE du tableau 1"
       if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
     }
 
     if (isTvaCollecteeRecapManualRow(designation)) {
-      if (columnKey === "ttc") return "Saisie manuelle"
-      if (columnKey === "exonere") return "Saisie manuelle"
-      if (columnKey === "ht") return "Saisie manuelle"
+      if (normalizeRecapDesignation(designation).includes("vente terminaux")) {
+        if (columnKey === "ttc") return "Saisie manuelle"
+        if (columnKey === "exonere") return "Saisie manuelle"
+        if (columnKey === "ht") return "Saisie manuelle"
+        if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
+      }
+      if (columnKey === "ttc") return "Extrait depuis le tableau CA Siege"
+      if (columnKey === "exonere") return "Extrait depuis le tableau CA Siege"
+      if (columnKey === "ht") return "Extrait depuis le tableau CA Siege"
       if (columnKey === "tva") return "TVA = (HT - Exonere) * 19%"
     }
   }
@@ -4920,18 +5024,8 @@ export default function NouvelleDeclarationPage() {
   )
   const selectableTabs = useMemo(
     () => availableTabs
-      .filter((tab) => {
-        // Hide tabs that are not available for the selected month.
-        if (tab.key === "acompte") {
-          return ACOMPTE_ALLOWED_MONTHS.includes(mois as (typeof ACOMPTE_ALLOWED_MONTHS)[number])
-        }
-        if (tab.key === "taxe_formation") {
-          return FORMATION_ALLOWED_MONTHS.includes(mois as (typeof FORMATION_ALLOWED_MONTHS)[number])
-        }
-        return true
-      })
       .map((tab) => ({ ...tab, isDisabled: disabledTabKeys.has(tab.key) })),
-    [availableTabs, disabledTabKeys, mois],
+    [availableTabs, disabledTabKeys],
   )
   const selectableYears = useMemo(
     () => YEARS.filter((year) => MONTHS.some((month) => !isFiscalPeriodLocked(month.value, year, userRole))),
@@ -4940,18 +5034,15 @@ export default function NouvelleDeclarationPage() {
   const selectableMonths = useMemo(
     () => MONTHS.filter((month) => {
       if (isFiscalPeriodLocked(month.value, annee, userRole)) return false
-      if (activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(month.value as (typeof ACOMPTE_ALLOWED_MONTHS)[number])) {
-        return false
-      }
-      if (activeTab === "taxe_formation" && !FORMATION_ALLOWED_MONTHS.includes(month.value as (typeof FORMATION_ALLOWED_MONTHS)[number])) {
-        return false
-      }
+
       return true
     }),
-    [activeTab, annee, fiscalPolicyRevision, userRole],
+    [annee, fiscalPolicyRevision, userRole],
   )
   const hasFiscalTabAccess = availableTabs.length > 0
   const isActiveTabDisabled = entryMode === "declaration" ? disabledTabKeys.has(activeTab) : false
+  const isFormationForbidden = activeTab === "taxe_formation" && !FORMATION_ALLOWED_MONTHS.includes(mois as (typeof FORMATION_ALLOWED_MONTHS)[number])
+  const isAcompteForbidden = activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(mois as (typeof ACOMPTE_ALLOWED_MONTHS)[number])
   const activeRecapDefinition = useMemo(
     () => RECAP_TABS.find((item) => item.key === activeRecapTab) ?? RECAP_TABS[0],
     [activeRecapTab],
@@ -5364,7 +5455,7 @@ export default function NouvelleDeclarationPage() {
 
   useEffect(() => {
     const collecteeRows = annotateTvaCollecteeMissing(
-      buildTvaCollecteeRecapRows(recapSources),
+      buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee),
       fiscalDeclarations,
       mois,
       annee,
@@ -5721,15 +5812,6 @@ export default function NouvelleDeclarationPage() {
       toast({
         title: "Periode cloturee",
         description: "Le mois ou l'annee selectionne(e) est hors delai.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (activeTab === "acompte" && !ACOMPTE_ALLOWED_MONTHS.includes(mois as (typeof ACOMPTE_ALLOWED_MONTHS)[number])) {
-      toast({
-        title: "Periode invalide",
-        description: "Le tableau 13 n'est autorise qu'en mars, mai et octobre.",
         variant: "destructive",
       })
       return
@@ -6408,13 +6490,15 @@ export default function NouvelleDeclarationPage() {
         {/*  Global meta card (Direction + Periode)  */}
         <Card className="border border-gray-200">
           <CardContent className="pt-4 pb-3">
-            <div className="mb-4 flex items-center justify-end">
-              <div className="flex items-center gap-2 text-xs font-medium text-emerald-800">
-                <span>Declaration</span>
-                <Switch checked={entryMode === "etats_sortie"} onCheckedChange={(checked) => setEntryMode(checked ? "etats_sortie" : "declaration")} />
-                <span>Recap</span>
+            {!isRegionalRole && (
+              <div className="mb-4 flex items-center justify-end">
+                <div className="flex items-center gap-2 text-xs font-medium text-emerald-800">
+                  <span>Declaration</span>
+                  <Switch checked={entryMode === "etats_sortie"} onCheckedChange={(checked) => setEntryMode(checked ? "etats_sortie" : "declaration")} />
+                  <span>Recap</span>
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex flex-wrap items-end gap-6">
       {/* Direction */}
               <div className="space-y-1 flex-1 min-w-[220px]">
@@ -6540,7 +6624,7 @@ export default function NouvelleDeclarationPage() {
                       let newRows: Record<string, string>[] = []
                       switch (activeRecapTab) {
                         case "tva_collectee":
-                          newRows = recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources))
+                          newRows = recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee))
                           break
                         case "tva_situation":
                           newRows = recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources))
@@ -6548,10 +6632,10 @@ export default function NouvelleDeclarationPage() {
                         case "tva_a_payer":
                           newRows = annotateTvaAPayerMissing(
                             buildTvaAPayerRecapRows(
-                              recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
+                              recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee)),
                               recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
                             ),
-                            recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(recapSources)),
+                            recalcTvaCollecteeRecapRows(buildTvaCollecteeRecapRows(fiscalDeclarations, recapSources, mois, annee)),
                             recalcTvaSituationRecapRows(buildTvaSituationRecapRows(recapSources)),
                           )
                           break
@@ -6704,9 +6788,15 @@ export default function NouvelleDeclarationPage() {
                     </div>
                   )}
 
+                  {isFormationForbidden && (
+                    <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      La Taxe Formation ne se remplit qu&apos;en Juin et Decembre. Veuillez selectionner la bonne periode.
+                    </div>
+                  )}
+
                   <div className="flex justify-end">
                     <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={handleSave} disabled={isSubmitting} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
+                      <Button size="sm" onClick={handleSave} disabled={isSubmitting || isFormationForbidden} className="gap-1.5" style={{ backgroundColor: PRIMARY_COLOR, color: "white" }}>
                       <Save size={13} /> {isSubmitting ? "Enregistrement" : "Enregistrer"}
                       </Button>
                     </div>
@@ -6841,7 +6931,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N12 - Taxe de Formation</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabTaxeFormation rows={taxe12Rows} setRows={setTaxe12Rows} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabTaxeFormation rows={taxe12Rows} setRows={setTaxe12Rows} onSave={handleSave} isSubmitting={isSubmitting} isFormationForbidden={isFormationForbidden} />
                 </CardContent>
               </Card>
             )}
@@ -6851,7 +6941,7 @@ export default function NouvelleDeclarationPage() {
                   <CardTitle className="text-sm font-semibold" style={{ color: PRIMARY_COLOR }}>N13 - Acompte Provisionnel</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TabAcompte months={acompteMonths} setMonths={setAcompteMonths} annee={annee} onSave={handleSave} isSubmitting={isSubmitting} />
+                  <TabAcompte months={acompteMonths} setMonths={setAcompteMonths} annee={annee} onSave={handleSave} isSubmitting={isSubmitting} isAcompteForbidden={isAcompteForbidden} />
                 </CardContent>
               </Card>
             )}

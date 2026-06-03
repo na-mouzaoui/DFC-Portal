@@ -494,7 +494,7 @@ function ReminderKpiRow({
   const approvedTabs = reminders.reduce((sum, reminder) => sum + reminder.approvedTabs, 0)
   const remainingToEnterTabs = reminders.reduce((sum, reminder) => sum + reminder.remainingToEnterTabs, 0)
   const remainingToEnterTabLabels = Array.from(new Set(
-    reminders.flatMap((reminder) => reminder.missingToEnterTabs ?? []),
+    reminders.flatMap((reminder) => reminder.missingTabs ?? []),
   ))
     .map((tabKey) => formatTabKey(tabKey))
     .sort((a, b) => a.localeCompare(b, "fr"))

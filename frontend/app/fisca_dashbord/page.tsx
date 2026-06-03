@@ -16,6 +16,7 @@ import { CheckCircle, Trash2, Printer, Filter, ChevronUp, ChevronDown, X, Pencil
 import { useToast } from "@/hooks/use-toast"
 import { getCurrentFiscalPeriod, getFiscalPeriodLockMessage, isFiscalPeriodLocked } from "@/lib/fiscal-period-deadline"
 import { syncFiscalPolicy } from "@/lib/fiscal-policy"
+import { REGIONAL_FISCAL_TAB_KEYS, FINANCE_FISCAL_TAB_KEYS, isFiscalTabDisabledByPolicy } from "@/lib/fiscal-tab-access"
 import { getFiscalReminders, type ReminderData } from "@/lib/fiscal-reminders"
 import { RemindersCard } from "@/components/fiscal-reminders-card"
 import { API_BASE } from "@/lib/config"
@@ -417,9 +418,6 @@ const DASH_TABS = [
   { key: "taxe_vehicule", label: "11 a Taxe Vehicule",      color: "#92400e", title: "TAXE DE VEHICULE" },
   { key: "taxe_formation",label: "12 a Taxe Formation",     color: "#065f46", title: "TAXE DE FORMATION" },
   { key: "acompte",       label: "13 a Acompte Provisionnel", color: "#1e40af", title: "SITUATION DE L'ACOMPTE PROVISIONNEL" },
-  { key: "ibs",           label: "14 a IBS Fournisseurs Etrangers", color: "#7c2d12", title: "IBS SUR FOURNISSEURS ETRANGERS" },
-  { key: "taxe_domicil",  label: "15 a Taxe Domiciliation", color: "#134e4a", title: "TAXE DOMICILIATION BANCAIRE" },
-  { key: "tva_autoliq",   label: "16 a TVA Auto Liquidation", color: "#312e81", title: "TVA AUTO LIQUIDATION" },
   { key: "tnfdal1",       label: "17 a TNFDAL 1%",       color: "#0ea5e9", title: "TNFDAL 1%" },
   { key: "tacp7",         label: "18 a TACP 7%",         color: "#22c55e", title: "TACP 7%" },
 ]
@@ -438,9 +436,7 @@ const DECLARATION_TYPE_LABELS: Record<string, string> = {
   taxe_vehicule: "Taxe Vehicule",
   taxe_formation: "Taxe Formation",
   acompte: "Acompte Provisionnel",
-  ibs: "IBS Fournisseurs Etrangers",
-  taxe_domicil: "Taxe Domiciliation",
-  tva_autoliq: "TVA Auto Liquidation",
+
   tnfdal1: "TNFDAL 1%",
   tacp7: "TACP 7%",
 }
@@ -1218,7 +1214,7 @@ export default function FiscaDashboardPage() {
   const [consolidationSupplierId, setConsolidationSupplierId] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [recentCollapsed, setRecentCollapsed] = useState(false)
-  const [fournisseurCollapsed, setFournisseurCollapsed] = useState(false)
+
   const [recapCollapsed, setRecapCollapsed] = useState(false)
   const [sortCol, setSortCol] = useState<"type"|"direction"|"periode"|"date">("date")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc")
@@ -1387,9 +1383,40 @@ export default function FiscaDashboardPage() {
 
     const loadReminders = async () => {
       try {
-        const data = await getFiscalReminders(reminderFilterMois, reminderFilterAnnee)
+        const rawData = await getFiscalReminders(reminderFilterMois, reminderFilterAnnee)
         if (!cancelled) {
-          setReminders(data)
+          const excludedTabs = new Set(["ibs", "taxe_domicil", "tva_autoliq"])
+          const ACOMPTE_ALLOWED = ["02", "05", "10"]
+          const FORMATION_ALLOWED = ["06", "12"]
+          const isSiegeDir = (dir: string) => {
+            const d = dir.trim().toLowerCase()
+            return d === "siege" || d === "siège" || d.includes("siege") || d.includes("siège")
+          }
+          const tabKeysForDirection = (dir: string, mois: string): string[] => {
+            const base = isSiegeDir(dir) ? [...FINANCE_FISCAL_TAB_KEYS] : [...REGIONAL_FISCAL_TAB_KEYS]
+            const monthFiltered = base.filter((k) => {
+              if (isSiegeDir(dir) && k === "acompte" && !ACOMPTE_ALLOWED.includes(mois)) return false
+              if (isSiegeDir(dir) && k === "taxe_formation" && !FORMATION_ALLOWED.includes(mois)) return false
+              return true
+            })
+            return monthFiltered.filter((k) => !excludedTabs.has(k) && !isFiscalTabDisabledByPolicy(k))
+          }
+          setReminders(rawData.map((r) => {
+            const expectedKeys = tabKeysForDirection(r.direction, reminderFilterMois)
+            const newTotal = expectedKeys.length
+            const entered = Math.min(r.enteredTabs, newTotal)
+            const missingCount = newTotal - entered
+            const displayMissing = r.missingTabs.filter((t) => expectedKeys.includes(t))
+            return {
+              ...r,
+              totalTabs: newTotal,
+              enteredTabs: entered,
+              approvedTabs: Math.min(r.approvedTabs, newTotal),
+              remainingToEnterTabs: missingCount,
+              missingTabs: displayMissing,
+              missingToEnterTabs: displayMissing.length > 0 ? displayMissing : undefined,
+            }
+          }))
         }
       } catch {
         if (!cancelled) setReminders([])
@@ -2261,8 +2288,6 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
 
   const consolidationSummary = (() => {
     const tabKey = consolidationTabKey
-    const showSupplierFilter = tabKey === "ibs" || tabKey === "taxe_domicil" || tabKey === "tva_autoliq"
-
     const parseNum = (v: unknown) => {
       const raw = String(v ?? "").trim()
       if (!raw) return 0
@@ -2309,11 +2334,6 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
       if (consolidationDirections.length > 0) {
         const declDir = (decl.direction ?? "").trim().toLowerCase()
         if (!consolidationDirections.some((d) => declDir.includes(d.toLowerCase()))) continue
-      }
-
-      if (showSupplierFilter && consolidationSupplierId) {
-        const supplierId = decl.ibsFournisseurId || decl.tva16FournisseurId || ""
-        if (String(supplierId) !== String(consolidationSupplierId)) continue
       }
 
       if (tabKey === "all" || tabKey === "encaissement") {
@@ -2457,7 +2477,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
       )
     }
 
-    if (tabKey === "all" || tabKey === "tva_immo" || tabKey === "tva_biens" || tabKey === "droits_timbre" || tabKey === "etat_tap" || tabKey === "taxe2" || tabKey === "taxe_masters" || tabKey === "taxe_vehicule" || tabKey === "ibs" || tabKey === "taxe_domicil" || tabKey === "tva_autoliq") {
+    if (tabKey === "all" || tabKey === "tva_immo" || tabKey === "tva_biens" || tabKey === "droits_timbre" || tabKey === "etat_tap" || tabKey === "taxe2" || tabKey === "taxe_masters" || tabKey === "taxe_vehicule") {
       tiles.push({
         label: "Total Final",
         value: fmt(tabKey === "droits_timbre" ? totalTimbre : tabKey === "etat_tap" ? totalTAP : tabKey === "taxe2" ? totalTaxe2 : tabKey === "taxe_masters" ? totalMasters : tabKey === "taxe_vehicule" ? totalVehicule : totalTVA),
@@ -2469,7 +2489,6 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     return {
       title: tabKey === "all" ? "Récapitulatif global" : (DASH_TABS.find((t) => t.key === tabKey)?.title || tabKey),
       periodLabel,
-      showSupplierFilter,
       tiles: tiles.length > 0 ? tiles : [{ label: "Aucune donnée", value: "0,00", icon: <Wallet className="h-4 w-4 text-gray-400" /> }]
     }
   })()
@@ -2486,11 +2505,6 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
     if (filterDateTo && new Date(decl.createdAt) > new Date(filterDateTo + "T23:59:59")) return false
     return true
   })
-
-  const FOURNISSEUR_TAB_KEYS = new Set(["ibs", "taxe_domicil", "tva_autoliq"])
-  const fournisseurDeclarations = declarations
-    .filter((decl) => FOURNISSEUR_TAB_KEYS.has(getDeclarationType(decl).key))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   const recentDeclarations = [...filteredDeclarations].sort((a, b) => {
     let cmp = 0
@@ -2908,9 +2922,6 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
                     <option value="taxe_vehicule">Taxe Vehicule</option>
                     <option value="taxe_formation">Taxe Formation</option>
                     <option value="acompte">Acompte Provisionnel</option>
-                    <option value="ibs">IBS Etrangers</option>
-                    <option value="taxe_domicil">Taxe Domiciliation</option>
-                    <option value="tva_autoliq">TVA Auto Liquidation</option>
                     <option value="tnfdal1">TNFDAL 1%</option>
                     <option value="tacp7">TACP 7%</option>
                   </select>
@@ -3079,140 +3090,8 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
           </CardContent>
         </Card>
 
-        {/* Fournisseur declarations */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setFournisseurCollapsed(!fournisseurCollapsed)}>
-                {fournisseurCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-              </Button>
-              <CardTitle className="text-base">
-                Déclarations Fournisseurs Etrangers
-                {fournisseurDeclarations.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({fournisseurDeclarations.length})
-                  </span>
-                )}
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!fournisseurCollapsed && (fournisseurDeclarations.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Aucune déclaration fournisseur étranger enregistrée.
-              </p>
-            ) : (
-              <div className="max-h-[440px] overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type de déclaration</TableHead>
-                      <TableHead>Direction</TableHead>
-                      <TableHead>Période</TableHead>
-                      <TableHead>Date d&apos;enregistrement</TableHead>
-                      <TableHead className="w-20 text-center">Statut</TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fournisseurDeclarations.map((decl) => {
-                      const declType = getDeclarationType(decl)
-                      const isLocked = isDeclarationLocked(decl)
-                      const declarationDirection = (decl.direction ?? "").trim().toLowerCase()
-                      const isSiegeDeclaration = declarationDirection === "siège"
-                        || declarationDirection === "siege"
-                        || declarationDirection.includes("siège")
-                        || declarationDirection.includes("siege")
-                      const isOwnDeclaration = String(decl.userId ?? "") === String(user.id)
-                      const canApproveAsRegional = canApproveRegionalDeclarations
-                        && !decl.isApproved
-                        && (isOwnDeclaration || (!!normalizedRegion && declarationDirection === normalizedRegion))
-                      const canApproveAsFinance = canApproveFinanceDeclarations
-                        && !decl.isApproved
-                        && (isOwnDeclaration || isSiegeDeclaration)
-                      const canApproveAsAdmin = isAdminRole && !decl.isApproved
-                      const canApproveThisDeclaration = canApproveAsAdmin || canApproveAsRegional || canApproveAsFinance
-                      return (
-                        <TableRow
-                          key={decl.id}
-                          className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => handleView(decl, declType.key)}
-                          title="Cliquer pour consulter"
-                        >
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {declType.label}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">{decl.direction || <span className="text-muted-foreground italic">a</span>}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {MONTHS[decl.mois] || decl.mois} {decl.annee}
-                            </Badge>
-                            {isLocked && (
-                              <Badge variant="secondary" className="ml-2 text-[10px] text-emerald-700">
-                                Clôturée
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {new Date(decl.createdAt).toLocaleString("fr-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
-                          </TableCell>
-                          <TableCell className="w-20 p-0 align-middle">
-                            <div className="flex items-center justify-center">
-                              {decl.isApproved ? (
-                                <span className="inline-flex" title="Approuvée" aria-label="Approuvée">
-                                  <CheckCircle className="h-4 w-4 text-emerald-600" />
-                                </span>
-                              ) : (
-                                <span className="inline-flex" title="En attente" aria-label="En attente">
-                                  <Clock3 className="h-4 w-4 text-amber-600" />
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-center gap-2">
-                              {(isAdminRole || canApproveRegionalDeclarations || canApproveFinanceDeclarations) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 w-8 p-0 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                  disabled={!canApproveThisDeclaration}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    handleApprove(decl)
-                                  }}
-                                  title={decl.isApproved ? "Déclaration déjà approuvée" : !canApproveThisDeclaration ? "Action non autorisée pour cette déclaration" : "Approuver"}
-                                >
-                                  <CheckCircle size={16} />
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={isLocked}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleDelete(decl)
-                                }}
-                                title={isLocked ? "Période clôturée (suppression impossible)" : "Supprimer"}
-                              >
-                                <Trash2 size={16} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
 
+        {normalizedRole !== "regionale" && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -3357,6 +3236,7 @@ const handlePrint = (decl: SavedDeclaration, tabKey: string) => {
             ))}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* aa Consult Dialog aa */}

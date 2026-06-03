@@ -31,7 +31,6 @@ const imprimeChecqueLinks = [
 const fiscaLinks = [
   { name: "Dashboard", href: "/fisca_dashbord", icon: LayoutDashboard },
   { name: "Nouvelle Déclaration", href: "/declaration", icon: FilePlus },
-  { name: "Déclaration Fournisseurs", href: "/declaration_fournisseur", icon: Users },
 ]
 
 interface SidebarProps {
@@ -42,7 +41,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isFiscaPath = pathname === "/fisca_dashbord" || pathname.startsWith("/declaration") || pathname.startsWith("/declaration_fournisseur")
+  const isFiscaPath = pathname === "/fisca_dashbord" || pathname.startsWith("/declaration")
   const modules = (user.accessModules || "cheque,fisca").split(",").map((m: string) => m.trim())
   const hasChecque = modules.includes("cheque")
   const hasFisca = modules.includes("fisca")
