@@ -1,4 +1,5 @@
 import { getPolicyDeadlineDay } from "./fiscal-policy"
+import { isAdminFiscalRole, isFinanceFiscalRole } from "./fiscal-tab-access"
 
 const MONTH_LABELS: Record<string, string> = {
   "01": "Janvier",
@@ -31,6 +32,10 @@ const getDeadlineDayForRole = (role?: string | null): number => {
   const policyDeadlineDay = getPolicyDeadlineDay(role)
   if (policyDeadlineDay !== null) {
     return policyDeadlineDay
+  }
+
+  if (isAdminFiscalRole(role) || isFinanceFiscalRole(role) || (role ?? "").trim().toLowerCase() === "global") {
+    return 20
   }
 
   return 10
