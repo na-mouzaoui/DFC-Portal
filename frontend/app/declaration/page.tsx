@@ -1359,6 +1359,7 @@ function TabMasters({ rows, setRows, mois, annee, onSave, isSubmitting }: Tab10P
   const addRow    = () => setRows((p) => [...p, { ...EMPTY_MASTER, date: periodEndDate, mois: monthLabel }])
   const removeRow = (i: number) => setRows((p) => p.filter((_, idx) => idx !== i))
   const upd = (i: number, f: keyof MasterRow, v: string) => {
+    console.log(`[upd] f=${f} v="${v}"`)
     setRows((prev) => prev.map((r, idx) => {
       if (idx !== i) return r
       const updated = { ...r, [f]: v }
@@ -1403,7 +1404,24 @@ function TabMasters({ rows, setRows, mois, annee, onSave, isSubmitting }: Tab10P
                     style={iw}
                   />
                 </td>
-                <td className="px-1 py-1 border-b"><Input value={row.nomMaster} onChange={(e) => upd(i, "nomMaster", e.target.value)} className="h-7 px-2 text-xs" placeholder="Nom du Master" style={{ minWidth: 160 }} /></td>
+                <td className="px-1 py-1 border-b">
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <select
+                      value={row.nomMaster}
+                      onClick={() => console.log(`[select] click row=${i}`)}
+                      onChange={(e) => { console.log(`[select] onChange value="${e.target.value}"`); upd(i, "nomMaster", e.target.value); }}
+                      className="h-7 rounded border border-input bg-transparent px-3 text-xs ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      style={{ minWidth: 160 }}
+                    >
+                      <option value="" disabled>Sélectionner un master</option>
+                      <option value="DATA">DATA</option>
+                      <option value="ASSILOU COM">ASSILOU COM</option>
+                      <option value="GTS PHONE">GTS PHONE</option>
+                      <option value="ALGERIE POSTE">ALGERIE POSTE</option>
+                    </select>
+                    <button type="button" onClick={() => { console.log(`[test-btn] masterRows=`, JSON.stringify(rows)); upd(i, "nomMaster", "DATA"); }} className="text-xs px-2 py-1 bg-blue-100 rounded">Test DATA</button>
+                  </div>
+                </td>
                 <td className="px-1 py-1 border-b"><Input value={row.numFacture} onChange={(e) => upd(i, "numFacture", e.target.value)} className="h-7 px-2 text-xs" placeholder="N° Facture" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><Input type="date" value={row.dateFacture} onChange={(e) => upd(i, "dateFacture", e.target.value)} className="h-7 px-2 text-xs" style={iw} /></td>
                 <td className="px-1 py-1 border-b"><AmountInput min={0} step="0.01" value={row.montantHT} onChange={(e) => upd(i, "montantHT", e.target.value)} className="h-7 px-2 text-xs" placeholder="0.00" style={iw} /></td>
@@ -1956,7 +1974,7 @@ const TNFDAL1_RECAP_ROWS = [
 const IRG_RECAP_ROWS = [...IRG_LABELS, "Total"] as const
 
 const MASTERS15_RECAP_ROWS = [
-  "Masters",
+  "DATA",
   "ASSILOU COM",
   "GTS PHONE",
   "ALGERIE POSTE",
@@ -3086,6 +3104,79 @@ const buildMasters15RecapRows = (): Record<string, string>[] => {
   }))
 }
 
+const buildMasters15RecapRowsFromMasterRows = (masterRows: MasterRow[]): Record<string, string>[] => {
+  const amounts: Record<string, { base: number; taxe: number }> = {}
+  for (const row of masterRows) {
+    const nom = row.nomMaster
+    if (!nom) continue
+    const base = parseRecapAmount(row.montantHT)
+    const taxe = parseRecapAmount(row.taxe15)
+    if (!amounts[nom]) amounts[nom] = { base: 0, taxe: 0 }
+    amounts[nom].base += base
+    amounts[nom].taxe += taxe
+  }
+  let totalBase = 0
+  let totalTaxe = 0
+  const rows: Record<string, string>[] = MASTERS15_RECAP_ROWS.filter((d) => d !== "Total").map((designation) => {
+    const amt = amounts[designation] || { base: 0, taxe: 0 }
+    totalBase += amt.base
+    totalTaxe += amt.taxe
+    return { designation, base: formatRecapAmount(amt.base), taxe: formatRecapAmount(amt.taxe) }
+  })
+  rows.push({ designation: "Total", base: formatRecapAmount(totalBase), taxe: formatRecapAmount(totalTaxe) })
+  return rows
+}
+
+const buildMasters15RecapRowsFromDeclarations = (
+  declarations: ApiFiscalDeclaration[],
+  mois: string,
+  annee: string,
+  directionFilter: string,
+): Record<string, string>[] => {
+  const normalizedFilter = normalizeRecapDesignation(directionFilter)
+  const isAll = !normalizedFilter || ["all", "tout", "tous"].includes(normalizedFilter)
+
+  const amounts: Record<string, { base: number; taxe: number }> = {}
+
+  for (const declaration of declarations) {
+    if (declaration.tabKey !== "taxe_masters") continue
+    if (declaration.mois !== mois || declaration.annee !== annee) continue
+
+    const normalizedDeclDirection = normalizeRecapDesignation(declaration.direction)
+    if (!isAll) {
+      if (!normalizedDeclDirection) continue
+      const matches = normalizedDeclDirection === normalizedFilter
+        || normalizedDeclDirection.includes(normalizedFilter)
+        || normalizedFilter.includes(normalizedDeclDirection)
+      if (!matches) continue
+    }
+
+    const payload = parseFiscalDataPayload(safeString(declaration.dataJson))
+    const masterRows = Array.isArray(payload.masterRows) ? (payload.masterRows as MasterRow[]) : []
+
+    for (const row of masterRows) {
+      const nom = row.nomMaster
+      if (!nom) continue
+      const base = parseRecapAmount(row.montantHT)
+      const taxe = parseRecapAmount(row.taxe15)
+      if (!amounts[nom]) amounts[nom] = { base: 0, taxe: 0 }
+      amounts[nom].base += base
+      amounts[nom].taxe += taxe
+    }
+  }
+
+  let totalBase = 0
+  let totalTaxe = 0
+  const rows: Record<string, string>[] = MASTERS15_RECAP_ROWS.filter((d) => d !== "Total").map((designation) => {
+    const amt = amounts[designation] || { base: 0, taxe: 0 }
+    totalBase += amt.base
+    totalTaxe += amt.taxe
+    return { designation, base: formatRecapAmount(amt.base), taxe: formatRecapAmount(amt.taxe) }
+  })
+  rows.push({ designation: "Total", base: formatRecapAmount(totalBase), taxe: formatRecapAmount(totalTaxe) })
+  return rows
+}
+
 const buildIrgRecapRows = (
   declarations: ApiFiscalDeclaration[],
   mois: string,
@@ -3383,7 +3474,7 @@ const isRecapCellEditable = (recapKey: RecapKey, designation: string, columnKey:
     return designation === "Régulation CA" && (columnKey === "caHt" || columnKey === "taxe")
   }
 
-  if (recapKey === "tacp7" || recapKey === "irg_recap" || recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel") return false
+  if (recapKey === "tacp7" || recapKey === "irg_recap" || recapKey === "tap15" || recapKey === "droits_timbre" || recapKey === "tva_a_payer" || recapKey === "g50" || recapKey === "g50_annuel" || recapKey === "masters15") return false
 
   return true
 }
@@ -5048,6 +5139,7 @@ export default function NouvelleDeclarationPage() {
     [activeRecapTab],
   )
   const activeRecapRows = recapRowsByKey[activeRecapTab] ?? []
+  console.log(`[render] activeRecapTab=${activeRecapTab} rows=`, JSON.stringify(activeRecapRows))
   const activeRecapMissingLegendItems = useMemo(
     () => getRecapMissingLegendItems(activeRecapRows),
     [activeRecapRows],
@@ -5467,7 +5559,10 @@ export default function NouvelleDeclarationPage() {
       annee,
     )
     const recapRows = annotateTvaAPayerMissing(buildTvaAPayerRecapRows(collecteeRows, situationRows), collecteeRows, situationRows)
-    const masters15Rows = recalcMasters15RecapRows(buildMasters15RecapRows())
+    const hasActiveMasterData = masterRows.length > 0 && masterRows.some((r) => r.nomMaster && r.nomMaster.trim() !== "")
+    const masters15Rows = hasActiveMasterData
+      ? blankZeroManualRecapCells("masters15", buildMasters15RecapRowsFromMasterRows(masterRows))
+      : blankZeroManualRecapCells("masters15", buildMasters15RecapRowsFromDeclarations(fiscalDeclarations, mois, annee, effectiveDirection))
     const tap15Rows = annotateTapLikeMissing(
       buildTap15RecapRows(recapSources),
       fiscalDeclarations,
@@ -5515,7 +5610,7 @@ export default function NouvelleDeclarationPage() {
       tva_collectee: blankZeroManualRecapCells("tva_collectee", collecteeRows),
       tva_situation: blankZeroManualRecapCells("tva_situation", situationRows),
       tva_a_payer: recapRows,
-      masters15: blankZeroManualRecapCells("masters15", masters15Rows),
+      masters15: masters15Rows,
       tap15: tap15Rows,
       tnfdal1: blankZeroManualRecapCells("tnfdal1", tnfdal1Rows),
       tacp7: blankZeroManualRecapCells("tacp7", tacp7Rows),
@@ -5525,7 +5620,7 @@ export default function NouvelleDeclarationPage() {
       irg_recap: irgRecapRows,
     })
     setG50AnnualMissingPeriods(g50Annual.missingMonths)
-  }, [annee, annualRecapSourcesByMonth, effectiveDirection, fiscalDeclarations, g50AnnualRecaps, mois, monthlyG50RecapRowsByKey, recapSources])
+  }, [annee, annualRecapSourcesByMonth, effectiveDirection, fiscalDeclarations, g50AnnualRecaps, masterRows, mois, monthlyG50RecapRowsByKey, recapSources])
 
   useEffect(() => {
     if (isLoading || status !== "authenticated" || !user) {
@@ -5688,9 +5783,7 @@ export default function NouvelleDeclarationPage() {
 
   const handleSaveEtatsSortie = useCallback(async () => {
     const currentRows = recapRowsByKey[activeRecapTab] ?? []
-    const rowsToSave = activeRecapTab === "masters15"
-      ? blankZeroManualRecapCells("masters15", recalcMasters15RecapRows(currentRows))
-      : currentRows
+    const rowsToSave = currentRows
     const missingRequired = currentRows.some((row) => {
       const designation = String(row.designation ?? "")
       return activeRecapDefinition.columns.some((column) => {
@@ -6669,9 +6762,13 @@ export default function NouvelleDeclarationPage() {
                             "base",
                           )
                           break
-                        case "masters15":
-                          newRows = recalcMasters15RecapRows(buildMasters15RecapRows())
-                          break
+                        case "masters15": {
+                          const hasActiveMasterData = masterRows.length > 0 && masterRows.some((r) => r.nomMaster && r.nomMaster.trim() !== "")
+                          newRows = hasActiveMasterData
+                            ? buildMasters15RecapRowsFromMasterRows(masterRows)
+                            : buildMasters15RecapRowsFromDeclarations(fiscalDeclarations, mois, annee, effectiveDirection)
+                        }
+                        break
                         case "droits_timbre":
                           newRows = annotateDroitsTimbreMissing(
                             buildDroitsTimbreRecapRows(recapSources),
